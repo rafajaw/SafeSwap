@@ -37,9 +37,9 @@ abstract contract UniswapHook is IUnlockCallback {
 
     bool transient _is_protected_context;
 
-    address constant OPEN_REGISTRY      =   address(0x000000000000004f70656E526567697374727900);  // ***TODO*** Set after deployment.
-    bytes32 constant UNISWAP_NAMESPACE  =   keccak256( "uniswap_v4" );
-    bytes32 constant POOL_MANAGER_KEY   =   keccak256( "PoolManager" );
+    address constant OPEN_REGISTRY      =   address(bytes20(bytes12("OpenRegistry")));  // ***TODO*** Set after deployment.
+    bytes32 constant UNISWAP_NAMESPACE  =   bytes32("uniswap");
+    bytes32 constant POOL_MANAGER_KEY   =   bytes32("v4.pool_manager.address");
 
     enum Action { ExactInputSwap, ExactOutputSwap, AddLiquidity, RemoveLiquidity }
 

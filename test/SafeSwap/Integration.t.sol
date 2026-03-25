@@ -347,7 +347,7 @@ contract IntegrationTest is SafeSwapTestBase {
         assertEq(
             treasury_after - treasury_before,
             10 ether,
-            "Owner should withdraw accumulated fees minus 1 wei."
+            "Collector should withdraw accumulated fees minus 1 wei."
         );
     }
 }

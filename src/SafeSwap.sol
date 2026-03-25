@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "@SafeSwap/Admin.sol";
+import "@SafeSwap/Collector.sol";
 
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -15,18 +15,18 @@ error UnknownSelector( bytes4 selector );
  * @dev Pools using this hook require all swaps and liquidity operations to go through BondRoute protection
  *
  * Inheritance Chain (base → derived):
- *   BondRouteProtected, UniswapHook → User → Admin → SafeSwap
+ *   BondRouteProtected, UniswapHook → User → Collector → SafeSwap
  *
  *   BondRouteProtected - commit-reveal bond mechanism
  *   UniswapHook        - PoolManager + V4 callbacks + protected context
  *   User               - user functions (swap, liquidity) + off-chain getters
- *   Admin              - admin functions (withdraw_fees) + collector management
+ *   Collector          - fee withdrawal + role transfer
  *   SafeSwap           - BondRoute interface overrides + receive()
  */
-contract SafeSwap is Admin {
+contract SafeSwap is Collector {
 
     constructor( address initial_collector )
-    Admin( initial_collector ) { }
+    Collector( initial_collector ) { }
 
 
     // ━━━━  BONDROUTE INTERFACE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

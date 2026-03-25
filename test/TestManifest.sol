@@ -21,24 +21,25 @@ pragma solidity ^0.8.30;
 
 interface IConstructorTests {
     // ─── Deployment ────────────────────────────────────────────────────────────────
-    function test_constructor_sets_pool_manager_from_open_storage( ) external;
-    function test_constructor_sets_owner_correctly( ) external;
+    function test_constructor_sets_pool_manager_from_open_registry( ) external;
+    function test_constructor_sets_collector_correctly( ) external;
     function test_constructor_reverts_if_pool_manager_not_set( ) external;
     function test_constructor_announces_protocol_to_bondroute( ) external;
 }
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// OWNERSHIP
-// Implemented in: test/SafeSwap/Ownership.t.sol
+// COLLECTOR
+// Implemented in: test/SafeSwap/Collector.t.sol
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-interface IOwnershipTests {
-    // ─── Ownable Inheritance ───────────────────────────────────────────────────────
-    function test_owner_returns_initial_owner( ) external;
-    function test_transfer_ownership_works_for_owner( ) external;
-    function test_transfer_ownership_reverts_for_non_owner( ) external;
-    function test_renounce_ownership_works_for_owner( ) external;
+interface ICollectorTests {
+    // ─── Role Transfer ─────────────────────────────────────────────────────────────
+    function test_collector_returns_initial_collector( ) external;
+    function test_transfer_collector_sets_pending( ) external;
+    function test_transfer_collector_reverts_for_non_collector( ) external;
+    function test_accept_collector_completes_transfer( ) external;
+    function test_accept_collector_reverts_for_non_pending( ) external;
 }
 
 
@@ -86,6 +87,14 @@ interface IBondRouteIntegrationTests {
 
     // ─── BondRoute_quote_call( ) - Unknown Selector ────────────────────────────────
     function test_quote_call_reverts_on_unknown_selector( ) external;
+
+    // ─── BondRoute_get_signing_info( ) ──────────────────────────────────────────────
+    function test_get_signing_info_exact_input_returns_valid_type_string( ) external;
+    function test_get_signing_info_exact_output_returns_valid_type_string( ) external;
+    function test_get_signing_info_add_liquidity_returns_valid_type_string( ) external;
+    function test_get_signing_info_remove_liquidity_returns_valid_type_string( ) external;
+    function test_get_signing_info_struct_hash_changes_with_params( ) external;
+    function test_get_signing_info_unknown_selector_returns_empty( ) external;
 
     // ─── Protected Function Access Control ─────────────────────────────────────────
     function test_swap_exact_input_reverts_if_not_bondroute( ) external;
@@ -142,7 +151,7 @@ interface IUnlockCallbackTests {
     function test_unlock_callback_dispatches_exact_output_swap( ) external;
     function test_unlock_callback_dispatches_add_liquidity( ) external;
     function test_unlock_callback_dispatches_remove_liquidity( ) external;
-    function test_unlock_callback_reverts_on_invalid_operation_type( ) external;
+    function test_unlock_callback_reverts_on_invalid_action( ) external;
 
     // ─── Trailing Byte Encoding ────────────────────────────────────────────────────
     function test_unlock_callback_reads_operation_type_from_last_byte( ) external;
@@ -253,7 +262,7 @@ interface IFeeWithdrawalTests {
     // ─── withdraw_fees( ) ──────────────────────────────────────────────────────────
     function test_withdraw_fees_transfers_erc20_to_recipient( ) external;
     function test_withdraw_fees_transfers_native_to_recipient( ) external;
-    function test_withdraw_fees_reverts_if_not_owner( ) external;
+    function test_withdraw_fees_reverts_if_not_collector( ) external;
     function test_withdraw_fees_keeps_1_wei_for_gas_optimization( ) external;
     function test_withdraw_fees_no_op_if_balance_is_1_or_less( ) external;
     function test_withdraw_fees_reverts_on_failed_native_transfer( ) external;
@@ -312,7 +321,43 @@ interface IIntegrationTests {
 
     // ─── Fee Accumulation ──────────────────────────────────────────────────────────
     function test_integration_fees_accumulate_over_swaps( ) external;
-    function test_integration_owner_withdraws_accumulated_fees( ) external;
+    function test_integration_collector_withdraws_accumulated_fees( ) external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// REAL POOL INTEGRATION TESTS
+// Implemented in: test/SafeSwap/RealPoolIntegration.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface IRealPoolIntegrationTests {
+    // ─── Exact Input Swap ─────────────────────────────────────────────────────────
+    function test_real_pool_exact_input_swap_basic( ) external;
+    function test_real_pool_exact_input_swap_correct_protocol_fee( ) external;
+    function test_real_pool_exact_input_swap_one_for_zero_direction( ) external;
+    function test_real_pool_exact_input_swap_respects_slippage( ) external;
+
+    // ─── Exact Output Swap ────────────────────────────────────────────────────────
+    function test_real_pool_exact_output_swap_basic( ) external;
+    function test_real_pool_exact_output_swap_correct_protocol_fee( ) external;
+    function test_real_pool_exact_output_swap_respects_slippage( ) external;
+
+    // ─── Liquidity ────────────────────────────────────────────────────────────────
+    function test_real_pool_add_liquidity_basic( ) external;
+    function test_real_pool_add_liquidity_respects_slippage( ) external;
+    function test_real_pool_add_liquidity_position_salt_isolation( ) external;
+    function test_real_pool_remove_liquidity_basic( ) external;
+    function test_real_pool_remove_liquidity_correct_amounts( ) external;
+    function test_real_pool_remove_liquidity_respects_slippage( ) external;
+
+    // ─── Multi-Operation ──────────────────────────────────────────────────────────
+    function test_real_pool_multiple_swaps_move_price( ) external;
+    function test_real_pool_swap_after_adding_more_liquidity( ) external;
+    function test_real_pool_fee_accumulation_and_withdrawal( ) external;
+
+    // ─── Security ─────────────────────────────────────────────────────────────────
+    function test_real_pool_hook_rejects_direct_pool_swap( ) external;
+    function test_real_pool_protected_context_cleared_after_operation( ) external;
 }
 
 
@@ -351,9 +396,9 @@ interface IInvariantTests {
     function invariant_protected_context_always_cleared_after_operation( ) external;
     function invariant_hooks_only_pass_in_protected_context( ) external;
 
-    // ─── Ownership Invariants ──────────────────────────────────────────────────────
-    function invariant_only_owner_can_withdraw( ) external;
-    function invariant_ownership_transfer_requires_current_owner( ) external;
+    // ─── Collectorship Invariants ───────────────────────────────────────────────────
+    function invariant_only_collector_can_withdraw( ) external;
+    function invariant_collectorship_transfer_requires_current_collector( ) external;
 }
 
 
@@ -389,13 +434,13 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Total Tests Declared:       155
-// Implemented & Passing:      155 ✓
+// Total Tests Declared:       180
+// Implemented & Passing:      180 ✓
 //
 // Coverage by Section:
 // - Constructor:                4 tests  ✓
-// - Ownership:                  4 tests  ✓
-// - BondRoute Integration:     31 tests  ✓
+// - Collector:                  5 tests  ✓
+// - BondRoute Integration:     37 tests  ✓
 // - Hook Callbacks:            17 tests  ✓
 // - Unlock Callback:            8 tests  ✓
 // - Swap Execution:            14 tests  ✓
@@ -404,6 +449,7 @@ interface IGasBenchmarkTests {
 // - Fee Withdrawal:            10 tests  ✓
 // - Stake Calculation:          8 tests  ✓
 // - Integration Tests:         12 tests  ✓
+// - Real Pool Integration:     18 tests  ✓
 // - Fuzz Tests:                 6 tests  ✓
 // - Invariant Tests:            7 tests  ✓
 // - Gas Benchmarks:            10 tests  (declared, not yet implemented)

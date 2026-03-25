@@ -79,19 +79,25 @@ contract MockERC20 is IERC20 {
 }
 
 
-// ━━━━  MOCK OPEN STORAGE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━━  MOCK OPEN REGISTRY  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-contract MockOpenStorage {
-    mapping( bytes32 => bytes32 ) public globals;
+contract MockOpenRegistry {
+    mapping( bytes32 => mapping( bytes32 => bytes32 ) ) public entries;
 
-    function set_global( bytes32 key, bytes32 value ) external
+    function set_entry( bytes32 namespace, bytes32 key, bytes32 value ) external
     {
-        globals[ key ]  =  value;
+        entries[ namespace ][ key ]  =  value;
     }
 
-    function get_global( bytes32 key, bool ) external view returns ( bytes32 )
+    function read_key( bytes32 namespace, bytes32 key ) external view returns ( bytes32 )
     {
-        return globals[ key ];
+        return entries[ namespace ][ key ];
+    }
+
+    function try_read_key( bytes32 namespace, bytes32 key ) external view returns ( bytes32 value, bool exists )
+    {
+        value   =  entries[ namespace ][ key ];
+        exists  =  value != bytes32(0);
     }
 }
 
@@ -420,7 +426,7 @@ abstract contract SafeSwapTestBase is Test {
     TestableSafeSwap public hook;
     MockPoolManager public pool_manager;
     MockBondRoute public bond_route;
-    MockOpenStorage public open_storage;
+    MockOpenRegistry public open_registry;
 
     // Tokens.
     MockERC20 public token0;
@@ -444,7 +450,9 @@ abstract contract SafeSwapTestBase is Test {
     uint160 constant SQRT_PRICE_1_1    =  79228162514264337593543950336;  // 1:1 price.
     uint256 constant INITIAL_BALANCE   =  1_000_000 ether;
 
-    bytes32 constant POOL_MANAGER_KEY  =  keccak256( "Uniswap_v4.PoolManager.address" );
+    address constant OPEN_REGISTRY      =  address(bytes20(bytes12("OpenRegistry")));
+    bytes32 constant UNISWAP_NAMESPACE  =  bytes32("uniswap");
+    bytes32 constant POOL_MANAGER_KEY   =  bytes32("v4.pool_manager.address");
 
     function setUp( ) public virtual
     {
@@ -459,23 +467,19 @@ abstract contract SafeSwapTestBase is Test {
         treasury    =  makeAddr( "treasury" );
 
         // Deploy mocks.
-        open_storage   =  new MockOpenStorage( );
+        open_registry  =  new MockOpenRegistry( );
         pool_manager   =  new MockPoolManager( );
         bond_route     =  new MockBondRoute( );
 
-        // Set pool manager in open storage.
-        open_storage.set_global( POOL_MANAGER_KEY, bytes32(uint256(uint160(address(pool_manager)))) );
-
         // Deploy mock code at expected addresses.
-        vm.etch( address(0x00000000000000004F70656E53746F72616765), address(open_storage).code );
+        vm.etch( OPEN_REGISTRY, address(open_registry).code );
         vm.etch( BONDROUTE_ADDRESS, address(bond_route).code );
+
+        // Set pool manager in open registry.
+        MockOpenRegistry(OPEN_REGISTRY).set_entry( UNISWAP_NAMESPACE, POOL_MANAGER_KEY, bytes32(uint256(uint160(address(pool_manager)))) );
 
         // Set skip_actual_transfer to true on the etched BondRoute.
         MockBondRoute(payable(BONDROUTE_ADDRESS)).set_skip_actual_transfer( true );
-
-        // Copy storage for OpenStorage.
-        bytes32 pm_slot  =  keccak256( abi.encode( POOL_MANAGER_KEY, uint256(0) ) );
-        vm.store( address(0x00000000000000004F70656E53746F72616765), pm_slot, bytes32(uint256(uint160(address(pool_manager)))) );
 
         // Deploy tokens - ensure token0 < token1 for proper ordering.
         token0         =  new MockERC20( "Token0", "TK0", 18 );

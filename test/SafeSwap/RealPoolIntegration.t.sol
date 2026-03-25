@@ -17,7 +17,7 @@ import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 
-import { MockERC20, MockBondRoute, MockOpenStorage } from "./TestBase.t.sol";
+import { MockERC20, MockBondRoute, MockOpenRegistry } from "./TestBase.t.sol";
 
 
 // ━━━━  REAL POOL TEST HOOK  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -26,7 +26,7 @@ import { MockERC20, MockBondRoute, MockOpenStorage } from "./TestBase.t.sol";
 ///      PoolManager.unlock -> unlockCallback -> library execute -> real pool flow.
 contract RealPoolTestHook is SafeSwap {
 
-    constructor( address initial_owner ) SafeSwap( initial_owner ) { }
+    constructor( address initial_collector ) SafeSwap( initial_collector ) { }
 
     function test_swap_exact_input( BondContext memory context, ExactInputSwapParams memory params )
     external
@@ -114,7 +114,7 @@ contract RealPoolIntegrationTest is Test {
     MockERC20 public token0;
     MockERC20 public token1;
 
-    address public owner;
+    address public collector;
     address public user;
     address public other_user;
     address public lp;
@@ -128,7 +128,9 @@ contract RealPoolIntegrationTest is Test {
     int24 constant FULL_RANGE_LOWER    =  -887220;  // Near MIN_TICK, aligned to tickSpacing 60.
     int24 constant FULL_RANGE_UPPER    =   887220;  // Near MAX_TICK, aligned to tickSpacing 60.
 
-    bytes32 constant POOL_MANAGER_KEY  =  keccak256( "Uniswap_v4.PoolManager.address" );
+    address constant OPEN_REGISTRY      =  address(bytes20(bytes12("OpenRegistry")));
+    bytes32 constant UNISWAP_NAMESPACE  =  bytes32("uniswap");
+    bytes32 constant POOL_MANAGER_KEY   =  bytes32("v4.pool_manager.address");
 
     uint256 constant PROTOCOL_FEE_DIVISOR  =  10_000_000;
 
@@ -138,16 +140,16 @@ contract RealPoolIntegrationTest is Test {
         vm.roll( 1000 );
         vm.warp( 1000000 );
 
-        owner       =  makeAddr( "owner" );
+        collector   =  makeAddr( "collector" );
         user        =  makeAddr( "user" );
         other_user  =  makeAddr( "other_user" );
         lp          =  makeAddr( "liquidity_provider" );
 
-        // Deploy mock infrastructure that is still needed (BondRoute, OpenStorage).
-        MockOpenStorage open_storage  =  new MockOpenStorage( );
-        MockBondRoute bond_route      =  new MockBondRoute( );
+        // Deploy mock infrastructure that is still needed (BondRoute, OpenRegistry).
+        MockOpenRegistry open_registry  =  new MockOpenRegistry( );
+        MockBondRoute bond_route        =  new MockBondRoute( );
 
-        vm.etch( address(0x00000000000000004F70656E53746F72616765), address(open_storage).code );
+        vm.etch( OPEN_REGISTRY, address(open_registry).code );
         vm.etch( BONDROUTE_ADDRESS, address(bond_route).code );
         MockBondRoute(payable(BONDROUTE_ADDRESS)).set_skip_actual_transfer( false );
 
@@ -171,21 +173,16 @@ contract RealPoolIntegrationTest is Test {
             real_pool_manager  =  IPoolManager(abi.decode( ret, (address) ));
         }
 
-        // Store pool manager address in OpenStorage.
-        open_storage.set_global( POOL_MANAGER_KEY, bytes32(uint256(uint160(address(real_pool_manager)))) );
-        bytes32 pm_slot  =  keccak256( abi.encode( POOL_MANAGER_KEY, uint256(0) ) );
-        vm.store( address(0x00000000000000004F70656E53746F72616765), pm_slot, bytes32(uint256(uint160(address(real_pool_manager)))) );
+        // Store pool manager address in OpenRegistry.
+        MockOpenRegistry(OPEN_REGISTRY).set_entry( UNISWAP_NAMESPACE, POOL_MANAGER_KEY, bytes32(uint256(uint160(address(real_pool_manager)))) );
 
-        // Deploy hook normally (constructor reads OpenStorage, sets PoolManager immutable in bytecode).
-        RealPoolTestHook deployed_hook  =  new RealPoolTestHook( owner );
+        // Deploy hook normally (constructor reads OpenRegistry, sets PoolManager immutable in bytecode).
+        RealPoolTestHook deployed_hook  =  new RealPoolTestHook( collector );
 
-        // Etch bytecode to address with correct hook permission bits.
+        // Clone hook (code + storage) to address with correct hook permission bits.
         // BEFORE_SWAP(0x80) | BEFORE_REMOVE_LIQUIDITY(0x200) | BEFORE_ADD_LIQUIDITY(0x800) = 0x0A80.
         address hook_target  =  address(uint160(0x0A80));
-        vm.etch( hook_target, address(deployed_hook).code );
-
-        // Restore Ownable._owner storage (slot 0) at the etched address.
-        vm.store( hook_target, bytes32(0), bytes32(uint256(uint160(owner))) );
+        vm.cloneAccount( address(deployed_hook), hook_target );
 
         hook  =  RealPoolTestHook(payable(hook_target));
 
@@ -784,13 +781,13 @@ contract RealPoolIntegrationTest is Test {
         uint256 hook_token1_balance  =  token1.balanceOf( address(hook) );
         assertGt( hook_token1_balance, 1, "Hook should have accumulated protocol fees." );
 
-        // Owner withdraws.
+        // Collector withdraws.
         address recipient  =  makeAddr( "treasury" );
         token1.mint( recipient, 1 );  // Dust to avoid 0-to-nonzero.
 
         uint256 recipient_before  =  token1.balanceOf( recipient );
 
-        vm.prank( owner );
+        vm.prank( collector );
         hook.withdraw_fees( token1, recipient );
 
         uint256 recipient_after  =  token1.balanceOf( recipient );

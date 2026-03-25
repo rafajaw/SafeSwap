@@ -170,7 +170,7 @@ contract InvariantsTest is SafeSwapTestBase {
     }
 
 
-    // ━━━━  Ownership Invariants  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  Collector Invariants  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function invariant_only_collector_can_withdraw( ) external
     {
@@ -181,7 +181,7 @@ contract InvariantsTest is SafeSwapTestBase {
         vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, collector ) );
         hook.withdraw_fees( token0, user );
 
-        // Owner should succeed.
+        // Collector should succeed.
         vm.prank( collector );
         hook.withdraw_fees( token0, collector );
     }
