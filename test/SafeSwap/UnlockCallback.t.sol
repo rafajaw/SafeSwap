@@ -156,6 +156,33 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         );
     }
 
+    function test_unlock_callback_dispatches_donate( ) external
+    {
+        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 200 ether );
+        DonateParams memory params  =  _create_donate_params( );
+
+        pool_manager.set_mock_donate_amounts( -100 ether, -200 ether );
+
+        bytes memory data  =  bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.Donate)) );
+
+        uint256 user_token0_before  =  token0.balanceOf( user );
+        uint256 user_token1_before  =  token1.balanceOf( user );
+
+        vm.prank( address(pool_manager) );
+        hook.unlockCallback( data );
+
+        assertEq(
+            user_token0_before - token0.balanceOf( user ),
+            100 ether,
+            "Donate dispatch: user should provide 100 ether of token0."
+        );
+        assertEq(
+            user_token1_before - token1.balanceOf( user ),
+            200 ether,
+            "Donate dispatch: user should provide 200 ether of token1."
+        );
+    }
+
     function test_unlock_callback_reverts_on_invalid_action( ) external
     {
         BondContext memory context  =  _create_bond_context( user, 100 ether );

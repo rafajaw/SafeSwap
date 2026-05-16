@@ -34,11 +34,12 @@ contract SafeSwap is Collector {
     function BondRoute_get_protected_selectors( )
     public pure override returns ( bytes4[] memory selectors )
     {
-        selectors       =  new bytes4[]( 4 );
+        selectors       =  new bytes4[]( 5 );
         selectors[ 0 ]  =  this.swap_exact_input.selector;
         selectors[ 1 ]  =  this.swap_exact_output.selector;
         selectors[ 2 ]  =  this.add_liquidity.selector;
         selectors[ 3 ]  =  this.remove_liquidity.selector;
+        selectors[ 4 ]  =  this.donate.selector;
     }
 
     function BondRoute_quote_call( bytes calldata call, IERC20, TokenAmount[] memory preferred_fundings )
@@ -65,6 +66,11 @@ contract SafeSwap is Collector {
         {
             RemoveLiquidityParams memory params  =  abi.decode( call[ 4: ], (RemoveLiquidityParams) );
             return RemoveLiquidityLib.get_constraints( params );
+        }
+        else if(  selector == this.donate.selector  )
+        {
+            DonateParams memory params  =  abi.decode( call[ 4: ], (DonateParams) );
+            return DonateLib.get_constraints( params, preferred_fundings );
         }
         else
         {
@@ -96,6 +102,11 @@ contract SafeSwap is Collector {
         {
             RemoveLiquidityParams memory params  =  abi.decode( call[ 4: ], (RemoveLiquidityParams) );
             return RemoveLiquidityLib.get_signing_info( params );
+        }
+        else if(  selector == this.donate.selector  )
+        {
+            DonateParams memory params  =  abi.decode( call[ 4: ], (DonateParams) );
+            return DonateLib.get_signing_info( params );
         }
         else
         {

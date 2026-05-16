@@ -8,14 +8,14 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
 
     // ━━━━  BondRoute_get_protected_selectors( )  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function test_get_protected_selectors_returns_four_selectors( ) external view
+    function test_get_protected_selectors_returns_five_selectors( ) external view
     {
         bytes4[] memory selectors  =  hook.BondRoute_get_protected_selectors( );
 
         assertEq(
             selectors.length,
-            4,
-            "Should return exactly 4 protected selectors."
+            5,
+            "Should return exactly 5 protected selectors."
         );
     }
 
@@ -69,6 +69,19 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         }
 
         assertTrue( found, "Protected selectors should include remove_liquidity." );
+    }
+
+    function test_get_protected_selectors_includes_donate( ) external view
+    {
+        bytes4[] memory selectors  =  hook.BondRoute_get_protected_selectors( );
+        bool found  =  false;
+
+        for(  uint i = 0  ;  i < selectors.length  ;  i = i + 1  )
+        {
+            if(  selectors[ i ] == hook.donate.selector  )  found  =  true;
+        }
+
+        assertTrue( found, "Protected selectors should include donate." );
     }
 
     function test_get_protected_selectors_gas_below_50000( ) external
@@ -496,6 +509,104 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
     }
 
 
+    // ━━━━  BondRoute_quote_call( ) - Donate  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function test_quote_call_donate_returns_correct_min_stake( ) external view
+    {
+        DonateParams memory params  =  _create_donate_params( );
+        bytes memory call_data  =  _encode_donate_calldata( params );
+
+        TokenAmount[] memory preferred_fundings  =  _create_liquidity_fundings( 100 ether, 200 ether );
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
+
+        assertEq(
+            constraints.min_stake.amount,
+            2 ether,
+            "Min stake should be 2% of donated token0 amount."
+        );
+        assertEq(
+            address(constraints.min_stake.token),
+            address(token0),
+            "Stake token should be token0 when token0 donation is nonzero."
+        );
+    }
+
+    function test_quote_call_donate_uses_token1_stake_when_token0_amount_is_zero( ) external view
+    {
+        DonateParams memory params  =  _create_donate_params( );
+        bytes memory call_data  =  _encode_donate_calldata( params );
+
+        TokenAmount[] memory preferred_fundings  =  _create_liquidity_fundings( 0, 200 ether );
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
+
+        assertEq( constraints.min_stake.amount, 4 ether, "Min stake should be 2% of donated token1 amount." );
+        assertEq( address(constraints.min_stake.token), address(token1), "Stake token should be token1." );
+    }
+
+    function test_quote_call_donate_returns_two_fundings( ) external view
+    {
+        DonateParams memory params  =  _create_donate_params( );
+        bytes memory call_data  =  _encode_donate_calldata( params );
+
+        TokenAmount[] memory preferred_fundings  =  _create_liquidity_fundings( 100 ether, 200 ether );
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
+
+        assertEq( constraints.min_fundings.length, 2, "Donate should require exactly 2 fundings." );
+        assertEq( constraints.min_fundings[ 0 ].amount, 100 ether, "Token0 funding should match donation amount." );
+        assertEq( constraints.min_fundings[ 1 ].amount, 200 ether, "Token1 funding should match donation amount." );
+    }
+
+    function test_quote_call_donate_returns_correct_execution_delays( ) external view
+    {
+        DonateParams memory params  =  _create_donate_params( );
+        bytes memory call_data  =  _encode_donate_calldata( params );
+
+        TokenAmount[] memory preferred_fundings  =  _create_liquidity_fundings( 100 ether, 200 ether );
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
+
+        assertEq( constraints.min_execution_delay_in_blocks, 3, "Min execution delay should be 3 blocks." );
+        assertEq( constraints.max_execution_delay_in_seconds, 4 hours, "Max execution delay for donate should be 4 hours." );
+    }
+
+    function test_quote_call_donate_reverts_if_tokens_same( ) external
+    {
+        DonateParams memory params  =  DonateParams({
+            token0: token0,
+            token1: token0,
+            pool_info: _default_pool_info( )
+        });
+        bytes memory call_data  =  _encode_donate_calldata( params );
+
+        TokenAmount[] memory preferred_fundings  =  _create_liquidity_fundings( 100 ether, 200 ether );
+
+        vm.expectRevert( "Tokens must be different" );
+        hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
+    }
+
+    function test_quote_call_donate_reverts_if_funding_count_not_2( ) external
+    {
+        DonateParams memory params  =  _create_donate_params( );
+        bytes memory call_data  =  _encode_donate_calldata( params );
+
+        TokenAmount[] memory one_funding  =  _create_swap_fundings( 100 ether );
+        vm.expectRevert( "Donate requires exactly 2 fundings" );
+        hook.BondRoute_quote_call( call_data, token0, one_funding );
+    }
+
+    function test_quote_call_donate_reverts_if_fundings_do_not_match_params( ) external
+    {
+        DonateParams memory params  =  _create_donate_params( );
+        bytes memory call_data  =  _encode_donate_calldata( params );
+
+        TokenAmount[] memory preferred_fundings  =  new TokenAmount[](2);
+        preferred_fundings[ 0 ]  =  TokenAmount({ token: token0, amount: 100 ether });
+        preferred_fundings[ 1 ]  =  TokenAmount({ token: token2, amount: 200 ether });
+
+        vm.expectRevert( "Fundings must match donation tokens" );
+        hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
+    }
+
+
     // ━━━━  BondRoute_quote_call( ) - Unknown Selector  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function test_quote_call_reverts_on_unknown_selector( ) external
@@ -577,6 +688,18 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         assertTrue( token_amount_offset > 0, "Token amount offset should be positive." );
     }
 
+    function test_get_signing_info_donate_returns_valid_type_string( ) external view
+    {
+        DonateParams memory params  =  _create_donate_params( );
+        bytes memory call_data  =  _encode_donate_calldata( params );
+
+        ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  hook.BondRoute_get_signing_info( call_data );
+
+        assertTrue( bytes(typed_string).length > 0, "Type string should not be empty." );
+        assertTrue( struct_hash != bytes32(0), "Struct hash should not be zero." );
+        assertTrue( token_amount_offset > 0, "Token amount offset should be positive." );
+    }
+
     function test_get_signing_info_unknown_selector_returns_empty( ) external view
     {
         bytes memory call_data  =  abi.encodeWithSelector( bytes4(0xdeadbeef) );
@@ -648,5 +771,14 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         vm.prank( user );
         vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, BONDROUTE_ADDRESS ) );
         hook.remove_liquidity( params );
+    }
+
+    function test_donate_reverts_if_not_bondroute( ) external
+    {
+        DonateParams memory params  =  _create_donate_params( );
+
+        vm.prank( user );
+        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, BONDROUTE_ADDRESS ) );
+        hook.donate( params );
     }
 }

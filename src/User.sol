@@ -70,6 +70,18 @@ abstract contract User is UniswapHook, BondRouteProtected {
         _set_protected_context( false );
     }
 
+    function donate( DonateParams calldata params )
+    external
+    {
+        BondContext memory context  =  BondRoute_initialize( );
+
+        _set_protected_context( true );
+
+        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.Donate)) ) );
+
+        _set_protected_context( false );
+    }
+
 
     // ━━━━  OFF-CHAIN GETTERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

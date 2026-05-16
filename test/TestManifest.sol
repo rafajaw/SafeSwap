@@ -51,11 +51,12 @@ interface ICollectorTests {
 
 interface IBondRouteIntegrationTests {
     // ─── BondRoute_get_protected_selectors( ) ──────────────────────────────────────
-    function test_get_protected_selectors_returns_four_selectors( ) external;
+    function test_get_protected_selectors_returns_five_selectors( ) external;
     function test_get_protected_selectors_includes_swap_exact_input( ) external;
     function test_get_protected_selectors_includes_swap_exact_output( ) external;
     function test_get_protected_selectors_includes_add_liquidity( ) external;
     function test_get_protected_selectors_includes_remove_liquidity( ) external;
+    function test_get_protected_selectors_includes_donate( ) external;
     function test_get_protected_selectors_gas_below_50000( ) external;
 
     // ─── BondRoute_quote_call( ) - Exact Input Swap ────────────────────────────────
@@ -86,6 +87,15 @@ interface IBondRouteIntegrationTests {
     function test_quote_call_remove_liquidity_returns_correct_execution_delays( ) external;
     function test_quote_call_remove_liquidity_reverts_if_tokens_same( ) external;
 
+    // ─── BondRoute_quote_call( ) - Donate ─────────────────────────────────────────
+    function test_quote_call_donate_returns_correct_min_stake( ) external;
+    function test_quote_call_donate_uses_token1_stake_when_token0_amount_is_zero( ) external;
+    function test_quote_call_donate_returns_two_fundings( ) external;
+    function test_quote_call_donate_returns_correct_execution_delays( ) external;
+    function test_quote_call_donate_reverts_if_tokens_same( ) external;
+    function test_quote_call_donate_reverts_if_funding_count_not_2( ) external;
+    function test_quote_call_donate_reverts_if_fundings_do_not_match_params( ) external;
+
     // ─── BondRoute_quote_call( ) - Unknown Selector ────────────────────────────────
     function test_quote_call_reverts_on_unknown_selector( ) external;
 
@@ -94,6 +104,7 @@ interface IBondRouteIntegrationTests {
     function test_get_signing_info_exact_output_returns_valid_type_string( ) external;
     function test_get_signing_info_add_liquidity_returns_valid_type_string( ) external;
     function test_get_signing_info_remove_liquidity_returns_valid_type_string( ) external;
+    function test_get_signing_info_donate_returns_valid_type_string( ) external;
     function test_get_signing_info_struct_hash_changes_with_params( ) external;
     function test_get_signing_info_unknown_selector_returns_empty( ) external;
 
@@ -102,6 +113,7 @@ interface IBondRouteIntegrationTests {
     function test_swap_exact_output_reverts_if_not_bondroute( ) external;
     function test_add_liquidity_reverts_if_not_bondroute( ) external;
     function test_remove_liquidity_reverts_if_not_bondroute( ) external;
+    function test_donate_reverts_if_not_bondroute( ) external;
 }
 
 
@@ -130,6 +142,12 @@ interface IHookCallbackTests {
     function test_before_remove_liquidity_returns_correct_selector( ) external;
     function test_before_remove_liquidity_succeeds_in_protected_context( ) external;
 
+    // ─── beforeDonate( ) ───────────────────────────────────────────────────────────
+    function test_before_donate_reverts_if_not_pool_manager( ) external;
+    function test_before_donate_reverts_if_not_protected_context( ) external;
+    function test_before_donate_returns_correct_selector( ) external;
+    function test_before_donate_succeeds_in_protected_context( ) external;
+
     // ─── Protected Context State ───────────────────────────────────────────────────
     function test_protected_context_cleared_after_swap( ) external;
     function test_protected_context_cleared_after_add_liquidity( ) external;
@@ -152,6 +170,7 @@ interface IUnlockCallbackTests {
     function test_unlock_callback_dispatches_exact_output_swap( ) external;
     function test_unlock_callback_dispatches_add_liquidity( ) external;
     function test_unlock_callback_dispatches_remove_liquidity( ) external;
+    function test_unlock_callback_dispatches_donate( ) external;
     function test_unlock_callback_reverts_on_invalid_action( ) external;
 
     // ─── Trailing Byte Encoding ────────────────────────────────────────────────────
@@ -222,6 +241,19 @@ interface ILiquidityExecutionTests {
     // ─── Remove Liquidity — Position Isolation ──────────────────────────────────────
     function test_remove_liquidity_different_users_same_salt_produce_different_effective_salts( ) external;
     function test_remove_liquidity_effective_salt_matches_add_liquidity( ) external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DONATE EXECUTION
+// Implemented in: test/SafeSwap/DonateExecution.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface IDonateExecutionTests {
+    // ─── Donate ───────────────────────────────────────────────────────────────────
+    function test_donate_transfers_token0_to_pool( ) external;
+    function test_donate_transfers_token1_to_pool( ) external;
+    function test_donate_transfers_both_tokens_to_pool( ) external;
 }
 
 
@@ -356,8 +388,13 @@ interface IRealPoolIntegrationTests {
     function test_real_pool_swap_after_adding_more_liquidity( ) external;
     function test_real_pool_fee_accumulation_and_withdrawal( ) external;
 
+    // ─── Donate ───────────────────────────────────────────────────────────────────
+    function test_real_pool_donate_basic( ) external;
+    function test_real_pool_donate_one_sided( ) external;
+
     // ─── Security ─────────────────────────────────────────────────────────────────
     function test_real_pool_hook_rejects_direct_pool_swap( ) external;
+    function test_real_pool_hook_rejects_direct_pool_donate( ) external;
     function test_real_pool_protected_context_cleared_after_operation( ) external;
 }
 
@@ -435,22 +472,23 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Total Tests Declared:       181
-// Implemented & Passing:      181 ✓
+// Total Tests Declared:       202
+// Implemented & Passing:      202 ✓
 //
 // Coverage by Section:
 // - Constructor:                5 tests  ✓
 // - Collector:                  5 tests  ✓
-// - BondRoute Integration:     37 tests  ✓
-// - Hook Callbacks:            17 tests  ✓
-// - Unlock Callback:            8 tests  ✓
+// - BondRoute Integration:     47 tests  ✓
+// - Hook Callbacks:            21 tests  ✓
+// - Unlock Callback:            9 tests  ✓
 // - Swap Execution:            14 tests  ✓
 // - Liquidity Execution:       21 tests  ✓
+// - Donate Execution:           3 tests  ✓
 // - Protocol Fee:              13 tests  ✓
 // - Fee Withdrawal:            10 tests  ✓
 // - Stake Calculation:          8 tests  ✓
 // - Integration Tests:         12 tests  ✓
-// - Real Pool Integration:     18 tests  ✓
+// - Real Pool Integration:     21 tests  ✓
 // - Fuzz Tests:                 6 tests  ✓
 // - Invariant Tests:            7 tests  ✓
 // - Gas Benchmarks:            10 tests  (declared, not yet implemented)

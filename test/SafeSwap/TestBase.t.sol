@@ -8,6 +8,7 @@ import "@SafeSwap/libraries/ExactInputSwapLib.sol";
 import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
+import "@SafeSwap/libraries/DonateLib.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -130,6 +131,8 @@ contract MockPoolManager {
     int128 public mock_swap_amount1;
     int128 public mock_liquidity_amount0;
     int128 public mock_liquidity_amount1;
+    int128 public mock_donate_amount0;
+    int128 public mock_donate_amount1;
 
     bytes32 public last_modify_salt;
 
@@ -163,6 +166,12 @@ contract MockPoolManager {
         mock_liquidity_amount1  =  amount1;
     }
 
+    function set_mock_donate_amounts( int128 amount0, int128 amount1 ) external
+    {
+        mock_donate_amount0  =  amount0;
+        mock_donate_amount1  =  amount1;
+    }
+
     function unlock( bytes calldata data ) external returns ( bytes memory )
     {
         is_unlocked      =  true;
@@ -191,6 +200,12 @@ contract MockPoolManager {
         last_modify_salt  =  params.salt;
         emit LiquidityModified( pool_id, params.liquidityDelta );
         return ( toBalanceDelta( mock_liquidity_amount0, mock_liquidity_amount1 ), toBalanceDelta( 0, 0 ) );
+    }
+
+    function donate( PoolKey memory, uint256, uint256, bytes calldata )
+    external returns ( BalanceDelta delta )
+    {
+        return toBalanceDelta( mock_donate_amount0, mock_donate_amount1 );
     }
 
     function sync( Currency currency ) external
@@ -403,6 +418,13 @@ contract TestableSafeSwap is SafeSwap {
     {
         _set_protected_context( true );
         RemoveLiquidityLib.execute( context, params, PoolManager, address(this) );
+        _set_protected_context( false );
+    }
+
+    function test_execute_donate( BondContext memory context, DonateParams memory params ) external
+    {
+        _set_protected_context( true );
+        DonateLib.execute( context, params, PoolManager, address(this) );
         _set_protected_context( false );
     }
 
@@ -626,6 +648,16 @@ abstract contract SafeSwapTestBase is Test {
         });
     }
 
+    function _create_donate_params( )
+    internal view returns ( DonateParams memory )
+    {
+        return DonateParams({
+            token0: token0,
+            token1: token1,
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
+        });
+    }
+
     function _create_swap_fundings( uint256 amount_in )
     internal view returns ( TokenAmount[] memory fundings )
     {
@@ -669,5 +701,11 @@ abstract contract SafeSwapTestBase is Test {
     internal view returns ( bytes memory )
     {
         return abi.encodeWithSelector( hook.remove_liquidity.selector, params );
+    }
+
+    function _encode_donate_calldata( DonateParams memory params )
+    internal view returns ( bytes memory )
+    {
+        return abi.encodeWithSelector( hook.donate.selector, params );
     }
 }

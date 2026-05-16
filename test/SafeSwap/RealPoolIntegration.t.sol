@@ -8,6 +8,7 @@ import "@SafeSwap/libraries/ExactInputSwapLib.sol";
 import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
+import "@SafeSwap/libraries/DonateLib.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { IUnlockCallback } from "@UniswapV4Core/interfaces/callback/IUnlockCallback.sol";
@@ -59,6 +60,14 @@ contract RealPoolTestHook is SafeSwap {
         _set_protected_context( false );
     }
 
+    function test_donate( BondContext memory context, DonateParams memory params )
+    external
+    {
+        _set_protected_context( true );
+        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.Donate)) ) );
+        _set_protected_context( false );
+    }
+
     function test_is_within_protected_context( ) external view returns ( bool )
     {
         return _is_within_protected_context( );
@@ -96,6 +105,31 @@ contract DirectSwapAttacker is IUnlockCallback {
             }),
             ""
         );
+        return "";
+    }
+}
+
+
+// ━━━━  DIRECT DONATE ATTACKER  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+contract DirectDonateAttacker is IUnlockCallback {
+    IPoolManager public immutable pool_manager;
+    PoolKey public pool_key;
+
+    constructor( IPoolManager _pm, PoolKey memory _key )
+    {
+        pool_manager  =  _pm;
+        pool_key      =  _key;
+    }
+
+    function attack( ) external
+    {
+        pool_manager.unlock( "" );
+    }
+
+    function unlockCallback( bytes calldata ) external returns ( bytes memory )
+    {
+        pool_manager.donate( pool_key, 1 ether, 1 ether, "" );
         return "";
     }
 }
@@ -169,8 +203,8 @@ contract RealPoolIntegrationTest is Test {
         RealPoolTestHook deployed_hook  =  new RealPoolTestHook( collector );
 
         // Clone hook (code + storage) to address with correct hook permission bits.
-        // BEFORE_SWAP(0x80) | BEFORE_REMOVE_LIQUIDITY(0x200) | BEFORE_ADD_LIQUIDITY(0x800) = 0x0A80.
-        address hook_target  =  address(uint160(0x0A80));
+        // BEFORE_SWAP(0x80) | BEFORE_DONATE(0x20) | BEFORE_REMOVE_LIQUIDITY(0x200) | BEFORE_ADD_LIQUIDITY(0x800) = 0x0AA0.
+        address hook_target  =  address(uint160(0x0AA0));
         vm.cloneAccount( address(deployed_hook), hook_target );
 
         hook  =  RealPoolTestHook(payable(hook_target));
@@ -722,6 +756,45 @@ contract RealPoolIntegrationTest is Test {
         assertLt( output_2, output_1, "Consecutive swaps in same direction should produce diminishing output due to price impact." );
     }
 
+
+    // ━━━━  DONATE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function test_real_pool_donate_basic( ) external
+    {
+        BondContext memory context  =  _create_two_funding_context( user, 100 ether, 200 ether );
+        DonateParams memory params  =  DonateParams({
+            token0: token0,
+            token1: token1,
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
+        });
+
+        uint256 user_token0_before  =  token0.balanceOf( user );
+        uint256 user_token1_before  =  token1.balanceOf( user );
+
+        hook.test_donate( context, params );
+
+        assertEq( user_token0_before - token0.balanceOf( user ), 100 ether, "User should donate token0." );
+        assertEq( user_token1_before - token1.balanceOf( user ), 200 ether, "User should donate token1." );
+    }
+
+    function test_real_pool_donate_one_sided( ) external
+    {
+        BondContext memory context  =  _create_two_funding_context( user, 0, 200 ether );
+        DonateParams memory params  =  DonateParams({
+            token0: token0,
+            token1: token1,
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
+        });
+
+        uint256 user_token0_before  =  token0.balanceOf( user );
+        uint256 user_token1_before  =  token1.balanceOf( user );
+
+        hook.test_donate( context, params );
+
+        assertEq( token0.balanceOf( user ), user_token0_before, "User should not donate token0." );
+        assertEq( user_token1_before - token1.balanceOf( user ), 200 ether, "User should donate token1." );
+    }
+
     function test_real_pool_protected_context_cleared_after_operation( ) external
     {
         uint256 swap_amount  =  10 ether;
@@ -748,6 +821,17 @@ contract RealPoolIntegrationTest is Test {
 
         // Fund the attacker so the swap could theoretically succeed.
         token0.mint( address(attacker), 100 ether );
+
+        vm.expectRevert( );
+        attacker.attack( );
+    }
+
+    function test_real_pool_hook_rejects_direct_pool_donate( ) external
+    {
+        DirectDonateAttacker attacker  =  new DirectDonateAttacker( real_pool_manager, pool_key );
+
+        token0.mint( address(attacker), 100 ether );
+        token1.mint( address(attacker), 100 ether );
 
         vm.expectRevert( );
         attacker.attack( );

@@ -270,6 +270,53 @@ contract HookCallbacksTest is SafeSwapTestBase {
     }
 
 
+    // ━━━━  beforeDonate( )  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function test_before_donate_reverts_if_not_pool_manager( ) external
+    {
+        vm.prank( user );
+        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, address(pool_manager) ) );
+        hook.beforeDonate( user, pool_key, 100 ether, 200 ether, "" );
+    }
+
+    function test_before_donate_reverts_if_not_protected_context( ) external
+    {
+        hook.test_set_protected_context( false );
+
+        vm.prank( address(pool_manager) );
+        vm.expectRevert( NotProtectedContext.selector );
+        hook.beforeDonate( user, pool_key, 100 ether, 200 ether, "" );
+    }
+
+    function test_before_donate_returns_correct_selector( ) external
+    {
+        hook.test_set_protected_context( true );
+
+        vm.prank( address(pool_manager) );
+        bytes4 selector  =  hook.beforeDonate( user, pool_key, 100 ether, 200 ether, "" );
+
+        assertEq(
+            selector,
+            IHooks.beforeDonate.selector,
+            "Should return beforeDonate selector."
+        );
+
+        hook.test_set_protected_context( false );
+    }
+
+    function test_before_donate_succeeds_in_protected_context( ) external
+    {
+        hook.test_set_protected_context( true );
+
+        vm.prank( address(pool_manager) );
+        bytes4 selector  =  hook.beforeDonate( user, pool_key, 100 ether, 200 ether, "" );
+
+        assertEq( selector, IHooks.beforeDonate.selector, "Should succeed in protected context." );
+
+        hook.test_set_protected_context( false );
+    }
+
+
     // ━━━━  Protected Context State  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function test_protected_context_cleared_after_swap( ) external

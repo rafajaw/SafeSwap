@@ -7,6 +7,7 @@ import "@SafeSwap/libraries/ExactInputSwapLib.sol";
 import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
+import "@SafeSwap/libraries/DonateLib.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IProtocolFees } from "@UniswapV4Core/interfaces/IProtocolFees.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
@@ -41,7 +42,7 @@ abstract contract UniswapHook is IUnlockCallback {
     bytes32 constant POOL_MANAGER_KEY  =   bytes32("v4.pool_manager.address");
     bytes4 constant ERC6909_INTERFACE_ID  =  0x0f632fb3;
 
-    enum Action { ExactInputSwap, ExactOutputSwap, AddLiquidity, RemoveLiquidity }
+    enum Action { ExactInputSwap, ExactOutputSwap, AddLiquidity, RemoveLiquidity, Donate }
 
     constructor( address config_signer )
     {
@@ -118,6 +119,11 @@ abstract contract UniswapHook is IUnlockCallback {
             ( BondContext memory context, RemoveLiquidityParams memory params )  =  abi.decode(  payload,  ( BondContext, RemoveLiquidityParams )  );
             RemoveLiquidityLib.execute( context, params, PoolManager, address(this) );
         }
+        else if(  action == Action.Donate  )
+        {
+            ( BondContext memory context, DonateParams memory params )  =  abi.decode(  payload,  ( BondContext, DonateParams )  );
+            DonateLib.execute( context, params, PoolManager, address(this) );
+        }
 
         return "";
     }
@@ -150,5 +156,14 @@ abstract contract UniswapHook is IUnlockCallback {
         if(  _is_within_protected_context( ) == false  )    revert NotProtectedContext( );
 
         return IHooks.beforeRemoveLiquidity.selector;
+    }
+
+    function beforeDonate( address, PoolKey calldata, uint256, uint256, bytes calldata )
+    external view returns ( bytes4 )
+    {
+        if(  msg.sender != address(PoolManager)  )          revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
+        if(  _is_within_protected_context( ) == false  )    revert NotProtectedContext( );
+
+        return IHooks.beforeDonate.selector;
     }
 }
