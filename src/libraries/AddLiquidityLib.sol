@@ -72,20 +72,32 @@ library AddLiquidityLib {
 
     // ━━━━  GET CONSTRAINTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function get_constraints( AddLiquidityParams memory params, TokenAmount[] memory preferred_fundings )
-    internal pure returns ( BondConstraints memory constraints )
+    function get_constraints(
+        AddLiquidityParams memory params,
+        TokenAmount[2] memory token_pair,
+        IPoolManager pool_manager,
+        address hook_address
+    ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  preferred_fundings.length != 2  )  revert( "Add liquidity requires exactly 2 fundings" );
-
-        // *NOTE*  -  Fundings must be [token0, token1] in order matching the pool's currency order.
-        IERC20 token0            =  preferred_fundings[ 0 ].token;
-        uint256 amount0_desired  =  preferred_fundings[ 0 ].amount;
-        IERC20 token1            =  preferred_fundings[ 1 ].token;
-        uint256 amount1_desired  =  preferred_fundings[ 1 ].amount;
+        // *NOTE*  -  token_pair must be [token0, token1] in order matching the pool's currency order.
+        IERC20 token0            =  token_pair[ 0 ].token;
+        uint256 amount0_desired  =  token_pair[ 0 ].amount;
+        IERC20 token1            =  token_pair[ 1 ].token;
+        uint256 amount1_desired  =  token_pair[ 1 ].amount;
 
         if(  address(token0) == address(token1)  )  revert( "Tokens must be different" );
 
-        constraints.min_stake  =  SafeSwapCommon.calculate_liquidity_stake( token0, amount0_desired );
+        PoolKey memory pool_key  =  PoolKey({
+            currency0: Currency.wrap( address(token0) ),
+            currency1: Currency.wrap( address(token1) ),
+            fee: params.pool_info.fee,
+            tickSpacing: params.pool_info.tick_spacing,
+            hooks: IHooks(hook_address)
+        });
+
+        ( uint160 sqrtPriceX96, , , )  =  StateLibrary.getSlot0( pool_manager, pool_key.toId( ) );
+
+        constraints.min_stake  =  SafeSwapCommon.calculate_normalized_liquidity_stake( sqrtPriceX96, token0, amount0_desired, amount1_desired );
 
         constraints.min_fundings  =  new TokenAmount[](2);
         constraints.min_fundings[ 0 ]  =  TokenAmount({ token: token0, amount: amount0_desired });

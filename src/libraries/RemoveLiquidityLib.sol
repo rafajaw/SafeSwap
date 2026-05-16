@@ -6,8 +6,12 @@ import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
+import { PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
+import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
+import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
+import { LiquidityAmounts } from "@UniswapV4Core/../test/utils/LiquidityAmounts.sol";
 
 
 // ━━━━  PARAMETERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -31,6 +35,7 @@ struct RemoveLiquidityParams {
  * @dev Contains constraint calculation and execution logic for removing liquidity from Uniswap V4 pools
  */
 library RemoveLiquidityLib {
+    using PoolIdLibrary for PoolKey;
 
 
     // ━━━━  EIP-712 SIGNING  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -72,12 +77,37 @@ library RemoveLiquidityLib {
 
     // ━━━━  GET CONSTRAINTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function get_constraints( RemoveLiquidityParams memory params )
-    internal pure returns ( BondConstraints memory constraints )
+    function get_constraints(
+        RemoveLiquidityParams memory params,
+        IPoolManager pool_manager,
+        address hook_address
+    ) internal view returns ( BondConstraints memory constraints )
     {
         if(  address(params.token0) == address(params.token1)  )  revert( "Tokens must be different" );
 
-        constraints.min_stake  =  SafeSwapCommon.calculate_liquidity_stake( params.token0, params.amount0_min );
+        PoolKey memory pool_key  =  PoolKey({
+            currency0: Currency.wrap( address(params.token0) ),
+            currency1: Currency.wrap( address(params.token1) ),
+            fee: params.pool_info.fee,
+            tickSpacing: params.pool_info.tick_spacing,
+            hooks: IHooks(hook_address)
+        });
+
+        ( uint160 sqrtPriceX96, , , )  =  StateLibrary.getSlot0( pool_manager, pool_key.toId( ) );
+
+        // Project the actual amounts that this liquidity removal will release at current pool price.
+        // Stake is based on real released value, not on user-controlled amount0_min/amount1_min (which could be 0).
+        uint160 sqrtPriceA  =  TickMath.getSqrtPriceAtTick( params.tick_lower );
+        uint160 sqrtPriceB  =  TickMath.getSqrtPriceAtTick( params.tick_upper );
+
+        ( uint256 amount0_released, uint256 amount1_released )  =  LiquidityAmounts.getAmountsForLiquidity(
+            sqrtPriceX96,
+            sqrtPriceA,
+            sqrtPriceB,
+            params.liquidity
+        );
+
+        constraints.min_stake  =  SafeSwapCommon.calculate_normalized_liquidity_stake( sqrtPriceX96, params.token0, amount0_released, amount1_released );
 
         constraints.min_fundings  =  new TokenAmount[](0);
 

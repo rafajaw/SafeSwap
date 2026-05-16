@@ -75,23 +75,13 @@ interface IBondRouteIntegrationTests {
     function test_quote_call_exact_output_reverts_if_funding_count_not_1( ) external;
 
     // ─── BondRoute_quote_call( ) - Add Liquidity ───────────────────────────────────
-    function test_quote_call_add_liquidity_returns_correct_min_stake( ) external;
-    function test_quote_call_add_liquidity_returns_two_fundings( ) external;
-    function test_quote_call_add_liquidity_returns_correct_execution_delays( ) external;
     function test_quote_call_add_liquidity_reverts_if_tokens_same( ) external;
     function test_quote_call_add_liquidity_reverts_if_funding_count_not_2( ) external;
 
     // ─── BondRoute_quote_call( ) - Remove Liquidity ────────────────────────────────
-    function test_quote_call_remove_liquidity_returns_correct_min_stake( ) external;
-    function test_quote_call_remove_liquidity_returns_zero_fundings( ) external;
-    function test_quote_call_remove_liquidity_returns_correct_execution_delays( ) external;
     function test_quote_call_remove_liquidity_reverts_if_tokens_same( ) external;
 
     // ─── BondRoute_quote_call( ) - Donate ─────────────────────────────────────────
-    function test_quote_call_donate_returns_correct_min_stake( ) external;
-    function test_quote_call_donate_uses_token1_stake_when_token0_amount_is_zero( ) external;
-    function test_quote_call_donate_returns_two_fundings( ) external;
-    function test_quote_call_donate_returns_correct_execution_delays( ) external;
     function test_quote_call_donate_reverts_if_tokens_same( ) external;
     function test_quote_call_donate_reverts_if_funding_count_not_2( ) external;
     function test_quote_call_donate_reverts_if_fundings_do_not_match_params( ) external;
@@ -396,6 +386,17 @@ interface IRealPoolIntegrationTests {
     function test_real_pool_hook_rejects_direct_pool_swap( ) external;
     function test_real_pool_hook_rejects_direct_pool_donate( ) external;
     function test_real_pool_protected_context_cleared_after_operation( ) external;
+
+    // ─── Stake Quotation ──────────────────────────────────────────────────────────
+    function test_real_pool_quote_add_liquidity_stake_normalizes_both_sides( ) external;
+    function test_real_pool_quote_add_liquidity_dust_input_still_yields_real_stake( ) external;
+    function test_real_pool_quote_add_liquidity_one_sided_above_yields_real_stake( ) external;
+    function test_real_pool_quote_add_liquidity_returns_two_fundings_and_delays( ) external;
+    function test_real_pool_quote_remove_liquidity_stake_uses_position_amounts( ) external;
+    function test_real_pool_quote_remove_liquidity_stake_ignores_user_supplied_mins( ) external;
+    function test_real_pool_quote_donate_stake_normalizes_both_sides( ) external;
+    function test_real_pool_quote_donate_dust_input_still_yields_real_stake( ) external;
+    function test_real_pool_quote_donate_one_sided_yields_real_stake( ) external;
 }
 
 
@@ -472,13 +473,13 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Total Tests Declared:       202
-// Implemented & Passing:      202 ✓
+// Total Tests Declared:       201
+// Implemented & Passing:      201 ✓
 //
 // Coverage by Section:
 // - Constructor:                5 tests  ✓
 // - Collector:                  5 tests  ✓
-// - BondRoute Integration:     47 tests  ✓
+// - BondRoute Integration:     37 tests  ✓
 // - Hook Callbacks:            21 tests  ✓
 // - Unlock Callback:            9 tests  ✓
 // - Swap Execution:            14 tests  ✓
@@ -488,7 +489,7 @@ interface IGasBenchmarkTests {
 // - Fee Withdrawal:            10 tests  ✓
 // - Stake Calculation:          8 tests  ✓
 // - Integration Tests:         12 tests  ✓
-// - Real Pool Integration:     21 tests  ✓
+// - Real Pool Integration:     30 tests  ✓
 // - Fuzz Tests:                 6 tests  ✓
 // - Invariant Tests:            7 tests  ✓
 // - Gas Benchmarks:            10 tests  (declared, not yet implemented)

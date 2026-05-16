@@ -6,6 +6,8 @@ import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
+import { FullMath } from "@UniswapV4Core/libraries/FullMath.sol";
+import { FixedPoint96 } from "@UniswapV4Core/libraries/FixedPoint96.sol";
 
 
 // ━━━━  DATA STRUCTURES  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -91,6 +93,31 @@ library SafeSwapCommon {
     function calculate_liquidity_stake( IERC20 token, uint256 amount ) internal pure returns ( TokenAmount memory )
     {
         return TokenAmount({ token: token, amount: amount * LIQUIDITY_STAKE_PERCENTAGE / 100 });
+    }
+
+    // *SECURITY*  -  Stake must reflect the total committed value across BOTH sides of a liquidity bond. Measuring
+    //                only one side opens a dust attack: (amount0 = 1 wei, amount1 = 1e18) would yield zero stake while
+    //                committing real value. We normalize amount1 into token0 units at the pool's current price (slot0)
+    //                so both legs can be summed in the same frame of reference, then stake a percentage of the total.
+    //                Caveat: on very thin pools an attacker can shift slot0 cheaply, so the per-bond stake reflects
+    //                a manipulated price. This is bounded by SafeSwap's own 1% swap stake on the manipulation swap.
+    function calculate_normalized_liquidity_stake( uint160 sqrtPriceX96, IERC20 token0, uint256 amount0, uint256 amount1 )
+    internal pure returns ( TokenAmount memory )
+    {
+        // Convert amount1 into token0 units at current pool price.
+        // Price (token1 per token0)  =  sqrtPriceX96^2 / 2^192
+        // So  amount0_equivalent     =  amount1 * 2^192 / sqrtPriceX96^2
+        // Performed as two mulDiv steps to avoid uint256 overflow on sqrtPriceX96^2 at high prices.
+        uint256 amount1_in_token0_units  =  0;
+        if(  amount1 > 0  )
+        {
+            uint256 intermediate     =  FullMath.mulDiv( amount1, FixedPoint96.Q96, sqrtPriceX96 );
+            amount1_in_token0_units  =  FullMath.mulDiv( intermediate, FixedPoint96.Q96, sqrtPriceX96 );
+        }
+
+        uint256 total_in_token0  =  amount0 + amount1_in_token0_units;
+
+        return TokenAmount({ token: token0, amount: total_in_token0 * LIQUIDITY_STAKE_PERCENTAGE / 100 });
     }
 
     // ━━━━  PROTOCOL FEE CALCULATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

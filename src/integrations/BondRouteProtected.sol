@@ -34,6 +34,10 @@ pragma solidity ^0.8.30;
     7. Use `ctx.pull(token, amount)` to pull user funds
     8. Deploy and pin metadata
 
+    FOUNDRY LIB:
+    If BondRoute is installed as a lib, import this file from the lib instead of copying it locally.
+    Solidity treats identical structs from different files as different types.
+
     No external dependencies. No package manager.
 
     WHAT IT DOES:
@@ -158,14 +162,14 @@ struct BondConstraints {
  *
  *   1. RESERVED EXECUTION (prevents frontrunning)
  *      - Intent hidden in commitment hash
- *      - Protected functions reject unbonded calls
- *      - Minimum block delay between creation and execution
+ *      - Protected functions reject unbonded calls and enforce a protocol-specified block delay before execution
  *      → Attackers can't see what to bond for and can't react in time
  *
- *   2. ABANDONMENT COST (prevents bond farming)
- *      - Each bond requires stake proportional to value
- *      - Stake recoverable only through execution attempts
- *      → Speculating on multiple outcomes becomes economically irrational
+ *   2. BINDING ECONOMICS (prevents preemptive bond farming)
+ *      - Each bond requires explicit, protocol-defined stake
+ *      - Stake recoverable only through execution attempts; expired bonds forfeit stake
+ *      → Without stakes, attackers pre-create bonds covering likely parameters and let unused ones expire for free
+ *      → Stakes make this unprofitable: losses on abandoned bonds exceed gains from the few that hit
  *
  *
  * ━━━━  WHAT ATTACKERS SEE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -352,7 +356,7 @@ interface IBondRouteProtected {
      *      Implementations MUST consume below 50,000 gas on all target EVM-compatible chains.
      */
     function BondRoute_get_protected_selectors( )
-    external pure returns ( bytes4[] memory selectors );
+    external view returns ( bytes4[] memory selectors );
 
     /**
      * @notice Optional: provide custom EIP-712 types for better wallet UX
@@ -418,7 +422,7 @@ string constant AFTER_EXECUTION_WINDOW          =   "After execution window";   
 
 // ━━━━  CONSTANTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-address constant BONDROUTE_ADDRESS              =   address(0x0000000000000000000000426F6E64526F7574650000);  // ***TODO*** Set after deployment.
+address constant BONDROUTE_ADDRESS              =   address(0xb01d00000000440215e86e0A436f9b59FeB2F14a);
 IBondRoute constant BondRoute                   =   IBondRoute(BONDROUTE_ADDRESS);
 IERC20 constant NATIVE_TOKEN                    =   IERC20(address(0));
 
@@ -440,9 +444,10 @@ uint256 constant TOKEN_AMOUNT_SIZE              =   2 * WORD_SIZE;  // - token, 
  *    At execution time, calls `BondRoute_quote_call` with actual stake/fundings as preferred values,
  *    then validates the returned constraints against the execution context.
  *
- *    *WARNING*: Dynamic constraints (based on contract state) may return different values at execution time vs creation time.
- *    If constraints INCREASE, bonds may fail with `InsufficientStake` and return stake — creating occasional escapes from the trap.
- *    This is acceptable if stake is sized for negative expected value overall. Prefer stable constraints.
+ *    *WARNING*: Dynamic constraints may return different values between bond creation time and bond execution time.
+ *    If constraints INCREASE, bonds may subtly fail with `InsufficientStake`, settling the bond and returning stake — creating 
+ *    occasional escapes from the trap.
+ *    Prefer static constraints or consider sizing the stake and max execution timing for negative expected value overall.
  *
  * 2. CONTEXT PASSING VIA CALLDATA
  *    Encodes `BondContext` into calldata and `delegatecall`s into the protected function.
@@ -495,7 +500,7 @@ abstract contract BondRouteProtected is IBondRouteProtected {
      *      }
      */
     function BondRoute_get_protected_selectors( )
-    external pure virtual returns ( bytes4[] memory selectors );
+    external view virtual returns ( bytes4[] memory selectors );
 
 
     /**
@@ -576,7 +581,7 @@ abstract contract BondRouteProtected is IBondRouteProtected {
      *      }
      */
     function BondRoute_get_signing_info( bytes calldata call )
-    external pure virtual returns ( string memory typed_string, bytes32 struct_hash, uint256 TokenAmount_offset )
+    external view virtual returns ( string memory typed_string, bytes32 struct_hash, uint256 TokenAmount_offset )
     {
         call;  // Silence unused parameter warning.
         return ( "", bytes32(0), 0 );

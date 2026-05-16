@@ -870,6 +870,226 @@ contract RealPoolIntegrationTest is Test {
     }
 
 
+    // ━━━━  STAKE QUOTATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function test_real_pool_quote_add_liquidity_stake_normalizes_both_sides( ) external view
+    {
+        AddLiquidityParams memory params  =  AddLiquidityParams({
+            pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
+            tick_lower:  -TICK_SPACING_60 * 10,
+            tick_upper:  TICK_SPACING_60 * 10,
+            amount0_min: 0,
+            amount1_min: 0,
+            salt:        bytes32(0)
+        });
+        bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
+
+        TokenAmount[] memory fundings  =  new TokenAmount[](2);
+        fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 100 ether });
+        fundings[ 1 ]  =  TokenAmount({ token: IERC20(address(token1)), amount: 200 ether });
+
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
+
+        assertEq( constraints.min_stake.amount, 6 ether, "At 1:1 price, stake is 2% of (100 + 200) = 6 ether." );
+        assertEq( address(constraints.min_stake.token), address(token0), "Stake is always denominated in token0." );
+    }
+
+    function test_real_pool_quote_add_liquidity_dust_input_still_yields_real_stake( ) external view
+    {
+        AddLiquidityParams memory params  =  AddLiquidityParams({
+            pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
+            tick_lower:  -TICK_SPACING_60 * 10,
+            tick_upper:  TICK_SPACING_60 * 10,
+            amount0_min: 0,
+            amount1_min: 0,
+            salt:        bytes32(0)
+        });
+        bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
+
+        TokenAmount[] memory fundings  =  new TokenAmount[](2);
+        fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 1 });
+        fundings[ 1 ]  =  TokenAmount({ token: IERC20(address(token1)), amount: 1 ether });
+
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
+
+        assertGt( constraints.min_stake.amount, 0, "1 wei on one side must not zero the stake when real value sits on the other." );
+        assertApproxEqAbs( constraints.min_stake.amount, 0.02 ether, 1, "Stake reflects the dominant side: 2% of ~1 ether." );
+    }
+
+    function test_real_pool_quote_add_liquidity_one_sided_above_yields_real_stake( ) external view
+    {
+        AddLiquidityParams memory params  =  AddLiquidityParams({
+            pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
+            tick_lower:  TICK_SPACING_60 * 5,
+            tick_upper:  TICK_SPACING_60 * 15,
+            amount0_min: 0,
+            amount1_min: 0,
+            salt:        bytes32(0)
+        });
+        bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
+
+        TokenAmount[] memory fundings  =  new TokenAmount[](2);
+        fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 0 });
+        fundings[ 1 ]  =  TokenAmount({ token: IERC20(address(token1)), amount: 100 ether });
+
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
+
+        assertEq( constraints.min_stake.amount, 2 ether, "Stake on a one-sided (0, 100) position at 1:1 = 2% of 100 ether." );
+        assertEq( address(constraints.min_stake.token), address(token0), "Stake is always denominated in token0." );
+    }
+
+    function test_real_pool_quote_add_liquidity_returns_two_fundings_and_delays( ) external view
+    {
+        AddLiquidityParams memory params  =  AddLiquidityParams({
+            pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
+            tick_lower:  -TICK_SPACING_60 * 10,
+            tick_upper:  TICK_SPACING_60 * 10,
+            amount0_min: 0,
+            amount1_min: 0,
+            salt:        bytes32(0)
+        });
+        bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
+
+        TokenAmount[] memory fundings  =  new TokenAmount[](2);
+        fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 100 ether });
+        fundings[ 1 ]  =  TokenAmount({ token: IERC20(address(token1)), amount: 200 ether });
+
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
+
+        assertEq( constraints.min_fundings.length, 2, "Add liquidity requires two fundings." );
+        assertEq( address(constraints.min_fundings[ 0 ].token), address(token0), "First funding echoes token0." );
+        assertEq( constraints.min_fundings[ 0 ].amount, 100 ether, "First funding amount echoes input." );
+        assertEq( address(constraints.min_fundings[ 1 ].token), address(token1), "Second funding echoes token1." );
+        assertEq( constraints.min_fundings[ 1 ].amount, 200 ether, "Second funding amount echoes input." );
+
+        assertEq( constraints.min_execution_delay_in_blocks, 3, "Liquidity bonds require 3 blocks of delay." );
+        assertEq( constraints.max_execution_delay_in_seconds, 4 hours, "Liquidity bonds have a 4-hour execution window." );
+    }
+
+    function test_real_pool_quote_remove_liquidity_stake_uses_position_amounts( ) external view
+    {
+        RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
+            token0:      IERC20(address(token0)),
+            token1:      IERC20(address(token1)),
+            pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
+            tick_lower:  -TICK_SPACING_60 * 10,
+            tick_upper:  TICK_SPACING_60 * 10,
+            liquidity:   100 ether,
+            amount0_min: 0,
+            amount1_min: 0,
+            salt:        bytes32(0)
+        });
+        bytes memory call_data  =  abi.encodeWithSelector( hook.remove_liquidity.selector, params );
+
+        TokenAmount[] memory no_fundings  =  new TokenAmount[]( 0 );
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), no_fundings );
+
+        assertGt( constraints.min_stake.amount, 0, "Stake derived from position liquidity must be non-zero." );
+        assertEq( address(constraints.min_stake.token), address(token0), "Stake is always denominated in token0." );
+        assertEq( constraints.min_fundings.length, 0, "Remove liquidity requires no fundings." );
+        assertEq( constraints.min_execution_delay_in_blocks, 3, "Liquidity bonds require 3 blocks of delay." );
+        assertEq( constraints.max_execution_delay_in_seconds, 4 hours, "Liquidity bonds have a 4-hour execution window." );
+    }
+
+    function test_real_pool_quote_remove_liquidity_stake_ignores_user_supplied_mins( ) external view
+    {
+        RemoveLiquidityParams memory params_zero_mins  =  RemoveLiquidityParams({
+            token0:      IERC20(address(token0)),
+            token1:      IERC20(address(token1)),
+            pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
+            tick_lower:  -TICK_SPACING_60 * 10,
+            tick_upper:  TICK_SPACING_60 * 10,
+            liquidity:   100 ether,
+            amount0_min: 0,
+            amount1_min: 0,
+            salt:        bytes32(0)
+        });
+        RemoveLiquidityParams memory params_high_mins  =  RemoveLiquidityParams({
+            token0:      IERC20(address(token0)),
+            token1:      IERC20(address(token1)),
+            pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
+            tick_lower:  -TICK_SPACING_60 * 10,
+            tick_upper:  TICK_SPACING_60 * 10,
+            liquidity:   100 ether,
+            amount0_min: 1_000_000 ether,
+            amount1_min: 1_000_000 ether,
+            salt:        bytes32(0)
+        });
+
+        TokenAmount[] memory no_fundings  =  new TokenAmount[]( 0 );
+
+        BondConstraints memory constraints_zero  =  hook.BondRoute_quote_call(
+            abi.encodeWithSelector( hook.remove_liquidity.selector, params_zero_mins ),
+            IERC20(address(token0)),
+            no_fundings
+        );
+        BondConstraints memory constraints_high  =  hook.BondRoute_quote_call(
+            abi.encodeWithSelector( hook.remove_liquidity.selector, params_high_mins ),
+            IERC20(address(token0)),
+            no_fundings
+        );
+
+        assertEq( constraints_zero.min_stake.amount, constraints_high.min_stake.amount, "Stake must depend on real position amounts, not on user-supplied slippage bounds." );
+    }
+
+    function test_real_pool_quote_donate_stake_normalizes_both_sides( ) external view
+    {
+        DonateParams memory params  =  DonateParams({
+            token0:    IERC20(address(token0)),
+            token1:    IERC20(address(token1)),
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
+        });
+        bytes memory call_data  =  abi.encodeWithSelector( hook.donate.selector, params );
+
+        TokenAmount[] memory fundings  =  new TokenAmount[](2);
+        fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 100 ether });
+        fundings[ 1 ]  =  TokenAmount({ token: IERC20(address(token1)), amount: 200 ether });
+
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
+
+        assertEq( constraints.min_stake.amount, 6 ether, "At 1:1 price, donate stake is 2% of (100 + 200) = 6 ether." );
+        assertEq( address(constraints.min_stake.token), address(token0), "Stake is always denominated in token0." );
+    }
+
+    function test_real_pool_quote_donate_dust_input_still_yields_real_stake( ) external view
+    {
+        DonateParams memory params  =  DonateParams({
+            token0:    IERC20(address(token0)),
+            token1:    IERC20(address(token1)),
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
+        });
+        bytes memory call_data  =  abi.encodeWithSelector( hook.donate.selector, params );
+
+        TokenAmount[] memory fundings  =  new TokenAmount[](2);
+        fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 1 });
+        fundings[ 1 ]  =  TokenAmount({ token: IERC20(address(token1)), amount: 1 ether });
+
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
+
+        assertGt( constraints.min_stake.amount, 0, "1 wei on one side must not zero the stake when real value sits on the other." );
+        assertApproxEqAbs( constraints.min_stake.amount, 0.02 ether, 1, "Stake reflects the dominant side: 2% of ~1 ether." );
+    }
+
+    function test_real_pool_quote_donate_one_sided_yields_real_stake( ) external view
+    {
+        DonateParams memory params  =  DonateParams({
+            token0:    IERC20(address(token0)),
+            token1:    IERC20(address(token1)),
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
+        });
+        bytes memory call_data  =  abi.encodeWithSelector( hook.donate.selector, params );
+
+        TokenAmount[] memory fundings  =  new TokenAmount[](2);
+        fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 0 });
+        fundings[ 1 ]  =  TokenAmount({ token: IERC20(address(token1)), amount: 200 ether });
+
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
+
+        assertEq( constraints.min_stake.amount, 4 ether, "Stake on a one-sided (0, 200) donate at 1:1 = 2% of 200 ether." );
+        assertEq( address(constraints.min_stake.token), address(token0), "Stake is always denominated in token0." );
+    }
+
+
     // ━━━━  HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function _approve_bondroute( address account ) internal

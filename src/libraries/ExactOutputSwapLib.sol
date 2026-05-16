@@ -59,13 +59,11 @@ library ExactOutputSwapLib {
 
     // ━━━━  GET CONSTRAINTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function get_constraints( ExactOutputSwapParams memory params, TokenAmount[] memory preferred_fundings )
+    function get_constraints( ExactOutputSwapParams memory params, TokenAmount memory input_token )
     internal pure returns ( BondConstraints memory constraints )
     {
-        if(  preferred_fundings.length != 1  )  revert( "Swaps require exactly 1 funding" );
-
-        IERC20 token_in            =  preferred_fundings[ 0 ].token;
-        uint256 maximum_amount_in  =  preferred_fundings[ 0 ].amount;
+        IERC20 token_in            =  input_token.token;
+        uint256 maximum_amount_in  =  input_token.amount;
 
         if(  address(token_in) == address(params.token_out)  )  revert( "Tokens must be different" );
 
