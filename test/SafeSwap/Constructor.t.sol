@@ -3,9 +3,10 @@ pragma solidity ^0.8.30;
 
 import "./TestBase.t.sol";
 
+contract NotPoolManager { }
+
 
 contract ConstructorTest is SafeSwapTestBase {
-
     function test_constructor_sets_pool_manager_from_chain_config( ) external view
     {
         assertEq(
@@ -29,10 +30,22 @@ contract ConstructorTest is SafeSwapTestBase {
         // Clear pool manager entry in ChainConfig.
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(0) );
 
-        vm.expectRevert( PoolManagerNotSet.selector );
+        vm.expectRevert( abi.encodeWithSelector( InvalidPoolManager.selector, address(0) ) );
         new TestableSafeSwap( collector );
 
         // Restore pool manager entry.
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(pool_manager) );
+    }
+
+    function test_constructor_reverts_if_chain_config_points_to_non_pool_manager( ) external
+    {
+        NotPoolManager not_pool_manager  =  new NotPoolManager( );
+
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(not_pool_manager) );
+
+        vm.expectRevert( abi.encodeWithSelector( InvalidPoolManager.selector, address(not_pool_manager) ) );
+        new TestableSafeSwap( collector );
+
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(pool_manager) );
     }
 

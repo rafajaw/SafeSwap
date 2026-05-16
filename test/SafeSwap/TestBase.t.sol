@@ -105,6 +105,8 @@ contract MockChainConfig {
 contract MockPoolManager {
     using PoolIdLibrary for PoolKey;
 
+    address public protocolFeeController;
+
     struct PoolState {
         uint160 sqrt_price_x96;
         int24 tick;
@@ -117,6 +119,9 @@ contract MockPoolManager {
     mapping( PoolId => PoolState ) public pools;
     mapping( Currency => int256 ) public currency_deltas;
     mapping( Currency => uint256 ) public reserves;
+    mapping( address => mapping( uint256 => uint256 ) ) public balanceOf;
+    mapping( address => mapping( address => bool ) ) public isOperator;
+    mapping( address => mapping( address => mapping( uint256 => uint256 ) ) ) public allowance;
 
     address public unlock_caller;
     bool public is_unlocked;
@@ -225,10 +230,20 @@ contract MockPoolManager {
         return result;
     }
 
+    function extsload( bytes32[] calldata slots ) external view returns ( bytes32[] memory )
+    {
+        return new bytes32[]( slots.length );
+    }
+
     function get_slot0( PoolId pool_id ) external view returns ( uint160, int24, uint24, uint24 )
     {
         PoolState memory state  =  pools[ pool_id ];
         return ( state.sqrt_price_x96, state.tick, state.protocol_fee, state.lp_fee );
+    }
+
+    function supportsInterface( bytes4 interface_id ) external pure returns ( bool )
+    {
+        return interface_id == 0x01ffc9a7 || interface_id == 0x0f632fb3;
     }
 
     receive( ) external payable { }

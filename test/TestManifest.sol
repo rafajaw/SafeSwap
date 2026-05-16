@@ -24,6 +24,7 @@ interface IConstructorTests {
     function test_constructor_sets_pool_manager_from_chain_config( ) external;
     function test_constructor_sets_collector_correctly( ) external;
     function test_constructor_reverts_if_pool_manager_not_set( ) external;
+    function test_constructor_reverts_if_chain_config_points_to_non_pool_manager( ) external;
     function test_constructor_announces_protocol_to_bondroute( ) external;
 }
 
@@ -434,11 +435,11 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Total Tests Declared:       180
-// Implemented & Passing:      180 ✓
+// Total Tests Declared:       181
+// Implemented & Passing:      181 ✓
 //
 // Coverage by Section:
-// - Constructor:                4 tests  ✓
+// - Constructor:                5 tests  ✓
 // - Collector:                  5 tests  ✓
 // - BondRoute Integration:     37 tests  ✓
 // - Hook Callbacks:            17 tests  ✓
