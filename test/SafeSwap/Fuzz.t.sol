@@ -53,7 +53,7 @@ contract FuzzTest is SafeSwapTestBase {
         // Bound inputs to avoid overflow and precision issues.
         // Use amounts divisible by divisor to avoid rounding issues.
         amount_out  =  bound( amount_out, PROTOCOL_FEE_DIVISOR, type(uint64).max );
-        amount_out  =  ( amount_out / PROTOCOL_FEE_DIVISOR ) * PROTOCOL_FEE_DIVISOR;
+        amount_out  =  amount_out - ( amount_out % PROTOCOL_FEE_DIVISOR );
         pool_fee    =  uint24( bound( pool_fee, MIN_PROTOCOL_FEE_RATE, 50_000 ) );
 
         uint256 protocol_fee  =  amount_out * pool_fee / PROTOCOL_FEE_DIVISOR;

@@ -30,6 +30,7 @@ abstract contract Collector is User {
     address public pending_collector;
 
     constructor( address initial_collector )
+    User( initial_collector )
     {
         if(  initial_collector == address(0)  )  revert Invalid({ field: "initial_collector", value: 0 });
 

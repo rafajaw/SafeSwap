@@ -12,12 +12,11 @@ import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { IUnlockCallback } from "@UniswapV4Core/interfaces/callback/IUnlockCallback.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
-import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
+import { PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
-import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 
-import { MockERC20, MockBondRoute, MockOpenRegistry } from "./TestBase.t.sol";
+import { MockERC20, MockBondRoute, MockChainConfig } from "./TestBase.t.sol";
 
 
 // ━━━━  REAL POOL TEST HOOK  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -128,9 +127,8 @@ contract RealPoolIntegrationTest is Test {
     int24 constant FULL_RANGE_LOWER    =  -887220;  // Near MIN_TICK, aligned to tickSpacing 60.
     int24 constant FULL_RANGE_UPPER    =   887220;  // Near MAX_TICK, aligned to tickSpacing 60.
 
-    address constant OPEN_REGISTRY      =  address(bytes20(bytes12("OpenRegistry")));
-    bytes32 constant UNISWAP_NAMESPACE  =  bytes32("uniswap");
-    bytes32 constant POOL_MANAGER_KEY   =  bytes32("v4.pool_manager.address");
+    address constant CHAINCONFIG_ADDRESS  =  0x5Afec0de00EB1c5323C7faA110f67499F744467b;
+    bytes32 constant POOL_MANAGER_KEY     =  bytes32("v4.pool_manager.address");
 
     uint256 constant PROTOCOL_FEE_DIVISOR  =  10_000_000;
 
@@ -145,38 +143,29 @@ contract RealPoolIntegrationTest is Test {
         other_user  =  makeAddr( "other_user" );
         lp          =  makeAddr( "liquidity_provider" );
 
-        // Deploy mock infrastructure that is still needed (BondRoute, OpenRegistry).
-        MockOpenRegistry open_registry  =  new MockOpenRegistry( );
+        // Deploy mock infrastructure that is still needed (BondRoute, ChainConfig).
+        MockChainConfig chain_config    =  new MockChainConfig( );
         MockBondRoute bond_route        =  new MockBondRoute( );
 
-        vm.etch( OPEN_REGISTRY, address(open_registry).code );
+        vm.etch( CHAINCONFIG_ADDRESS, address(chain_config).code );
         vm.etch( BONDROUTE_ADDRESS, address(bond_route).code );
         MockBondRoute(payable(BONDROUTE_ADDRESS)).set_skip_actual_transfer( false );
 
-        // Deploy the real Uniswap V4 PoolManager via cross-version artifact loading.
+        // Deploy the real Uniswap V4 PoolManager via a cross-version helper artifact.
         // PoolManager.sol uses `=0.8.26` which is incompatible with our `^0.8.30` sources,
-        // so we read the pre-compiled artifact and deploy its bytecode directly.
+        // so we deploy the helper artifact and let it instantiate PoolManager.
         {
-            bytes memory pm_bytecode  =  abi.encodePacked(
-                vm.parseJsonBytes(
-                    vm.readFile( "out/ForceCompileV4.sol/PoolManagerDeployer.json" ),
-                    ".bytecode.object"
-                ),
-                abi.encode( address(this) )
-            );
-            address deployer;
-            assembly { deployer  :=  create( 0, add(pm_bytecode, 0x20), mload(pm_bytecode) ) }
-            require( deployer != address(0), "PoolManagerDeployer creation failed" );
+            address deployer  =  vm.deployCode( "ForceCompileV4.sol:PoolManagerDeployer" );
 
             ( bool ok, bytes memory ret )  =  deployer.call( abi.encodeWithSignature( "deploy(address)", address(this) ) );
             require( ok, "PoolManager deployment failed" );
             real_pool_manager  =  IPoolManager(abi.decode( ret, (address) ));
         }
 
-        // Store pool manager address in OpenRegistry.
-        MockOpenRegistry(OPEN_REGISTRY).set_entry( UNISWAP_NAMESPACE, POOL_MANAGER_KEY, bytes32(uint256(uint160(address(real_pool_manager)))) );
+        // Store pool manager address in ChainConfig.
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(real_pool_manager) );
 
-        // Deploy hook normally (constructor reads OpenRegistry, sets PoolManager immutable in bytecode).
+        // Deploy hook normally (constructor reads ChainConfig, sets PoolManager immutable in bytecode).
         RealPoolTestHook deployed_hook  =  new RealPoolTestHook( collector );
 
         // Clone hook (code + storage) to address with correct hook permission bits.

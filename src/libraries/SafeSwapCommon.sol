@@ -49,7 +49,16 @@ library SafeSwapCommon {
 
     function hash_pool_info( PoolInfo memory pool_info ) internal pure returns ( bytes32 )
     {
-        return keccak256( abi.encode( POOL_INFO_TYPEHASH, pool_info.fee, pool_info.tick_spacing ) );
+        bytes32 typehash  =  POOL_INFO_TYPEHASH;
+        bytes32 result;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, typehash)
+            mstore(add(ptr, 0x20), mload(pool_info))
+            mstore(add(ptr, 0x40), signextend(2, mload(add(pool_info, 0x20))))
+            result := keccak256(ptr, 0x60)
+        }
+        return result;
     }
 
 

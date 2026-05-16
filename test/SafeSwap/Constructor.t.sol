@@ -6,12 +6,12 @@ import "./TestBase.t.sol";
 
 contract ConstructorTest is SafeSwapTestBase {
 
-    function test_constructor_sets_pool_manager_from_open_registry( ) external view
+    function test_constructor_sets_pool_manager_from_chain_config( ) external view
     {
         assertEq(
             address(hook.PoolManager( )),
             address(pool_manager),
-            "Constructor should set PoolManager from OpenRegistry."
+            "Constructor should set PoolManager from ChainConfig."
         );
     }
 
@@ -26,14 +26,14 @@ contract ConstructorTest is SafeSwapTestBase {
 
     function test_constructor_reverts_if_pool_manager_not_set( ) external
     {
-        // Clear pool manager entry in the registry.
-        MockOpenRegistry(OPEN_REGISTRY).set_entry( UNISWAP_NAMESPACE, POOL_MANAGER_KEY, bytes32(0) );
+        // Clear pool manager entry in ChainConfig.
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(0) );
 
         vm.expectRevert( PoolManagerNotSet.selector );
         new TestableSafeSwap( collector );
 
         // Restore pool manager entry.
-        MockOpenRegistry(OPEN_REGISTRY).set_entry( UNISWAP_NAMESPACE, POOL_MANAGER_KEY, bytes32(uint256(uint160(address(pool_manager)))) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(pool_manager) );
     }
 
     function test_constructor_announces_protocol_to_bondroute( ) external

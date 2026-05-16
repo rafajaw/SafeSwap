@@ -11,11 +11,8 @@ import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { IUnlockCallback } from "@UniswapV4Core/interfaces/callback/IUnlockCallback.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
-import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
-import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BeforeSwapDelta, BeforeSwapDeltaLibrary } from "@UniswapV4Core/types/BeforeSwapDelta.sol";
-import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
-import { IOpenRegistry } from "@SafeSwap/integrations/IOpenRegistry.sol";
+import { ChainConfig } from "@SafeSwap/integrations/IChainConfig.sol";
 
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -30,22 +27,18 @@ error PoolManagerNotSet( );
  */
 abstract contract UniswapHook is IUnlockCallback {
     using FundingsLib for BondContext;
-    using PoolIdLibrary for PoolKey;
-    using StateLibrary for IPoolManager;
 
     IPoolManager public immutable PoolManager;
 
     bool transient _is_protected_context;
 
-    address constant OPEN_REGISTRY      =   address(bytes20(bytes12("OpenRegistry")));  // ***TODO*** Set after deployment.
-    bytes32 constant UNISWAP_NAMESPACE  =   bytes32("uniswap");
-    bytes32 constant POOL_MANAGER_KEY   =   bytes32("v4.pool_manager.address");
+    bytes32 constant POOL_MANAGER_KEY  =   bytes32("v4.pool_manager.address");
 
     enum Action { ExactInputSwap, ExactOutputSwap, AddLiquidity, RemoveLiquidity }
 
-    constructor( )
+    constructor( address config_signer )
     {
-        address pool_manager  =  address(uint160(uint256(IOpenRegistry(OPEN_REGISTRY).read_key( UNISWAP_NAMESPACE, POOL_MANAGER_KEY ))));
+        address pool_manager  =  ChainConfig.read_address( config_signer, POOL_MANAGER_KEY );
 
         if(  pool_manager == address(0)  )  revert PoolManagerNotSet( );
 

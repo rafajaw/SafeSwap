@@ -14,7 +14,6 @@ import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta, toBalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
-import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 
 
@@ -79,25 +78,24 @@ contract MockERC20 is IERC20 {
 }
 
 
-// ━━━━  MOCK OPEN REGISTRY  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━━  MOCK CHAIN CONFIG  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-contract MockOpenRegistry {
-    mapping( bytes32 => mapping( bytes32 => bytes32 ) ) public entries;
+contract MockChainConfig {
+    mapping( address => mapping( bytes32 => address ) ) public addresses;
 
-    function set_entry( bytes32 namespace, bytes32 key, bytes32 value ) external
+    function set_address( address signer, bytes32 key, address value ) external
     {
-        entries[ namespace ][ key ]  =  value;
+        addresses[ signer ][ key ]  =  value;
     }
 
-    function read_key( bytes32 namespace, bytes32 key ) external view returns ( bytes32 )
+    function read_address( address signer, bytes32 key ) external view returns ( address )
     {
-        return entries[ namespace ][ key ];
+        return addresses[ signer ][ key ];
     }
 
-    function try_read_key( bytes32 namespace, bytes32 key ) external view returns ( bytes32 value, bool exists )
+    function read_address( address signer, string calldata key ) external view returns ( address )
     {
-        value   =  entries[ namespace ][ key ];
-        exists  =  value != bytes32(0);
+        return addresses[ signer ][ bytes32(bytes(key)) ];
     }
 }
 
@@ -209,7 +207,8 @@ contract MockPoolManager {
         }
         else
         {
-            MockERC20(token).transfer( to, amount );
+            bool success  =  MockERC20(token).transfer( to, amount );
+            require( success, "Mock transfer failed" );
         }
     }
 
@@ -275,7 +274,8 @@ contract MockBondRoute {
                     }
                     else
                     {
-                        token.transferFrom( context.user, to, amount );
+                        bool success  =  token.transferFrom( context.user, to, amount );
+                        require( success, "Mock funding transfer failed" );
                     }
                 }
 
@@ -426,7 +426,7 @@ abstract contract SafeSwapTestBase is Test {
     TestableSafeSwap public hook;
     MockPoolManager public pool_manager;
     MockBondRoute public bond_route;
-    MockOpenRegistry public open_registry;
+    MockChainConfig public chain_config;
 
     // Tokens.
     MockERC20 public token0;
@@ -450,9 +450,8 @@ abstract contract SafeSwapTestBase is Test {
     uint160 constant SQRT_PRICE_1_1    =  79228162514264337593543950336;  // 1:1 price.
     uint256 constant INITIAL_BALANCE   =  1_000_000 ether;
 
-    address constant OPEN_REGISTRY      =  address(bytes20(bytes12("OpenRegistry")));
-    bytes32 constant UNISWAP_NAMESPACE  =  bytes32("uniswap");
-    bytes32 constant POOL_MANAGER_KEY   =  bytes32("v4.pool_manager.address");
+    address constant CHAINCONFIG_ADDRESS  =  0x5Afec0de00EB1c5323C7faA110f67499F744467b;
+    bytes32 constant POOL_MANAGER_KEY     =  bytes32("v4.pool_manager.address");
 
     function setUp( ) public virtual
     {
@@ -467,16 +466,16 @@ abstract contract SafeSwapTestBase is Test {
         treasury    =  makeAddr( "treasury" );
 
         // Deploy mocks.
-        open_registry  =  new MockOpenRegistry( );
+        chain_config   =  new MockChainConfig( );
         pool_manager   =  new MockPoolManager( );
         bond_route     =  new MockBondRoute( );
 
         // Deploy mock code at expected addresses.
-        vm.etch( OPEN_REGISTRY, address(open_registry).code );
+        vm.etch( CHAINCONFIG_ADDRESS, address(chain_config).code );
         vm.etch( BONDROUTE_ADDRESS, address(bond_route).code );
 
-        // Set pool manager in open registry.
-        MockOpenRegistry(OPEN_REGISTRY).set_entry( UNISWAP_NAMESPACE, POOL_MANAGER_KEY, bytes32(uint256(uint160(address(pool_manager)))) );
+        // Set pool manager in ChainConfig.
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(pool_manager) );
 
         // Set skip_actual_transfer to true on the etched BondRoute.
         MockBondRoute(payable(BONDROUTE_ADDRESS)).set_skip_actual_transfer( true );

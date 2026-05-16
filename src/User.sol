@@ -3,6 +3,9 @@ pragma solidity ^0.8.30;
 
 import "@SafeSwap/UniswapHook.sol";
 import "@SafeSwap/integrations/BondRouteProtected.sol";
+import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
+import { PoolId } from "@UniswapV4Core/types/PoolId.sol";
+import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 
 using StateLibrary for IPoolManager;
 
@@ -13,7 +16,8 @@ using StateLibrary for IPoolManager;
  */
 abstract contract User is UniswapHook, BondRouteProtected {
 
-    constructor( )
+    constructor( address config_signer )
+    UniswapHook( config_signer )
     BondRouteProtected( "SafeSwap", "Trustless MEV-free Uniswap V4 Hook" ) { }
 
     // ━━━━  USER FUNCTIONS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

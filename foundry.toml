@@ -6,6 +6,7 @@ evm_version = "cancun"  # Max compatibility - still support TSTORE, MCOPY and PU
 optimizer = true
 optimizer_runs = 1_000_000_000
 via_ir = true
+ignored_error_codes = [6335, 2424, 2394, 4591]
 extra_output = ["ir", "irOptimized"]
 extra_output_files = ["ir", "irOptimized"]
 sizes = true
