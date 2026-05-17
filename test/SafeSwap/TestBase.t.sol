@@ -383,49 +383,60 @@ contract TestableSafeSwap is SafeSwap {
         return _mock_context;
     }
 
-    function test_set_protected_context( bool is_protected ) external
+    function test_set_next_hook_callback_allowed( bool is_allowed ) external
     {
-        _set_protected_context( is_protected );
+        if(  is_allowed  )  _allow_next_hook_callback( );
+        else               _clear_next_hook_callback( );
     }
 
-    function test_is_within_protected_context( ) external view returns ( bool )
+    function test_allow_next_hook_callback( ) external
     {
-        return _is_within_protected_context( );
+        _allow_next_hook_callback( );
+    }
+
+    function test_clear_next_hook_callback( ) external
+    {
+        _clear_next_hook_callback( );
+    }
+
+    function test_next_hook_callback_allowed( ) external view returns ( bool )
+    {
+        return _next_hook_callback_allowed( );
     }
 
     function test_execute_exact_input_swap( BondContext memory context, ExactInputSwapParams memory params ) external
     {
-        _set_protected_context( true );
+        _allow_next_hook_callback( );
         ExactInputSwapLib.execute( context, params, PoolManager, address(this) );
-        _set_protected_context( false );
+        _clear_next_hook_callback( );
     }
 
     function test_execute_exact_output_swap( BondContext memory context, ExactOutputSwapParams memory params ) external
     {
-        _set_protected_context( true );
+        _allow_next_hook_callback( );
         ExactOutputSwapLib.execute( context, params, PoolManager, address(this) );
-        _set_protected_context( false );
+        _clear_next_hook_callback( );
     }
 
     function test_execute_add_liquidity( BondContext memory context, AddLiquidityParams memory params ) external
     {
-        _set_protected_context( true );
+        _allow_next_hook_callback( );
         AddLiquidityLib.execute( context, params, PoolManager, address(this) );
-        _set_protected_context( false );
+        _clear_next_hook_callback( );
     }
 
     function test_execute_remove_liquidity( BondContext memory context, RemoveLiquidityParams memory params ) external
     {
-        _set_protected_context( true );
+        _allow_next_hook_callback( );
         RemoveLiquidityLib.execute( context, params, PoolManager, address(this) );
-        _set_protected_context( false );
+        _clear_next_hook_callback( );
     }
 
     function test_execute_donate( BondContext memory context, DonateParams memory params ) external
     {
-        _set_protected_context( true );
+        _allow_next_hook_callback( );
         DonateLib.execute( context, params, PoolManager, address(this) );
-        _set_protected_context( false );
+        _clear_next_hook_callback( );
     }
 
     function test_build_pool_key( IERC20 token_in, IERC20 token_out, uint24 fee, int24 tick_spacing )

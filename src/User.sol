@@ -27,11 +27,11 @@ abstract contract User is UniswapHook, BondRouteProtected {
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        _set_protected_context( true );
+        _allow_next_hook_callback( );
 
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.ExactInputSwap)) ) );
 
-        _set_protected_context( false );
+        _clear_next_hook_callback( );
     }
 
     function swap_exact_output( ExactOutputSwapParams calldata params )
@@ -39,11 +39,11 @@ abstract contract User is UniswapHook, BondRouteProtected {
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        _set_protected_context( true );
+        _allow_next_hook_callback( );
 
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.ExactOutputSwap)) ) );
 
-        _set_protected_context( false );
+        _clear_next_hook_callback( );
     }
 
     function add_liquidity( AddLiquidityParams calldata params )
@@ -51,11 +51,11 @@ abstract contract User is UniswapHook, BondRouteProtected {
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        _set_protected_context( true );
+        _allow_next_hook_callback( );
 
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.AddLiquidity)) ) );
 
-        _set_protected_context( false );
+        _clear_next_hook_callback( );
     }
 
     function remove_liquidity( RemoveLiquidityParams calldata params )
@@ -63,11 +63,11 @@ abstract contract User is UniswapHook, BondRouteProtected {
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        _set_protected_context( true );
+        _allow_next_hook_callback( );
 
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.RemoveLiquidity)) ) );
 
-        _set_protected_context( false );
+        _clear_next_hook_callback( );
     }
 
     function donate( DonateParams calldata params )
@@ -75,11 +75,11 @@ abstract contract User is UniswapHook, BondRouteProtected {
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        _set_protected_context( true );
+        _allow_next_hook_callback( );
 
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.Donate)) ) );
 
-        _set_protected_context( false );
+        _clear_next_hook_callback( );
     }
 
 

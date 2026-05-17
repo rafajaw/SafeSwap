@@ -24,7 +24,7 @@ interface IExtsloadSparse {
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-error NotProtectedContext( );
+error BondRouteRequired( );
 error InvalidPoolManager( address pool_manager );
 
 
@@ -37,7 +37,7 @@ abstract contract UniswapHook is IUnlockCallback {
 
     IPoolManager public immutable PoolManager;
 
-    bool transient _is_protected_context;
+    bool transient _is_next_hook_callback_allowed;
 
     bytes32 constant POOL_MANAGER_KEY  =   bytes32("v4.pool_manager.address");
     bytes4 constant ERC6909_INTERFACE_ID  =  0x0f632fb3;
@@ -78,14 +78,26 @@ abstract contract UniswapHook is IUnlockCallback {
 
     // ━━━━  PROTECTED CONTEXT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _set_protected_context( bool is_protected ) internal
+    function _allow_next_hook_callback( ) internal
     {
-        _is_protected_context  =  is_protected;
+        _is_next_hook_callback_allowed  =  true;
     }
 
-    function _is_within_protected_context( ) internal view returns ( bool )
+    function _clear_next_hook_callback( ) internal
     {
-        return _is_protected_context;
+        _is_next_hook_callback_allowed  =  false;
+    }
+
+    function _consume_next_hook_callback( ) internal
+    {
+        if(  _is_next_hook_callback_allowed == false  )  revert BondRouteRequired( );
+
+        _is_next_hook_callback_allowed  =  false;
+    }
+
+    function _next_hook_callback_allowed( ) internal view returns ( bool )
+    {
+        return _is_next_hook_callback_allowed;
     }
 
 
@@ -132,37 +144,41 @@ abstract contract UniswapHook is IUnlockCallback {
     // ━━━━  HOOK CALLBACKS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function beforeSwap( address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata )
-    external view returns ( bytes4, BeforeSwapDelta, uint24 )
+    external returns ( bytes4, BeforeSwapDelta, uint24 )
     {
-        if(  msg.sender != address(PoolManager)  )          revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
-        if(  _is_within_protected_context( ) == false  )    revert NotProtectedContext( );
+        if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
+
+        _consume_next_hook_callback( );
 
         return ( IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0 );
     }
 
     function beforeAddLiquidity( address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata )
-    external view returns ( bytes4 )
+    external returns ( bytes4 )
     {
-        if(  msg.sender != address(PoolManager)  )          revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
-        if(  _is_within_protected_context( ) == false  )    revert NotProtectedContext( );
+        if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
+
+        _consume_next_hook_callback( );
 
         return IHooks.beforeAddLiquidity.selector;
     }
 
     function beforeRemoveLiquidity( address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata )
-    external view returns ( bytes4 )
+    external returns ( bytes4 )
     {
-        if(  msg.sender != address(PoolManager)  )          revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
-        if(  _is_within_protected_context( ) == false  )    revert NotProtectedContext( );
+        if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
+
+        _consume_next_hook_callback( );
 
         return IHooks.beforeRemoveLiquidity.selector;
     }
 
     function beforeDonate( address, PoolKey calldata, uint256, uint256, bytes calldata )
-    external view returns ( bytes4 )
+    external returns ( bytes4 )
     {
-        if(  msg.sender != address(PoolManager)  )          revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
-        if(  _is_within_protected_context( ) == false  )    revert NotProtectedContext( );
+        if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
+
+        _consume_next_hook_callback( );
 
         return IHooks.beforeDonate.selector;
     }

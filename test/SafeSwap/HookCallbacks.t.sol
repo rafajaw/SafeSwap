@@ -48,10 +48,10 @@ contract HookCallbacksTest is SafeSwapTestBase {
         });
 
         // Ensure not in protected context.
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
-        vm.expectRevert( NotProtectedContext.selector );
+        vm.expectRevert( BondRouteRequired.selector );
         hook.beforeSwap( user, pool_key, swap_params, "" );
     }
 
@@ -63,7 +63,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
             sqrtPriceLimitX96: 0
         });
 
-        hook.test_set_protected_context( true );
+        hook.test_allow_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
         ( bytes4 selector, , )  =  hook.beforeSwap( user, pool_key, swap_params, "" );
@@ -74,7 +74,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
             "Should return beforeSwap selector."
         );
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
     }
 
     function test_before_swap_returns_zero_delta( ) external
@@ -85,7 +85,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
             sqrtPriceLimitX96: 0
         });
 
-        hook.test_set_protected_context( true );
+        hook.test_allow_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
         ( , BeforeSwapDelta delta, )  =  hook.beforeSwap( user, pool_key, swap_params, "" );
@@ -97,7 +97,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
             "Should return zero delta."
         );
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
     }
 
     function test_before_swap_succeeds_in_protected_context( ) external
@@ -108,7 +108,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
             sqrtPriceLimitX96: 0
         });
 
-        hook.test_set_protected_context( true );
+        hook.test_allow_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
         ( bytes4 selector, , uint24 fee )  =  hook.beforeSwap( user, pool_key, swap_params, "" );
@@ -116,7 +116,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
         assertEq( selector, IHooks.beforeSwap.selector, "Should succeed in protected context." );
         assertEq( fee, 0, "Fee override should be 0." );
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
     }
 
 
@@ -145,10 +145,10 @@ contract HookCallbacksTest is SafeSwapTestBase {
             salt: bytes32(0)
         });
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
-        vm.expectRevert( NotProtectedContext.selector );
+        vm.expectRevert( BondRouteRequired.selector );
         hook.beforeAddLiquidity( user, pool_key, liq_params, "" );
     }
 
@@ -161,7 +161,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
             salt: bytes32(0)
         });
 
-        hook.test_set_protected_context( true );
+        hook.test_allow_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
         bytes4 selector  =  hook.beforeAddLiquidity( user, pool_key, liq_params, "" );
@@ -172,7 +172,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
             "Should return beforeAddLiquidity selector."
         );
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
     }
 
     function test_before_add_liquidity_succeeds_in_protected_context( ) external
@@ -184,14 +184,14 @@ contract HookCallbacksTest is SafeSwapTestBase {
             salt: bytes32(0)
         });
 
-        hook.test_set_protected_context( true );
+        hook.test_allow_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
         bytes4 selector  =  hook.beforeAddLiquidity( user, pool_key, liq_params, "" );
 
         assertEq( selector, IHooks.beforeAddLiquidity.selector, "Should succeed in protected context." );
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
     }
 
 
@@ -220,10 +220,10 @@ contract HookCallbacksTest is SafeSwapTestBase {
             salt: bytes32(0)
         });
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
-        vm.expectRevert( NotProtectedContext.selector );
+        vm.expectRevert( BondRouteRequired.selector );
         hook.beforeRemoveLiquidity( user, pool_key, liq_params, "" );
     }
 
@@ -236,7 +236,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
             salt: bytes32(0)
         });
 
-        hook.test_set_protected_context( true );
+        hook.test_allow_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
         bytes4 selector  =  hook.beforeRemoveLiquidity( user, pool_key, liq_params, "" );
@@ -247,7 +247,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
             "Should return beforeRemoveLiquidity selector."
         );
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
     }
 
     function test_before_remove_liquidity_succeeds_in_protected_context( ) external
@@ -259,14 +259,14 @@ contract HookCallbacksTest is SafeSwapTestBase {
             salt: bytes32(0)
         });
 
-        hook.test_set_protected_context( true );
+        hook.test_allow_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
         bytes4 selector  =  hook.beforeRemoveLiquidity( user, pool_key, liq_params, "" );
 
         assertEq( selector, IHooks.beforeRemoveLiquidity.selector, "Should succeed in protected context." );
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
     }
 
 
@@ -281,16 +281,16 @@ contract HookCallbacksTest is SafeSwapTestBase {
 
     function test_before_donate_reverts_if_not_protected_context( ) external
     {
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
-        vm.expectRevert( NotProtectedContext.selector );
+        vm.expectRevert( BondRouteRequired.selector );
         hook.beforeDonate( user, pool_key, 100 ether, 200 ether, "" );
     }
 
     function test_before_donate_returns_correct_selector( ) external
     {
-        hook.test_set_protected_context( true );
+        hook.test_allow_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
         bytes4 selector  =  hook.beforeDonate( user, pool_key, 100 ether, 200 ether, "" );
@@ -301,19 +301,19 @@ contract HookCallbacksTest is SafeSwapTestBase {
             "Should return beforeDonate selector."
         );
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
     }
 
     function test_before_donate_succeeds_in_protected_context( ) external
     {
-        hook.test_set_protected_context( true );
+        hook.test_allow_next_hook_callback( );
 
         vm.prank( address(pool_manager) );
         bytes4 selector  =  hook.beforeDonate( user, pool_key, 100 ether, 200 ether, "" );
 
         assertEq( selector, IHooks.beforeDonate.selector, "Should succeed in protected context." );
 
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
     }
 
 
@@ -322,47 +322,47 @@ contract HookCallbacksTest is SafeSwapTestBase {
     function test_protected_context_cleared_after_swap( ) external
     {
         // Initially not protected.
-        assertEq( hook.test_is_within_protected_context( ), false, "Should start unprotected." );
+        assertEq( hook.test_next_hook_callback_allowed( ), false, "Should start unprotected." );
 
         // Set protected.
-        hook.test_set_protected_context( true );
-        assertEq( hook.test_is_within_protected_context( ), true, "Should be protected after setting." );
+        hook.test_allow_next_hook_callback( );
+        assertEq( hook.test_next_hook_callback_allowed( ), true, "Should be protected after setting." );
 
         // Clear protected.
-        hook.test_set_protected_context( false );
-        assertEq( hook.test_is_within_protected_context( ), false, "Should be unprotected after clearing." );
+        hook.test_clear_next_hook_callback( );
+        assertEq( hook.test_next_hook_callback_allowed( ), false, "Should be unprotected after clearing." );
     }
 
     function test_protected_context_cleared_after_add_liquidity( ) external
     {
-        hook.test_set_protected_context( true );
-        assertEq( hook.test_is_within_protected_context( ), true, "Should be protected." );
+        hook.test_allow_next_hook_callback( );
+        assertEq( hook.test_next_hook_callback_allowed( ), true, "Should be protected." );
 
-        hook.test_set_protected_context( false );
-        assertEq( hook.test_is_within_protected_context( ), false, "Should be cleared." );
+        hook.test_clear_next_hook_callback( );
+        assertEq( hook.test_next_hook_callback_allowed( ), false, "Should be cleared." );
     }
 
     function test_protected_context_cleared_after_remove_liquidity( ) external
     {
-        hook.test_set_protected_context( true );
-        assertEq( hook.test_is_within_protected_context( ), true, "Should be protected." );
+        hook.test_allow_next_hook_callback( );
+        assertEq( hook.test_next_hook_callback_allowed( ), true, "Should be protected." );
 
-        hook.test_set_protected_context( false );
-        assertEq( hook.test_is_within_protected_context( ), false, "Should be cleared." );
+        hook.test_clear_next_hook_callback( );
+        assertEq( hook.test_next_hook_callback_allowed( ), false, "Should be cleared." );
     }
 
     function test_protected_context_transient_storage_isolation( ) external
     {
         // Set protected in this call.
-        hook.test_set_protected_context( true );
-        assertEq( hook.test_is_within_protected_context( ), true, "Should be protected in same tx." );
+        hook.test_allow_next_hook_callback( );
+        assertEq( hook.test_next_hook_callback_allowed( ), true, "Should be protected in same tx." );
 
         // Transient storage should be cleared between transactions.
         // In Foundry tests, each test function is a separate transaction context.
         // We can simulate by checking that a new call starts unprotected.
-        hook.test_set_protected_context( false );
+        hook.test_clear_next_hook_callback( );
 
         // Verify isolation - a new setup would start unprotected.
-        assertEq( hook.test_is_within_protected_context( ), false, "Should be isolated between operations." );
+        assertEq( hook.test_next_hook_callback_allowed( ), false, "Should be isolated between operations." );
     }
 }

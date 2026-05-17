@@ -404,6 +404,16 @@ interface IRealPoolIntegrationTests {
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// REENTRANT PROTECTED CONTEXT TESTS
+// Implemented in: test/SafeSwap/ReentrantProtectedContext.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface IReentrantProtectedContextTests {
+    function test_reentrant_output_token_transfer_reverts_when_direct_swap_has_no_bondroute_context( ) external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FUZZ TESTS
 // Implemented in: test/SafeSwap/Fuzz.t.sol
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -476,8 +486,8 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Total Tests Declared:       202
-// Implemented & Passing:      202 ✓
+// Total Tests Declared:       203
+// Implemented & Passing:      203 ✓
 //
 // Coverage by Section:
 // - Constructor:                5 tests  ✓
@@ -493,6 +503,7 @@ interface IGasBenchmarkTests {
 // - Stake Calculation:          8 tests  ✓
 // - Integration Tests:         12 tests  ✓
 // - Real Pool Integration:     30 tests  ✓
+// - Reentrant Context:          1 test    ✓
 // - Fuzz Tests:                 6 tests  ✓
 // - Invariant Tests:            7 tests  ✓
 // - Gas Benchmarks:            10 tests  (declared, not yet implemented)
