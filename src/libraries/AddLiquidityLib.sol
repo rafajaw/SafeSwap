@@ -79,6 +79,8 @@ library AddLiquidityLib {
         address hook_address
     ) internal view returns ( BondConstraints memory constraints )
     {
+        if(  params.pool_info.fee == SafeSwapCommon.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
+
         // *NOTE*  -  token_pair must be [token0, token1] in order matching the pool's currency order.
         IERC20 token0            =  token_pair[ 0 ].token;
         uint256 amount0_desired  =  token_pair[ 0 ].amount;

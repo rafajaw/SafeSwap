@@ -51,11 +51,18 @@ Libraries: `ExactInputSwapLib`, `ExactOutputSwapLib`, `AddLiquidityLib`, `Remove
 
 ## Protocol fee
 
-SafeSwap charges a protocol fee on every swap:
+A deterministic surcharge replaces stochastic MEV loss. The swapper pays `max(0.01%, 10% of LP fee)` of the swap output; LPs are unaffected and keep their full LP fee through Uniswap V4's internal accounting.
 
-- **10% of the pool's LP fee rate** (e.g. 0.03% on a 0.30% pool)
-- **Floor of 0.01%** for low-fee pools (prevents near-zero fees on stablecoin pools)
-- Fees accumulate in the hook contract and are withdrawn by the collector
+| Pool | Protocol fee | Replaces typical MEV loss of |
+|---|---|---|
+| 0.01% stablecoin | 0.01% | 0.05–0.25% (CEX–DEX arb, JIT-LP sandwich) |
+| 0.05% blue-chip | 0.01% | 0.5–2% |
+| 0.30% volatile | 0.03% | 0.5–2% routinely, 2–5% on large trades |
+| 1.00% long-tail | 0.10% | 2–10%+ |
+
+Across every tier, the fee is between **5× and 200× cheaper** than the MEV the user would otherwise bear — and predictable rather than variable. Even users routing through private relays or solver auctions still lose 0.10–0.50% in residual MEV and solver spread; SafeSwap eliminates that entirely.
+
+Fees accumulate in the hook contract and are withdrawn by the collector.
 
 ## Gas overhead
 

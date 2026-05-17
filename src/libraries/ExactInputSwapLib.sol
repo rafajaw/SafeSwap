@@ -62,6 +62,8 @@ library ExactInputSwapLib {
     function get_constraints( ExactInputSwapParams memory params, TokenAmount memory input_token )
     internal pure returns ( BondConstraints memory constraints )
     {
+        if(  params.pool_info.fee == SafeSwapCommon.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
+
         IERC20 token_in    =  input_token.token;
         uint256 amount_in  =  input_token.amount;
 

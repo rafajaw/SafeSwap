@@ -421,6 +421,48 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
     }
 
 
+    // ━━━━  BondRoute_quote_call( ) - Dynamic-Fee Pool Rejection  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function test_quote_call_rejects_dynamic_fee_on_every_selector( ) external
+    {
+        uint24 dynamic_fee  =  SafeSwapCommon.DYNAMIC_FEE_FLAG;
+        bytes memory expected_revert  =  abi.encodeWithSelector( UnsupportedFeeTier.selector, dynamic_fee );
+
+        // Exact input swap.
+        ExactInputSwapParams memory exact_input_params  =  _create_exact_input_params( 90 ether );
+        exact_input_params.pool_info.fee  =  dynamic_fee;
+        TokenAmount[] memory swap_funding  =  _create_swap_fundings( 100 ether );
+        vm.expectRevert( expected_revert );
+        hook.BondRoute_quote_call( _encode_exact_input_calldata( exact_input_params ), token0, swap_funding );
+
+        // Exact output swap.
+        ExactOutputSwapParams memory exact_output_params  =  _create_exact_output_params( 90 ether );
+        exact_output_params.pool_info.fee  =  dynamic_fee;
+        vm.expectRevert( expected_revert );
+        hook.BondRoute_quote_call( _encode_exact_output_calldata( exact_output_params ), token0, swap_funding );
+
+        // Add liquidity.
+        AddLiquidityParams memory add_params  =  _create_add_liquidity_params( );
+        add_params.pool_info.fee  =  dynamic_fee;
+        TokenAmount[] memory liquidity_fundings  =  _create_liquidity_fundings( 100 ether, 100 ether );
+        vm.expectRevert( expected_revert );
+        hook.BondRoute_quote_call( _encode_add_liquidity_calldata( add_params ), token0, liquidity_fundings );
+
+        // Remove liquidity.
+        RemoveLiquidityParams memory remove_params  =  _create_remove_liquidity_params( 100 ether );
+        remove_params.pool_info.fee  =  dynamic_fee;
+        TokenAmount[] memory no_fundings  =  new TokenAmount[]( 0 );
+        vm.expectRevert( expected_revert );
+        hook.BondRoute_quote_call( _encode_remove_liquidity_calldata( remove_params ), token0, no_fundings );
+
+        // Donate.
+        DonateParams memory donate_params  =  _create_donate_params( );
+        donate_params.pool_info.fee  =  dynamic_fee;
+        vm.expectRevert( expected_revert );
+        hook.BondRoute_quote_call( _encode_donate_calldata( donate_params ), token0, liquidity_fundings );
+    }
+
+
     // ━━━━  BondRoute_get_signing_info( )  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function test_get_signing_info_exact_input_returns_valid_type_string( ) external view

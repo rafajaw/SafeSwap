@@ -70,7 +70,8 @@ library DonateLib {
         address hook_address
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  address(params.token0) == address(params.token1)  )  revert( "Tokens must be different" );
+        if(  params.pool_info.fee == SafeSwapCommon.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
+        if(  address(params.token0) == address(params.token1)  )         revert( "Tokens must be different" );
 
         IERC20 token0    =  token_pair[ 0 ].token;
         uint256 amount0  =  token_pair[ 0 ].amount;

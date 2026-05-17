@@ -21,6 +21,7 @@ struct PoolInfo {
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 error SlippageExceeded( uint256 amount_received, uint256 minimum_required );
+error UnsupportedFeeTier( uint24 fee );
 
 
 /**
@@ -42,6 +43,7 @@ library SafeSwapCommon {
     uint256 constant MAX_LIQUIDITY_EXECUTION_DELAY      =   4 hours;
     uint256 constant PROTOCOL_FEE_DIVISOR               =   10_000_000;  // E.g. 0.3% pool: LPs get full 0.3%, SafeSwap takes 0.03% from output.
     uint256 constant MIN_PROTOCOL_FEE_RATE              =   1000;        // 0.01% floor when pool LP fee < 0.10%.
+    uint24  constant DYNAMIC_FEE_FLAG                   =   0x800000;    // Uniswap V4 sentinel for hook-controlled dynamic LP fees.
 
     // EIP-712 type hash for PoolInfo struct (shared across all action libs).
     bytes32 constant POOL_INFO_TYPEHASH  =  keccak256( "PoolInfo(uint24 fee,int24 tick_spacing)" );

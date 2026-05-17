@@ -83,7 +83,8 @@ library RemoveLiquidityLib {
         address hook_address
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  address(params.token0) == address(params.token1)  )  revert( "Tokens must be different" );
+        if(  params.pool_info.fee == SafeSwapCommon.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
+        if(  address(params.token0) == address(params.token1)  )         revert( "Tokens must be different" );
 
         PoolKey memory pool_key  =  PoolKey({
             currency0: Currency.wrap( address(params.token0) ),

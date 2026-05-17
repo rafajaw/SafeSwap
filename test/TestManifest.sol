@@ -89,6 +89,9 @@ interface IBondRouteIntegrationTests {
     // ─── BondRoute_quote_call( ) - Unknown Selector ────────────────────────────────
     function test_quote_call_reverts_on_unknown_selector( ) external;
 
+    // ─── BondRoute_quote_call( ) - Dynamic-Fee Pool Rejection ──────────────────────
+    function test_quote_call_rejects_dynamic_fee_on_every_selector( ) external;
+
     // ─── BondRoute_get_signing_info( ) ──────────────────────────────────────────────
     function test_get_signing_info_exact_input_returns_valid_type_string( ) external;
     function test_get_signing_info_exact_output_returns_valid_type_string( ) external;
@@ -473,13 +476,13 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Total Tests Declared:       201
-// Implemented & Passing:      201 ✓
+// Total Tests Declared:       202
+// Implemented & Passing:      202 ✓
 //
 // Coverage by Section:
 // - Constructor:                5 tests  ✓
 // - Collector:                  5 tests  ✓
-// - BondRoute Integration:     37 tests  ✓
+// - BondRoute Integration:     38 tests  ✓
 // - Hook Callbacks:            21 tests  ✓
 // - Unlock Callback:            9 tests  ✓
 // - Swap Execution:            14 tests  ✓
