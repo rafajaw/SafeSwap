@@ -752,8 +752,6 @@ contract RealPoolIntegrationTest is Test {
     {
         BondContext memory context  =  _create_two_funding_context( user, 100 ether, 200 ether );
         DonateParams memory params  =  DonateParams({
-            token0: token0,
-            token1: token1,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
 
@@ -770,8 +768,6 @@ contract RealPoolIntegrationTest is Test {
     {
         BondContext memory context  =  _create_two_funding_context( user, 0, 200 ether );
         DonateParams memory params  =  DonateParams({
-            token0: token0,
-            token1: token1,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
 
@@ -1024,8 +1020,6 @@ contract RealPoolIntegrationTest is Test {
     function test_real_pool_quote_donate_stake_normalizes_both_sides( ) external view
     {
         DonateParams memory params  =  DonateParams({
-            token0:    IERC20(address(token0)),
-            token1:    IERC20(address(token1)),
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.donate.selector, params );
@@ -1043,8 +1037,6 @@ contract RealPoolIntegrationTest is Test {
     function test_real_pool_quote_donate_dust_input_still_yields_real_stake( ) external view
     {
         DonateParams memory params  =  DonateParams({
-            token0:    IERC20(address(token0)),
-            token1:    IERC20(address(token1)),
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.donate.selector, params );
@@ -1062,8 +1054,6 @@ contract RealPoolIntegrationTest is Test {
     function test_real_pool_quote_donate_one_sided_yields_real_stake( ) external view
     {
         DonateParams memory params  =  DonateParams({
-            token0:    IERC20(address(token0)),
-            token1:    IERC20(address(token1)),
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.donate.selector, params );

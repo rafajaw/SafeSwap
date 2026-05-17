@@ -337,8 +337,6 @@ contract ReentrantProtectedContextTest is Test {
     function _create_donate_params( ) private view returns ( DonateParams memory )
     {
         return DonateParams({
-            token0: IERC20(Currency.unwrap( outer_pool_key.currency0 )),
-            token1: IERC20(Currency.unwrap( outer_pool_key.currency1 )),
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
     }

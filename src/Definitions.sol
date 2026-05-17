@@ -32,6 +32,4 @@ string constant SWAPS_REQUIRE_EXACTLY_ONE_FUNDING       =  "Swaps require exactl
 string constant ADD_LIQUIDITY_REQUIRES_TWO_FUNDINGS     =  "Add liquidity requires exactly 2 fundings";
 string constant DONATE_REQUIRES_TWO_FUNDINGS            =  "Donate requires exactly 2 fundings";
 string constant TOKENS_MUST_BE_DIFFERENT                =  "Tokens must be different";
-string constant FUNDINGS_MUST_MATCH_DONATION_TOKENS     =  "Fundings must match donation tokens";
-
 

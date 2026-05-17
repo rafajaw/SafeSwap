@@ -666,8 +666,6 @@ abstract contract SafeSwapTestBase is Test {
     internal view returns ( DonateParams memory )
     {
         return DonateParams({
-            token0: token0,
-            token1: token1,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
     }

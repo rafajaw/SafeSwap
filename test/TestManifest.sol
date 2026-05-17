@@ -88,7 +88,6 @@ interface IBondRouteIntegrationTests {
     // ─── BondRoute_quote_call( ) - Donate ─────────────────────────────────────────
     function test_quote_call_donate_reverts_if_tokens_same( ) external;
     function test_quote_call_donate_reverts_if_funding_count_not_2( ) external;
-    function test_quote_call_donate_reverts_if_fundings_do_not_match_params( ) external;
     function test_quote_call_donate_returns_correct_execution_delays( ) external;
 
     // ─── BondRoute_quote_call( ) - Unknown Selector ────────────────────────────────
@@ -502,13 +501,13 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Total Tests Declared:       215
-// Implemented & Passing:      215 ✓
+// Total Tests Declared:       214
+// Implemented & Passing:      214 ✓
 //
 // Coverage by Section:
 // - Constructor:                7 tests  ✓
 // - Collector:                  5 tests  ✓
-// - BondRoute Integration:     41 tests  ✓
+// - BondRoute Integration:     40 tests  ✓
 // - Hook Callbacks:            21 tests  ✓
 // - Unlock Callback:            9 tests  ✓
 // - Swap Execution:            14 tests  ✓

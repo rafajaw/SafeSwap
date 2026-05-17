@@ -397,13 +397,13 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
     function test_quote_call_donate_reverts_if_tokens_same( ) external
     {
         DonateParams memory params  =  DonateParams({
-            token0: token0,
-            token1: token0,
             pool_info: _default_pool_info( )
         });
         bytes memory call_data  =  _encode_donate_calldata( params );
 
-        TokenAmount[] memory preferred_fundings  =  _create_liquidity_fundings( 100 ether, 200 ether );
+        TokenAmount[] memory preferred_fundings  =  new TokenAmount[](2);
+        preferred_fundings[ 0 ]  =  TokenAmount({ token: token0, amount: 100 ether });
+        preferred_fundings[ 1 ]  =  TokenAmount({ token: token0, amount: 200 ether });
 
         vm.expectRevert( "Tokens must be different" );
         hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
@@ -417,19 +417,6 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         TokenAmount[] memory one_funding  =  _create_swap_fundings( 100 ether );
         vm.expectRevert( "Donate requires exactly 2 fundings" );
         hook.BondRoute_quote_call( call_data, token0, one_funding );
-    }
-
-    function test_quote_call_donate_reverts_if_fundings_do_not_match_params( ) external
-    {
-        DonateParams memory params  =  _create_donate_params( );
-        bytes memory call_data  =  _encode_donate_calldata( params );
-
-        TokenAmount[] memory preferred_fundings  =  new TokenAmount[](2);
-        preferred_fundings[ 0 ]  =  TokenAmount({ token: token0, amount: 100 ether });
-        preferred_fundings[ 1 ]  =  TokenAmount({ token: token2, amount: 200 ether });
-
-        vm.expectRevert( "Fundings must match donation tokens" );
-        hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
     }
 
     function test_quote_call_donate_returns_correct_execution_delays( ) external view
