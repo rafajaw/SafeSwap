@@ -120,7 +120,7 @@ contract FuzzTest is SafeSwapTestBase {
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, expected_user_output, min_out ) );
-        hook.test_execute_exact_input_swap( context, params );
+        hook.harness_execute_exact_input_swap( context, params );
     }
 
     function testFuzz_exact_output_respects_maximum_input( uint256 amount_out, uint256 max_in ) external
@@ -143,7 +143,7 @@ contract FuzzTest is SafeSwapTestBase {
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, max_in + 1, max_in ) );
-        hook.test_execute_exact_output_swap( context, params );
+        hook.harness_execute_exact_output_swap( context, params );
     }
 
 
@@ -162,7 +162,7 @@ contract FuzzTest is SafeSwapTestBase {
         pool_manager.set_mock_donate_amounts( -int128(amount0), -int128(amount1) );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_donate( context, params );
+        hook.harness_execute_donate( context, params );
         // Property: settlement does not revert across any (amount0, amount1) within bounds.
     }
 
@@ -179,6 +179,6 @@ contract FuzzTest is SafeSwapTestBase {
         pool_manager.set_mock_donate_amounts( -int128(amount0), -int128(amount1) );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_donate( context, params );
+        hook.harness_execute_donate( context, params );
     }
 }

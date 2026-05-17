@@ -5,8 +5,7 @@ import "forge-std/Test.sol";
 import "@SafeSwap/SafeSwap.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
-import { POOL_MANAGER_KEY } from "@SafeSwap/UniswapHook.sol";
-import { CONFIG_SIGNER } from "@SafeSwap/Definitions.sol";
+import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_COLLECTOR_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -22,21 +21,21 @@ import { MockBondRoute, MockChainConfig, MockERC20 } from "./TestBase.t.sol";
 
 contract ReentryPoolTestHook is SafeSwap {
 
-    constructor( address initial_collector ) SafeSwap( initial_collector ) { }
+    constructor( ) SafeSwap( ) { }
 
-    function test_donate( BondContext memory context, DonateParams memory params )
+    function harness_donate( BondContext memory context, DonateParams memory params )
     external
     {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.Donate)) ) );
     }
 
-    function test_add_liquidity( BondContext memory context, AddLiquidityParams memory params )
+    function harness_add_liquidity( BondContext memory context, AddLiquidityParams memory params )
     external
     {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.AddLiquidity)) ) );
     }
 
-    function test_swap_exact_input( BondContext memory context, ExactInputSwapParams memory params )
+    function harness_swap_exact_input( BondContext memory context, ExactInputSwapParams memory params )
     external
     {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactInputSwap)) ) );
@@ -162,6 +161,7 @@ contract ReentrantERC20 is IERC20 {
         }
         else
         {
+            // forge-lint: disable-next-line(erc20-unchecked-transfer)
             MockERC20(token).transfer( address(pool_manager), amount );
         }
 
@@ -221,9 +221,10 @@ contract ReentrantProtectedContextTest is Test {
         real_pool_manager  =  IPoolManager(abi.decode( ret, (address) ));
 
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(real_pool_manager) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_COLLECTOR_KEY, collector );
 
         address hook_target  =  address(uint160(0x0AA0));
-        deployCodeTo( "ReentrantProtectedContext.t.sol:ReentryPoolTestHook", abi.encode( collector ), hook_target );
+        deployCodeTo( "ReentrantProtectedContext.t.sol:ReentryPoolTestHook", hook_target );
         hook  =  ReentryPoolTestHook(payable(hook_target));
 
         malicious_token  =  new ReentrantERC20( );
@@ -312,7 +313,7 @@ contract ReentrantProtectedContextTest is Test {
         BondContext memory context  =  _create_swap_context( user, 1 ether );
 
         vm.expectRevert( );
-        hook.test_swap_exact_input( context, params );
+        hook.harness_swap_exact_input( context, params );
 
         assertFalse( malicious_token.direct_swap_succeeded( ), "Reentrant direct PoolManager swap must not pass hook gating." );
     }
@@ -330,7 +331,7 @@ contract ReentrantProtectedContextTest is Test {
             salt: bytes32(0)
         });
 
-        hook.test_add_liquidity( _create_liquidity_context( key, lp, SEED_AMOUNT, SEED_AMOUNT ), params );
+        hook.harness_add_liquidity( _create_liquidity_context( key, lp, SEED_AMOUNT, SEED_AMOUNT ), params );
     }
 
     function _create_donate_params( ) private view returns ( DonateParams memory )

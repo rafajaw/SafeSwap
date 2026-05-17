@@ -3,7 +3,7 @@
 ## Status
 
 - **Build:** SafeSwap runtime = 23,286 bytes (1,290 B under the EIP-170 cap, with `optimizer_runs = 10_000`). Re-measure after each iteration.
-- **Tests:** 214/214 passing across 16 suites.
+- **Tests:** 215/215 passing across 16 suites.
 - **Scope:** `src/SafeSwap.sol`, `src/User.sol`, `src/Collector.sol`, `src/UniswapHook.sol`, `src/Definitions.sol`, `src/libraries/*`, `src/integrations/BondRouteProtected.sol`, `src/integrations/IChainConfig.sol`, plus the `test/SafeSwap/` suites.
 
 ---
@@ -20,7 +20,9 @@ Operational requirements that must be true at or before deployment. Not security
 
 4. **CREATE2 hook-address mining.** Uniswap V4 requires the hook address to encode permission flags in its low 14 bits (mask = `0x3FFF`). SafeSwap needs `BEFORE_SWAP (0x0080) | BEFORE_ADD_LIQUIDITY (0x0800) | BEFORE_REMOVE_LIQUIDITY (0x0200) | BEFORE_DONATE (0x0020) = 0x0AA0`. There is no deploy script in this repository; one must be added before mainnet. The constructor now enforces this at deploy time (`_is_valid_safeswap_hook_address`) and reverts with `"SafeSwap: Invalid hook address"` before any pool can be initialized — so a wrong-flags deployment fails fast rather than at first `PoolManager.initialize`. Mining target: low 3 hex digits = `AA0` **and** the 4th-from-low nibble ∈ {0,1,2,3} so bits 12/13 stay clear. Any standard V4 hook miner (`mask + flags`) handles this.
 
-5. **`CONFIG_SIGNER` is the protocol-wide ChainConfig signer.** Hardcoded in `src/Definitions.sol` as a `// ***TODO***` placeholder; replace with the canonical SafeSwap signer key (e.g. a multisig) for the target chain before mainnet. Decoupled from `initial_collector` — the constructor takes only the collector, so the operational fee role can rotate independently from the protocol's config-signing authority.
+5. **`CONFIG_SIGNER` is the protocol-wide ChainConfig signer.** Hardcoded in `src/Definitions.sol` as a `// ***TODO***` placeholder; replace with the canonical SafeSwap signer key for the target chain before mainnet. The constructor is zero-arg and reads both PoolManager and initial collector from ChainConfig under this keyspace.
+
+6. **ChainConfig contains `safeswap/initial_collector`** under `CONFIG_SIGNER`, set to the initial fee collector. Otherwise construction reverts with `"SafeSwap: Invalid initial_collector"`.
 
 ---
 
@@ -107,7 +109,7 @@ SafeSwap inherits Uniswap V4's stance: the PoolManager's `take`/`settle` account
 
 **D-4: `CONFIG_SIGNER` is decoupled from the fee collector**
 
-Hardcoded in `src/Definitions.sol` so the SafeSwap binary points at a single canonical signer per deployment. The `initial_collector` constructor argument controls only the fee withdrawal role; rotating the collector (via `transfer_collector` + `accept_collector`) does not affect ChainConfig lookups. Conversely, rotating the canonical signer requires a redeploy of SafeSwap — acceptable because ChainConfig governance can re-sign under a fresh key reference when needed.
+Hardcoded in `src/Definitions.sol` so the SafeSwap binary points at a single canonical signer per deployment. The constructor is zero-arg: PoolManager and initial collector are read from ChainConfig under `CONFIG_SIGNER`. Rotating the collector (via `transfer_collector` + `accept_collector`) does not affect ChainConfig lookups. Conversely, rotating the canonical signer requires a redeploy of SafeSwap — acceptable because ChainConfig governance can re-sign under a fresh key reference when needed.
 
 ---
 
@@ -146,9 +148,9 @@ Hardcoded in `src/Definitions.sol` so the SafeSwap binary points at a single can
 1. [ ] **Replace the `CONFIG_SIGNER` placeholder in `src/Definitions.sol`** with the canonical SafeSwap signer for the target chain. The `// ***TODO***  -  Fix before deployment!` marker must be gone before a deploy commit is tagged.
 3. [ ] Verify ChainConfig contract is deployed at `0x5Afec0de00EB1c5323C7faA110f67499F744467b` on the target chain.
 4. [ ] Write the `uniswap_v4/pool_manager` ChainConfig entry under the `CONFIG_SIGNER` keyspace, pointing at the canonical Uniswap V4 PoolManager for the target chain.
+5. [ ] Write the `safeswap/initial_collector` ChainConfig entry under the `CONFIG_SIGNER` keyspace, pointing at the initial fee collector.
 5. [ ] Verify BondRoute is deployed at `0xb01d00000000440215e86e0A436f9b59FeB2F14a` on the target chain.
 6. [ ] Add a CREATE2 deploy script that mines a hook address satisfying `address & 0x3FFF == 0x0AA0`. The constructor will revert otherwise — smoke-test it.
-7. [ ] Decide the `initial_collector` address (multisig recommended). Now operationally independent from `CONFIG_SIGNER`.
 8. [ ] Pin `foundry.toml` `optimizer_runs` to the largest value that keeps SafeSwap runtime under 24,576 bytes, then commit.
 9. [ ] Document M-2 / D-2 (LP custody depends on BondRoute) and D-3 (no FoT/rebasing support) in user-facing docs.
 10. [ ] Run `forge test -vvv` on the exact deployment commit; archive the output.

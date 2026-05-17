@@ -39,7 +39,7 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context, params );
+        hook.harness_execute_exact_input_swap( context, params );
 
         // User pays token0 and receives token1 minus protocol fee.
         assertEq(
@@ -65,7 +65,7 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_output_swap( context, params );
+        hook.harness_execute_exact_output_swap( context, params );
 
         // User pays token0 and receives token1 minus protocol fee.
         assertEq(
@@ -125,7 +125,7 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
 
         assertEq(
             user_token0_before - token0.balanceOf( user ),
@@ -150,7 +150,7 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( context, params );
+        hook.harness_execute_remove_liquidity( context, params );
 
         assertEq(
             token0.balanceOf( user ) - user_token0_before,
@@ -176,7 +176,7 @@ contract IntegrationTest is SafeSwapTestBase {
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( add_context, add_params );
+        hook.harness_execute_add_liquidity( add_context, add_params );
 
         // User paid 50 each.
         assertEq( user_token0_start - token0.balanceOf( user ), 50 ether, "After add: user paid 50 token0." );
@@ -189,7 +189,7 @@ contract IntegrationTest is SafeSwapTestBase {
         pool_manager.set_mock_liquidity_amounts( 25 ether, 25 ether );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( remove_context, remove_params );
+        hook.harness_execute_remove_liquidity( remove_context, remove_params );
 
         // Net: paid 50, got back 25 → lost 25 of each.
         assertEq( user_token0_start - token0.balanceOf( user ), 25 ether, "After remove: net loss is 25 token0." );
@@ -210,7 +210,7 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 user_token0_before  =  token0.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context1, params1 );
+        hook.harness_execute_exact_input_swap( context1, params1 );
 
         assertEq(
             user_token0_before - token0.balanceOf( user ),
@@ -227,7 +227,7 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 user_token0_before2  =  token0.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context2, params2 );
+        hook.harness_execute_exact_input_swap( context2, params2 );
 
         assertEq(
             user_token0_before2 - token0.balanceOf( user ),
@@ -247,7 +247,7 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 user1_token0_before  =  token0.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context1, params1 );
+        hook.harness_execute_exact_input_swap( context1, params1 );
 
         assertEq(
             user1_token0_before - token0.balanceOf( user ),
@@ -261,7 +261,7 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 user2_token0_before  =  token0.balanceOf( other_user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context2, params1 );
+        hook.harness_execute_exact_input_swap( context2, params1 );
 
         assertEq(
             user2_token0_before - token0.balanceOf( other_user ),
@@ -279,7 +279,7 @@ contract IntegrationTest is SafeSwapTestBase {
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( liq_context, liq_params );
+        hook.harness_execute_add_liquidity( liq_context, liq_params );
 
         // Then swap from other_user.
         BondContext memory swap_context  =  _create_bond_context( other_user, 100 ether );
@@ -290,7 +290,7 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 other_token0_before  =  token0.balanceOf( other_user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( swap_context, swap_params );
+        hook.harness_execute_exact_input_swap( swap_context, swap_params );
 
         assertEq(
             other_token0_before - token0.balanceOf( other_user ),
@@ -318,7 +318,7 @@ contract IntegrationTest is SafeSwapTestBase {
             ExactInputSwapParams memory params  =  _create_exact_input_params( 90 ether );
 
             vm.prank( address(pool_manager) );
-            hook.test_execute_exact_input_swap( context, params );
+            hook.harness_execute_exact_input_swap( context, params );
         }
 
         uint256 hook_fee_after  =  token1.balanceOf( address(hook) );

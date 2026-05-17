@@ -15,7 +15,7 @@ contract DonateExecutionTest is SafeSwapTestBase {
 
         uint256 user_token0_before  =  token0.balanceOf( user );
 
-        hook.test_execute_donate( context, params );
+        hook.harness_execute_donate( context, params );
 
         assertEq( user_token0_before - token0.balanceOf( user ), 0, "Mock BondRoute skips actual transfer." );
     }
@@ -27,7 +27,7 @@ contract DonateExecutionTest is SafeSwapTestBase {
 
         pool_manager.set_mock_donate_amounts( 0, -100 ether );
 
-        hook.test_execute_donate( context, params );
+        hook.harness_execute_donate( context, params );
     }
 
     function test_donate_transfers_both_tokens_to_pool( ) external
@@ -37,6 +37,6 @@ contract DonateExecutionTest is SafeSwapTestBase {
 
         pool_manager.set_mock_donate_amounts( -100 ether, -200 ether );
 
-        hook.test_execute_donate( context, params );
+        hook.harness_execute_donate( context, params );
     }
 }

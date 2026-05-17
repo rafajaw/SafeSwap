@@ -2,7 +2,6 @@
 pragma solidity ^0.8.30;
 
 import "./TestBase.t.sol";
-import { SafeSwapCommon } from "@SafeSwap/libraries/SafeSwapCommon.sol";
 import { PROTOCOL_FEE_DIVISOR } from "@SafeSwap/Definitions.sol";
 
 
@@ -60,7 +59,7 @@ contract SafeSwapHandler is Test {
         pool_manager.set_mock_swap_amounts( -int128(uint128(amount_in)), int128(uint128(mock_output)) );
 
         vm.prank( address(pool_manager) );
-        try hook.test_execute_exact_input_swap( context, params )
+        try hook.harness_execute_exact_input_swap( context, params )
         {
             // Calculate protocol fee: 10% of 0.30% = 0.03%.
             uint256 protocol_fee  =  mock_output * 3000 / PROTOCOL_FEE_DIVISOR;
@@ -139,7 +138,7 @@ contract InvariantsTest is SafeSwapTestBase {
     {
         // After all operations, protected context should be cleared.
         assertEq(
-            hook.test_hook_callback_allowed( ),
+            hook.harness_hook_callback_allowed( ),
             false,
             "Protected context should be cleared after operations."
         );
@@ -163,7 +162,7 @@ contract InvariantsTest is SafeSwapTestBase {
         });
 
         // Ensure not protected.
-        hook.test_revoke_hook_callback_permission( );
+        hook.harness_revoke_hook_callback_permission( );
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( BondRouteRequired.selector );

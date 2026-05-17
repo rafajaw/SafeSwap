@@ -183,7 +183,7 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 hook_balance_before  =  token1.balanceOf( address(hook) );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context, params );
+        hook.harness_execute_exact_input_swap( context, params );
 
         // Protocol fee = 100 * 3000 / 10_000_000 = 0.03 ether.
         assertEq(
@@ -203,7 +203,7 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 user_balance_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context, params );
+        hook.harness_execute_exact_input_swap( context, params );
 
         // User receives: 100 - (100 * 3000 / 10_000_000) = 100 - 0.03 = 99.97 ether.
         assertEq(

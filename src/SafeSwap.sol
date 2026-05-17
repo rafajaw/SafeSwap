@@ -25,8 +25,8 @@ error UnknownSelector( bytes4 selector );
  */
 contract SafeSwap is Collector {
 
-    constructor( address initial_collector )
-    Collector( initial_collector ) { }
+    constructor( )
+    Collector( ) { }
 
 
     // ━━━━  BONDROUTE INTERFACE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

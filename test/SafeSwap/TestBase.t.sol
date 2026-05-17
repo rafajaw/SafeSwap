@@ -10,8 +10,7 @@ import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
 import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
-import { POOL_MANAGER_KEY } from "@SafeSwap/UniswapHook.sol";
-import { CONFIG_SIGNER } from "@SafeSwap/Definitions.sol";
+import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_COLLECTOR_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -370,7 +369,7 @@ contract TestableSafeSwap is SafeSwap {
     bool private _bypass_bondroute;
     BondContext private _mock_context;
 
-    constructor( address initial_collector ) SafeSwap( initial_collector ) { }
+    constructor( ) SafeSwap( ) { }
 
     function set_bypass_bondroute( bool bypass ) external
     {
@@ -387,81 +386,81 @@ contract TestableSafeSwap is SafeSwap {
         return _mock_context;
     }
 
-    function test_set_hook_callback_allowed( bool is_allowed ) external
+    function harness_set_hook_callback_allowed( bool is_allowed ) external
     {
         if(  is_allowed  )  _is_hook_callback_allowed  =  true;
         else               _is_hook_callback_allowed  =  false;
     }
 
-    function test_allow_hook_callback( ) external
+    function harness_allow_hook_callback( ) external
     {
         _is_hook_callback_allowed  =  true;
     }
 
-    function test_revoke_hook_callback_permission( ) external
+    function harness_revoke_hook_callback_permission( ) external
     {
         _is_hook_callback_allowed  =  false;
     }
 
-    function test_hook_callback_allowed( ) external view returns ( bool )
+    function harness_hook_callback_allowed( ) external view returns ( bool )
     {
         return _is_hook_callback_allowed;
     }
 
-    function test_execute_exact_input_swap( BondContext memory context, ExactInputSwapParams memory params ) external
+    function harness_execute_exact_input_swap( BondContext memory context, ExactInputSwapParams memory params ) external
     {
         _is_hook_callback_allowed  =  true;
         ExactInputSwapLib.execute( context, params, PoolManager, address(this) );
         _is_hook_callback_allowed  =  false;
     }
 
-    function test_execute_exact_output_swap( BondContext memory context, ExactOutputSwapParams memory params ) external
+    function harness_execute_exact_output_swap( BondContext memory context, ExactOutputSwapParams memory params ) external
     {
         _is_hook_callback_allowed  =  true;
         ExactOutputSwapLib.execute( context, params, PoolManager, address(this) );
         _is_hook_callback_allowed  =  false;
     }
 
-    function test_execute_add_liquidity( BondContext memory context, AddLiquidityParams memory params ) external
+    function harness_execute_add_liquidity( BondContext memory context, AddLiquidityParams memory params ) external
     {
         _is_hook_callback_allowed  =  true;
         AddLiquidityLib.execute( context, params, PoolManager, address(this) );
         _is_hook_callback_allowed  =  false;
     }
 
-    function test_execute_remove_liquidity( BondContext memory context, RemoveLiquidityParams memory params ) external
+    function harness_execute_remove_liquidity( BondContext memory context, RemoveLiquidityParams memory params ) external
     {
         _is_hook_callback_allowed  =  true;
         RemoveLiquidityLib.execute( context, params, PoolManager, address(this) );
         _is_hook_callback_allowed  =  false;
     }
 
-    function test_execute_donate( BondContext memory context, DonateParams memory params ) external
+    function harness_execute_donate( BondContext memory context, DonateParams memory params ) external
     {
         _is_hook_callback_allowed  =  true;
         DonateLib.execute( context, params, PoolManager, address(this) );
         _is_hook_callback_allowed  =  false;
     }
 
-    function test_build_pool_key( IERC20 token_in, IERC20 token_out, uint24 fee, int24 tick_spacing )
+    function harness_build_pool_key( IERC20 token_in, IERC20 token_out, uint24 fee, int24 tick_spacing )
     external view returns ( PoolKey memory )
     {
         return SafeSwapCommon.build_pool_key( token_in, token_out, fee, tick_spacing, address(this) );
     }
 
-    function test_calculate_swap_stake( IERC20 token, uint256 amount )
+    function harness_calculate_swap_stake( IERC20 token, uint256 amount )
     external pure returns ( TokenAmount memory )
     {
         return SafeSwapCommon.calculate_swap_stake( token, amount );
     }
 
-    function test_calculate_liquidity_stake( IERC20 token, uint256 amount )
+    function harness_calculate_liquidity_stake( IERC20 token, uint256 amount )
     external pure returns ( TokenAmount memory )
     {
         return SafeSwapCommon.calculate_liquidity_stake( token, amount );
     }
 
-    function test_position_salt( address _user, bytes32 salt )
+    function harness_position_salt( address _user, bytes32 salt )
     external pure returns ( bytes32 )
     {
         return SafeSwapCommon._position_salt( _user, salt );
@@ -525,8 +524,9 @@ abstract contract SafeSwapTestBase is Test {
         vm.etch( CHAINCONFIG_ADDRESS, address(chain_config).code );
         vm.etch( BONDROUTE_ADDRESS, address(bond_route).code );
 
-        // Set pool manager in ChainConfig under the hardcoded CONFIG_SIGNER keyspace.
+        // Set deployment config in ChainConfig under the hardcoded CONFIG_SIGNER keyspace.
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(pool_manager) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_COLLECTOR_KEY, collector );
 
         // Set skip_actual_transfer to true on the etched BondRoute.
         MockBondRoute(payable(BONDROUTE_ADDRESS)).set_skip_actual_transfer( true );
@@ -544,7 +544,7 @@ abstract contract SafeSwapTestBase is Test {
         }
 
         // Deploy hook at the address carrying SafeSwap's Uniswap V4 permission flags.
-        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", abi.encode( collector ), HOOK_TARGET );
+        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", HOOK_TARGET );
         hook  =  TestableSafeSwap(payable(HOOK_TARGET));
 
         // Initialize pool in mock pool manager.

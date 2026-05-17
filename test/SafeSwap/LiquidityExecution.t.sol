@@ -40,7 +40,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
 
         assertEq(
             user_token0_before - token0.balanceOf( user ),
@@ -64,7 +64,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 pm_balance_before  =  token0.balanceOf( address(pool_manager) );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
 
         assertEq(
             token0.balanceOf( address(pool_manager) ) - pm_balance_before,
@@ -83,7 +83,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 pm_balance_before  =  token1.balanceOf( address(pool_manager) );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
 
         assertEq(
             token1.balanceOf( address(pool_manager) ) - pm_balance_before,
@@ -109,7 +109,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 50 ether, 60 ether ) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
     }
 
     function test_add_liquidity_reverts_on_amount1_slippage( ) external
@@ -129,7 +129,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 50 ether, 60 ether ) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
     }
 
     function test_add_liquidity_passes_when_amounts_meet_minimums( ) external
@@ -151,7 +151,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
 
         assertEq(
             user_token0_before - token0.balanceOf( user ),
@@ -182,7 +182,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( OneSidedDepositMismatch.selector, address(token1), 50 ether ) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
     }
 
     function test_add_liquidity_reverts_on_one_sided_mismatch_token0_expected( ) external
@@ -202,7 +202,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( OneSidedDepositMismatch.selector, address(token0), 50 ether ) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
     }
 
     function test_add_liquidity_handles_single_sided_deposit( ) external
@@ -224,7 +224,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
 
         assertEq(
             user_token0_before - token0.balanceOf( user ),
@@ -258,7 +258,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token0_before  =  token0.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
 
         // Verify execution completed (tick range accepted by pool manager).
         assertGt(
@@ -287,7 +287,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token0_before  =  token0.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
 
         // Verify execution completed with custom salt (position identifier).
         assertEq(
@@ -315,7 +315,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context_a, params );
+        hook.harness_execute_add_liquidity( context_a, params );
 
         bytes32 salt_from_user_a  =  pool_manager.last_modify_salt( );
 
@@ -323,7 +323,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         BondContext memory context_b  =  _create_bond_context_two_fundings( other_user, 100 ether, 100 ether );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context_b, params );
+        hook.harness_execute_add_liquidity( context_b, params );
 
         bytes32 salt_from_user_b  =  pool_manager.last_modify_salt( );
 
@@ -350,12 +350,12 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
 
         bytes32 salt_first_call  =  pool_manager.last_modify_salt( );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( context, params );
+        hook.harness_execute_add_liquidity( context, params );
 
         bytes32 salt_second_call  =  pool_manager.last_modify_salt( );
 
@@ -381,7 +381,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( context, params );
+        hook.harness_execute_remove_liquidity( context, params );
 
         assertEq(
             token0.balanceOf( user ) - user_token0_before,
@@ -415,7 +415,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 50 ether, 60 ether ) );
-        hook.test_execute_remove_liquidity( context, params );
+        hook.harness_execute_remove_liquidity( context, params );
     }
 
     function test_remove_liquidity_reverts_on_amount1_slippage( ) external
@@ -437,7 +437,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 50 ether, 60 ether ) );
-        hook.test_execute_remove_liquidity( context, params );
+        hook.harness_execute_remove_liquidity( context, params );
     }
 
     function test_remove_liquidity_passes_when_amounts_meet_minimums( ) external
@@ -462,7 +462,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( context, params );
+        hook.harness_execute_remove_liquidity( context, params );
 
         assertEq(
             token0.balanceOf( user ) - user_token0_before,
@@ -499,7 +499,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token0_before  =  token0.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( context, params );
+        hook.harness_execute_remove_liquidity( context, params );
 
         assertEq(
             token0.balanceOf( user ) - user_token0_before,
@@ -530,7 +530,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token0_before  =  token0.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( context, params );
+        hook.harness_execute_remove_liquidity( context, params );
 
         assertEq(
             token0.balanceOf( user ) - user_token0_before,
@@ -561,7 +561,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         BondContext memory context_a  =  _create_bond_context( user, 0 );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( context_a, params );
+        hook.harness_execute_remove_liquidity( context_a, params );
 
         bytes32 salt_from_user_a  =  pool_manager.last_modify_salt( );
 
@@ -569,7 +569,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         BondContext memory context_b  =  _create_bond_context( other_user, 0 );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( context_b, params );
+        hook.harness_execute_remove_liquidity( context_b, params );
 
         bytes32 salt_from_user_b  =  pool_manager.last_modify_salt( );
 
@@ -597,7 +597,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_add_liquidity( add_context, add_params );
+        hook.harness_execute_add_liquidity( add_context, add_params );
 
         bytes32 salt_from_add  =  pool_manager.last_modify_salt( );
 
@@ -618,7 +618,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( remove_context, remove_params );
+        hook.harness_execute_remove_liquidity( remove_context, remove_params );
 
         bytes32 salt_from_remove  =  pool_manager.last_modify_salt( );
 
@@ -640,7 +640,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( context, params );
+        hook.harness_execute_remove_liquidity( context, params );
 
         assertEq(
             token0.balanceOf( user ) - user_token0_before,
@@ -665,7 +665,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_remove_liquidity( context, params );
+        hook.harness_execute_remove_liquidity( context, params );
 
         assertEq(
             token0.balanceOf( user ) - user_token0_before,

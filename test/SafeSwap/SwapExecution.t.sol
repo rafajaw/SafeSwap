@@ -34,7 +34,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         uint256 balance_before  =  token0.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context, params );
+        hook.harness_execute_exact_input_swap( context, params );
 
         assertEq(
             balance_before - token0.balanceOf( user ),
@@ -53,7 +53,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         uint256 balance_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context, params );
+        hook.harness_execute_exact_input_swap( context, params );
 
         // amount_out = 95 ether, protocol fee = 95 * 3000 / 10_000_000 = 0.0285 ether.
         // User receives 95 - 0.0285 = 94.9715 ether.
@@ -74,7 +74,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 89.973 ether, 95 ether ) );
-        hook.test_execute_exact_input_swap( context, params );
+        hook.harness_execute_exact_input_swap( context, params );
     }
 
     function test_exact_input_swap_zero_for_one_direction( ) external
@@ -94,7 +94,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context, params );
+        hook.harness_execute_exact_input_swap( context, params );
 
         // User pays token0, receives token1 minus protocol fee.
         assertEq(
@@ -137,7 +137,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context, params );
+        hook.harness_execute_exact_input_swap( context, params );
 
         // User pays token1, receives token0 minus protocol fee.
         assertEq(
@@ -165,7 +165,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         uint256 user_balance_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_input_swap( context, params );
+        hook.harness_execute_exact_input_swap( context, params );
 
         // Protocol fee = 100 * 3000 / 10_000_000 = 0.03 ether (0.03% on 0.3% pool).
         assertEq(
@@ -195,7 +195,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         uint256 balance_before  =  token0.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_output_swap( context, params );
+        hook.harness_execute_exact_output_swap( context, params );
 
         // User pays amount_in from delta = 95 ether.
         assertEq(
@@ -215,7 +215,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         uint256 balance_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_output_swap( context, params );
+        hook.harness_execute_exact_output_swap( context, params );
 
         // Exact-output: user receives exactly the requested amount; protocol fee is grossed up on top.
         assertEq(
@@ -239,7 +239,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 100 ether, 95 ether ) );
-        hook.test_execute_exact_output_swap( context, params );
+        hook.harness_execute_exact_output_swap( context, params );
     }
 
     function test_exact_output_swap_zero_for_one_direction( ) external
@@ -253,7 +253,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_output_swap( context, params );
+        hook.harness_execute_exact_output_swap( context, params );
 
         // User pays token0 (95 from delta), receives exactly the requested amount of token1.
         assertEq(
@@ -293,7 +293,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         uint256 user_token1_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_output_swap( context, params );
+        hook.harness_execute_exact_output_swap( context, params );
 
         // User pays token1 (95 from delta), receives exactly the requested amount of token0.
         assertEq(
@@ -319,7 +319,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         uint256 user_balance_before  =  token1.balanceOf( user );
 
         vm.prank( address(pool_manager) );
-        hook.test_execute_exact_output_swap( context, params );
+        hook.harness_execute_exact_output_swap( context, params );
 
         // Gross-up math: pool produces 100 * 10_000_000 / 9_997_000 = 100.030009002700810243 ether.
         // User receives exactly 100 ether (their request); the hook keeps the grossed-up surplus.
@@ -341,7 +341,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
     function test_build_pool_key_orders_currencies_correctly( ) external view
     {
         // token0 < token1 by setup.
-        PoolKey memory key1  =  hook.test_build_pool_key( token0, token1, POOL_FEE_030, TICK_SPACING_60 );
+        PoolKey memory key1  =  hook.harness_build_pool_key( token0, token1, POOL_FEE_030, TICK_SPACING_60 );
         assertEq(
             Currency.unwrap(key1.currency0),
             address(token0),
@@ -354,7 +354,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         );
 
         // Reverse order should still produce same key.
-        PoolKey memory key2  =  hook.test_build_pool_key( token1, token0, POOL_FEE_030, TICK_SPACING_60 );
+        PoolKey memory key2  =  hook.harness_build_pool_key( token1, token0, POOL_FEE_030, TICK_SPACING_60 );
         assertEq(
             Currency.unwrap(key2.currency0),
             address(token0),
@@ -369,7 +369,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
 
     function test_build_pool_key_sets_hook_address( ) external view
     {
-        PoolKey memory key  =  hook.test_build_pool_key( token0, token1, POOL_FEE_030, TICK_SPACING_60 );
+        PoolKey memory key  =  hook.harness_build_pool_key( token0, token1, POOL_FEE_030, TICK_SPACING_60 );
 
         assertEq(
             address(key.hooks),

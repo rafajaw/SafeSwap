@@ -9,9 +9,8 @@ import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
-import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER } from "@SafeSwap/Definitions.sol";
+import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_COLLECTOR_KEY } from "@SafeSwap/Definitions.sol";
 import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
-import { POOL_MANAGER_KEY } from "@SafeSwap/UniswapHook.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { IUnlockCallback } from "@UniswapV4Core/interfaces/callback/IUnlockCallback.sol";
@@ -31,39 +30,39 @@ import { MockERC20, MockBondRoute, MockChainConfig } from "./TestBase.t.sol";
 ///      PoolManager.unlock -> unlockCallback -> library execute -> real pool flow.
 contract RealPoolTestHook is SafeSwap {
 
-    constructor( address initial_collector ) SafeSwap( initial_collector ) { }
+    constructor( ) SafeSwap( ) { }
 
-    function test_swap_exact_input( BondContext memory context, ExactInputSwapParams memory params )
+    function harness_swap_exact_input( BondContext memory context, ExactInputSwapParams memory params )
     external
     {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactInputSwap)) ) );
     }
 
-    function test_swap_exact_output( BondContext memory context, ExactOutputSwapParams memory params )
+    function harness_swap_exact_output( BondContext memory context, ExactOutputSwapParams memory params )
     external
     {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactOutputSwap)) ) );
     }
 
-    function test_add_liquidity( BondContext memory context, AddLiquidityParams memory params )
+    function harness_add_liquidity( BondContext memory context, AddLiquidityParams memory params )
     external
     {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.AddLiquidity)) ) );
     }
 
-    function test_remove_liquidity( BondContext memory context, RemoveLiquidityParams memory params )
+    function harness_remove_liquidity( BondContext memory context, RemoveLiquidityParams memory params )
     external
     {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.RemoveLiquidity)) ) );
     }
 
-    function test_donate( BondContext memory context, DonateParams memory params )
+    function harness_donate( BondContext memory context, DonateParams memory params )
     external
     {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.Donate)) ) );
     }
 
-    function test_hook_callback_allowed( ) external view returns ( bool )
+    function harness_hook_callback_allowed( ) external view returns ( bool )
     {
         return _is_hook_callback_allowed;
     }
@@ -192,11 +191,12 @@ contract RealPoolIntegrationTest is Test {
 
         // Store pool manager address in ChainConfig.
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(real_pool_manager) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_COLLECTOR_KEY, collector );
 
         // Deploy hook at the address carrying SafeSwap's Uniswap V4 permission flags:
         // BEFORE_SWAP(0x80) | BEFORE_DONATE(0x20) | BEFORE_REMOVE_LIQUIDITY(0x200) | BEFORE_ADD_LIQUIDITY(0x800) = 0x0AA0.
         address hook_target  =  address(uint160(0x0AA0));
-        deployCodeTo( "RealPoolIntegration.t.sol:RealPoolTestHook", abi.encode( collector ), hook_target );
+        deployCodeTo( "RealPoolIntegration.t.sol:RealPoolTestHook", hook_target );
         hook  =  RealPoolTestHook(payable(hook_target));
 
         // Deploy tokens and ensure token0 < token1 for proper Uniswap V4 ordering.
@@ -244,7 +244,7 @@ contract RealPoolIntegrationTest is Test {
             amount1_min: 0,
             salt: bytes32(0)
         });
-        hook.test_add_liquidity( seed_context, seed_params );
+        hook.harness_add_liquidity( seed_context, seed_params );
     }
 
 
@@ -264,7 +264,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        hook.test_swap_exact_input( context, params );
+        hook.harness_swap_exact_input( context, params );
 
         uint256 token0_spent    =  user_token0_before - token0.balanceOf( user );
         uint256 token1_received  =  token1.balanceOf( user ) - user_token1_before;
@@ -286,7 +286,7 @@ contract RealPoolIntegrationTest is Test {
         });
 
         vm.expectRevert( );
-        hook.test_swap_exact_input( context, params );
+        hook.harness_swap_exact_input( context, params );
     }
 
     function test_real_pool_exact_input_swap_correct_protocol_fee( ) external
@@ -303,7 +303,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 hook_balance_before  =  token1.balanceOf( address(hook) );
         uint256 user_balance_before  =  token1.balanceOf( user );
 
-        hook.test_swap_exact_input( context, params );
+        hook.harness_swap_exact_input( context, params );
 
         uint256 protocol_fee  =  token1.balanceOf( address(hook) ) - hook_balance_before;
         uint256 user_received  =  token1.balanceOf( user ) - user_balance_before;
@@ -340,7 +340,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        hook.test_swap_exact_input( context, params );
+        hook.harness_swap_exact_input( context, params );
 
         uint256 token1_spent    =  user_token1_before - token1.balanceOf( user );
         uint256 token0_received  =  token0.balanceOf( user ) - user_token0_before;
@@ -367,7 +367,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        hook.test_swap_exact_output( context, params );
+        hook.harness_swap_exact_output( context, params );
 
         uint256 token0_spent    =  user_token0_before - token0.balanceOf( user );
         uint256 token1_received  =  token1.balanceOf( user ) - user_token1_before;
@@ -391,7 +391,7 @@ contract RealPoolIntegrationTest is Test {
         });
 
         vm.expectRevert( );
-        hook.test_swap_exact_output( context, params );
+        hook.harness_swap_exact_output( context, params );
     }
 
     function test_real_pool_exact_output_swap_correct_protocol_fee( ) external
@@ -408,7 +408,7 @@ contract RealPoolIntegrationTest is Test {
 
         uint256 hook_balance_before  =  token1.balanceOf( address(hook) );
 
-        hook.test_swap_exact_output( context, params );
+        hook.harness_swap_exact_output( context, params );
 
         uint256 protocol_fee   =  token1.balanceOf( address(hook) ) - hook_balance_before;
         uint256 grossed_up     =  desired_out * PROTOCOL_FEE_DIVISOR / (PROTOCOL_FEE_DIVISOR - POOL_FEE_030);
@@ -437,7 +437,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        hook.test_add_liquidity( context, params );
+        hook.harness_add_liquidity( context, params );
 
         uint256 token0_spent  =  user_token0_before - token0.balanceOf( user );
         uint256 token1_spent  =  user_token1_before - token1.balanceOf( user );
@@ -466,7 +466,7 @@ contract RealPoolIntegrationTest is Test {
         });
 
         vm.expectRevert( );
-        hook.test_add_liquidity( context, params );
+        hook.harness_add_liquidity( context, params );
     }
 
     function test_real_pool_add_liquidity_position_salt_isolation( ) external
@@ -488,13 +488,13 @@ contract RealPoolIntegrationTest is Test {
 
         // User A adds liquidity.
         BondContext memory context_a  =  _create_two_funding_context( user, amount, amount );
-        hook.test_add_liquidity( context_a, params );
+        hook.harness_add_liquidity( context_a, params );
 
         uint256 user_a_token0_before  =  token0.balanceOf( user );
 
         // User B adds liquidity with the same salt.
         BondContext memory context_b  =  _create_two_funding_context( other_user, amount, amount );
-        hook.test_add_liquidity( context_b, params );
+        hook.harness_add_liquidity( context_b, params );
 
         // User A should be unaffected by user B's add.
         assertEq(
@@ -517,7 +517,7 @@ contract RealPoolIntegrationTest is Test {
             amount1_min: 0,
             salt: same_salt
         });
-        hook.test_remove_liquidity( remove_context_b, remove_params );
+        hook.harness_remove_liquidity( remove_context_b, remove_params );
 
         // User A's balance should still be unaffected.
         assertEq(
@@ -547,7 +547,7 @@ contract RealPoolIntegrationTest is Test {
             amount1_min: 0,
             salt: salt
         });
-        hook.test_add_liquidity( add_context, add_params );
+        hook.harness_add_liquidity( add_context, add_params );
 
         // Read the position's liquidity from the real PoolManager.
         bytes32 effective_salt  =  SafeSwapCommon._position_salt( user, salt );
@@ -577,7 +577,7 @@ contract RealPoolIntegrationTest is Test {
             amount1_min: 0,
             salt: salt
         });
-        hook.test_remove_liquidity( remove_context, remove_params );
+        hook.harness_remove_liquidity( remove_context, remove_params );
 
         assertGt( token0.balanceOf( user ) - user_token0_before, 0, "User should receive token0 back." );
         assertGt( token1.balanceOf( user ) - user_token1_before, 0, "User should receive token1 back." );
@@ -600,7 +600,7 @@ contract RealPoolIntegrationTest is Test {
             amount1_min: 0,
             salt: salt
         });
-        hook.test_add_liquidity( add_context, add_params );
+        hook.harness_add_liquidity( add_context, add_params );
 
         // Try to remove with unrealistic slippage requirement.
         BondContext memory remove_context  =  _create_zero_funding_context( user );
@@ -617,7 +617,7 @@ contract RealPoolIntegrationTest is Test {
         });
 
         vm.expectRevert( );
-        hook.test_remove_liquidity( remove_context, remove_params );
+        hook.harness_remove_liquidity( remove_context, remove_params );
     }
 
     function test_real_pool_remove_liquidity_correct_amounts( ) external
@@ -640,7 +640,7 @@ contract RealPoolIntegrationTest is Test {
             amount1_min: 0,
             salt: salt
         });
-        hook.test_add_liquidity( add_context, add_params );
+        hook.harness_add_liquidity( add_context, add_params );
 
         uint256 token0_deposited  =  user_token0_before_add - token0.balanceOf( user );
         uint256 token1_deposited  =  user_token1_before_add - token1.balanceOf( user );
@@ -672,7 +672,7 @@ contract RealPoolIntegrationTest is Test {
             amount1_min: 0,
             salt: salt
         });
-        hook.test_remove_liquidity( remove_context, remove_params );
+        hook.harness_remove_liquidity( remove_context, remove_params );
 
         uint256 token0_returned  =  token0.balanceOf( user ) - user_token0_before_remove;
         uint256 token1_returned  =  token1.balanceOf( user ) - user_token1_before_remove;
@@ -699,7 +699,7 @@ contract RealPoolIntegrationTest is Test {
             amount1_min: 0,
             salt: bytes32(uint256(20))
         });
-        hook.test_add_liquidity( add_context, add_params );
+        hook.harness_add_liquidity( add_context, add_params );
 
         // Now swap.
         uint256 swap_amount  =  100 ether;
@@ -712,7 +712,7 @@ contract RealPoolIntegrationTest is Test {
 
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        hook.test_swap_exact_input( swap_context, swap_params );
+        hook.harness_swap_exact_input( swap_context, swap_params );
 
         uint256 received  =  token1.balanceOf( user ) - user_token1_before;
         assertGt( received, 0, "Swap should produce output after adding extra liquidity." );
@@ -731,14 +731,14 @@ contract RealPoolIntegrationTest is Test {
         });
 
         uint256 user_token1_before_1  =  token1.balanceOf( user );
-        hook.test_swap_exact_input( context1, params );
+        hook.harness_swap_exact_input( context1, params );
         uint256 output_1  =  token1.balanceOf( user ) - user_token1_before_1;
 
         // Second swap of same size in same direction.
         BondContext memory context2  =  _create_one_funding_context( user, swap_amount );
 
         uint256 user_token1_before_2  =  token1.balanceOf( user );
-        hook.test_swap_exact_input( context2, params );
+        hook.harness_swap_exact_input( context2, params );
         uint256 output_2  =  token1.balanceOf( user ) - user_token1_before_2;
 
         // Price impact: second swap should give less output (price moved against us).
@@ -760,7 +760,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        hook.test_donate( context, params );
+        hook.harness_donate( context, params );
 
         assertEq( user_token0_before - token0.balanceOf( user ), 100 ether, "User should donate token0." );
         assertEq( user_token1_before - token1.balanceOf( user ), 200 ether, "User should donate token1." );
@@ -778,7 +778,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        hook.test_donate( context, params );
+        hook.harness_donate( context, params );
 
         assertEq( token0.balanceOf( user ), user_token0_before, "User should not donate token0." );
         assertEq( user_token1_before - token1.balanceOf( user ), 200 ether, "User should donate token1." );
@@ -795,10 +795,10 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
 
-        hook.test_swap_exact_input( context, params );
+        hook.harness_swap_exact_input( context, params );
 
         assertEq(
-            hook.test_hook_callback_allowed( ),
+            hook.harness_hook_callback_allowed( ),
             false,
             "Protected context should be cleared after swap completes."
         );
@@ -837,7 +837,7 @@ contract RealPoolIntegrationTest is Test {
                 minimum_amount_out: 0,
                 pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
             });
-            hook.test_swap_exact_input( context, params );
+            hook.harness_swap_exact_input( context, params );
         }
 
         uint256 hook_token1_balance  =  token1.balanceOf( address(hook) );
@@ -1183,7 +1183,7 @@ contract RealPoolIntegrationTest is Test {
             amount1_min: 0,
             salt: bytes32(0)
         });
-        hook.test_add_liquidity( seed_context, seed_params );
+        hook.harness_add_liquidity( seed_context, seed_params );
     }
 
     function _create_native_one_funding_context_eth_in( address _user, uint256 amount )
@@ -1251,7 +1251,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 user_erc20_before     =  erc20_token.balanceOf( user );
         uint256 bondroute_eth_before  =  BONDROUTE_ADDRESS.balance;
 
-        hook.test_swap_exact_input( context, params );
+        hook.harness_swap_exact_input( context, params );
 
         uint256 erc20_received  =  erc20_token.balanceOf( user ) - user_erc20_before;
         uint256 eth_paid        =  bondroute_eth_before - BONDROUTE_ADDRESS.balance;
@@ -1280,7 +1280,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 user_eth_before    =  user.balance;
         uint256 user_erc20_before  =  erc20_token.balanceOf( user );
 
-        hook.test_swap_exact_input( context, params );
+        hook.harness_swap_exact_input( context, params );
 
         uint256 erc20_spent   =  user_erc20_before - erc20_token.balanceOf( user );
         uint256 eth_received  =  user.balance - user_eth_before;
@@ -1312,7 +1312,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 user_erc20_before     =  erc20_token.balanceOf( user );
         uint256 bondroute_eth_before  =  BONDROUTE_ADDRESS.balance;
 
-        hook.test_add_liquidity( add_context, add_params );
+        hook.harness_add_liquidity( add_context, add_params );
 
         assertLt( BONDROUTE_ADDRESS.balance,     bondroute_eth_before, "ETH should leave BondRoute on add_liquidity." );
         assertLt( erc20_token.balanceOf( user ), user_erc20_before,    "ERC20 should leave the user on add_liquidity." );
@@ -1336,7 +1336,7 @@ contract RealPoolIntegrationTest is Test {
         uint256 user_eth_after_add    =  user.balance;
         uint256 user_erc20_after_add  =  erc20_token.balanceOf( user );
 
-        hook.test_remove_liquidity( remove_context, remove_params );
+        hook.harness_remove_liquidity( remove_context, remove_params );
 
         // Remove sends ETH back to the user via V4's `take` — V4 transfers real ETH from PoolManager to the user EOA.
         assertGt( user.balance,                  user_eth_after_add,   "ETH should return to user on remove_liquidity." );

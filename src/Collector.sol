@@ -2,6 +2,8 @@
 pragma solidity ^0.8.30;
 
 import "@SafeSwap/User.sol";
+import "@SafeSwap/Definitions.sol";
+import { ChainConfig } from "@SafeSwap/integrations/IChainConfig.sol";
 import { SafeERC20 } from "@OpenZeppelin/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 as OZ_IERC20 } from "@OpenZeppelin/token/ERC20/IERC20.sol";
 
@@ -29,10 +31,12 @@ abstract contract Collector is User {
     address public collector;
     address public pending_collector;
 
-    constructor( address initial_collector )
+    constructor( )
     User( )
     {
-        if(  initial_collector == address(0)  )  revert Invalid({ field: "initial_collector", value: 0 });
+        address initial_collector  =  ChainConfig.read_address( CONFIG_SIGNER, INITIAL_COLLECTOR_KEY );
+
+        if(  initial_collector == address(0)  )  revert( "SafeSwap: Invalid initial_collector" );
 
         collector  =  initial_collector;
 

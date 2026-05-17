@@ -30,7 +30,6 @@ error BondRouteRequired( );
 
 // ━━━━  UNISWAP V4 CONFIG  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-bytes32 constant POOL_MANAGER_KEY  =   bytes32("uniswap_v4/pool_manager");
 bytes4 constant ERC6909_INTERFACE_ID  =  0x0f632fb3;
 uint160 constant HOOK_PERMISSION_MASK  =  uint160((1 << 14) - 1);
 uint160 constant EXPECTED_HOOK_FLAGS   =  0x0AA0;
