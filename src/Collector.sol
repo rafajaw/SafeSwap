@@ -42,6 +42,13 @@ abstract contract Collector is User {
 
     // ━━━━  COLLECTOR TRANSFER  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /**
+     * @notice Nominate `new_collector` as the pending collector. The transfer completes
+     *         only when the nominee calls `accept_collector`. Two-step to prevent typo loss.
+     * @dev    Passing `address(0)` is the cancel path: it clears any pending nomination
+     *         since no one can `accept_collector` as the zero address. No separate cancel
+     *         function exists by design.
+     */
     function transfer_collector( address new_collector )
     external
     {
@@ -51,6 +58,9 @@ abstract contract Collector is User {
         emit CollectorTransferStarted( collector, new_collector );
     }
 
+    /**
+     * @notice Accept a pending collector nomination. Only callable by the pending collector.
+     */
     function accept_collector( )
     external
     {

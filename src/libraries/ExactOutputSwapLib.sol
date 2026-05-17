@@ -118,6 +118,7 @@ library ExactOutputSwapLib {
                                             ? MIN_PROTOCOL_FEE_RATE
                                             : params.pool_info.fee;
         uint256 fee_complement          =  PROTOCOL_FEE_DIVISOR - effective_fee_rate;
+        // Truncating division: rounding dust on the gross-up is ≤1 wei per swap.
         uint256 grossed_up_pool_output  =  target_user_output * PROTOCOL_FEE_DIVISOR / fee_complement;
 
         bool zero_for_one  =  address(token_in) < address(params.token_out);

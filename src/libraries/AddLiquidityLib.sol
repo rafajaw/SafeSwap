@@ -15,6 +15,11 @@ import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { LiquidityAmounts } from "@UniswapV4Core/../test/utils/LiquidityAmounts.sol";
 
 
+// ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+error OneSidedDepositMismatch( address expected_token, uint256 minimum_required );
+
+
 // ━━━━  PARAMETERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 struct AddLiquidityParams {
@@ -167,7 +172,7 @@ library AddLiquidityLib {
         else if(  params.amount0_min > 0  )
         {
             // User expected to deposit token0 but none is needed (e.g., price moved out of range).
-            revert SlippageExceeded({ amount_received: 0, minimum_required: params.amount0_min });
+            revert OneSidedDepositMismatch({ expected_token: address(token0), minimum_required: params.amount0_min });
         }
 
         if(  amount1 < 0  )
@@ -182,7 +187,7 @@ library AddLiquidityLib {
         else if(  params.amount1_min > 0  )
         {
             // User expected to deposit token1 but none is needed (e.g., price moved out of range).
-            revert SlippageExceeded({ amount_received: 0, minimum_required: params.amount1_min });
+            revert OneSidedDepositMismatch({ expected_token: address(token1), minimum_required: params.amount1_min });
         }
     }
 }
