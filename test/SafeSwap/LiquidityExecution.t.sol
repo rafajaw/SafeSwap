@@ -165,6 +165,46 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         );
     }
 
+    function test_add_liquidity_reverts_on_one_sided_mismatch_token1_expected( ) external
+    {
+        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        AddLiquidityParams memory params  =  AddLiquidityParams({
+            pool_info: _default_pool_info( ),
+            tick_lower: -TICK_SPACING_60 * 10,
+            tick_upper: TICK_SPACING_60 * 10,
+            amount0_min: 0,
+            amount1_min: 50 ether,  // User expects token1 deposit.
+            salt: bytes32(0)
+        });
+
+        // Pool decides only token0 is needed (e.g., price moved out of range above).
+        pool_manager.set_mock_liquidity_amounts( -100 ether, 0 );
+
+        vm.prank( address(pool_manager) );
+        vm.expectRevert( abi.encodeWithSelector( OneSidedDepositMismatch.selector, address(token1), 50 ether ) );
+        hook.test_execute_add_liquidity( context, params );
+    }
+
+    function test_add_liquidity_reverts_on_one_sided_mismatch_token0_expected( ) external
+    {
+        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        AddLiquidityParams memory params  =  AddLiquidityParams({
+            pool_info: _default_pool_info( ),
+            tick_lower: -TICK_SPACING_60 * 10,
+            tick_upper: TICK_SPACING_60 * 10,
+            amount0_min: 50 ether,  // User expects token0 deposit.
+            amount1_min: 0,
+            salt: bytes32(0)
+        });
+
+        // Pool decides only token1 is needed.
+        pool_manager.set_mock_liquidity_amounts( 0, -100 ether );
+
+        vm.prank( address(pool_manager) );
+        vm.expectRevert( abi.encodeWithSelector( OneSidedDepositMismatch.selector, address(token0), 50 ether ) );
+        hook.test_execute_add_liquidity( context, params );
+    }
+
     function test_add_liquidity_handles_single_sided_deposit( ) external
     {
         BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 0 );

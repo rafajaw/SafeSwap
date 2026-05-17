@@ -19,6 +19,7 @@ import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta, toBalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
+import { Constants } from "@UniswapV4Core/../test/utils/Constants.sol";
 
 
 // ━━━━  MOCK ERC20  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -235,11 +236,11 @@ contract MockPoolManager {
         }
     }
 
-    function extsload( bytes32 slot ) external view returns ( bytes32 )
+    function extsload( bytes32 ) external pure returns ( bytes32 )
     {
-        // Return mock slot0 data for pool state queries.
-        // StateLibrary uses specific slot calculations.
-        return bytes32(0);
+        // V4 slot0 packs sqrtPriceX96 in the low 160 bits;
+        // returning a 1:1 price keeps stake math from div-by-zero.
+        return bytes32(uint256(Constants.SQRT_PRICE_1_1));
     }
 
     function extsload( bytes32 start_slot, uint256 n_slots ) external view returns ( bytes memory )
@@ -498,7 +499,7 @@ abstract contract SafeSwapTestBase is Test {
     uint24 constant POOL_FEE_100       =  10000;   // 1.00%.
     int24 constant TICK_SPACING_60     =  60;
     int24 constant TICK_SPACING_10     =  10;
-    uint160 constant SQRT_PRICE_1_1    =  79228162514264337593543950336;  // 1:1 price.
+    uint160 constant SQRT_PRICE_1_1    =  Constants.SQRT_PRICE_1_1;
     uint256 constant INITIAL_BALANCE   =  1_000_000 ether;
 
     address constant HOOK_TARGET          =  address(uint160(0x0AA0));

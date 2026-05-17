@@ -145,4 +145,40 @@ contract FuzzTest is SafeSwapTestBase {
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, max_in + 1, max_in ) );
         hook.test_execute_exact_output_swap( context, params );
     }
+
+
+    // ━━━━  Donate  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function testFuzz_donate_executes_for_arbitrary_split( uint128 amount0, uint128 amount1 ) external
+    {
+        // Bound away from zero so fundings are non-empty; cap below int128 max to avoid pool overflow.
+        amount0  =  uint128(bound( amount0, 1, uint128(type(int128).max / 2) ));
+        amount1  =  uint128(bound( amount1, 1, uint128(type(int128).max / 2) ));
+
+        BondContext memory context  =  _create_bond_context_two_fundings( user, amount0, amount1 );
+        DonateParams memory params  =  _create_donate_params( );
+
+        // Pool requests the exact funded amounts back as the donation.
+        pool_manager.set_mock_donate_amounts( -int128(amount0), -int128(amount1) );
+
+        vm.prank( address(pool_manager) );
+        hook.test_execute_donate( context, params );
+        // Property: settlement does not revert across any (amount0, amount1) within bounds.
+    }
+
+    function testFuzz_donate_executes_for_one_sided_split( uint128 amount, bool donate_token0 ) external
+    {
+        amount  =  uint128(bound( amount, 1, uint128(type(int128).max / 2) ));
+
+        uint128 amount0  =  donate_token0 ? amount : 0;
+        uint128 amount1  =  donate_token0 ? 0 : amount;
+
+        BondContext memory context  =  _create_bond_context_two_fundings( user, amount0, amount1 );
+        DonateParams memory params  =  _create_donate_params( );
+
+        pool_manager.set_mock_donate_amounts( -int128(amount0), -int128(amount1) );
+
+        vm.prank( address(pool_manager) );
+        hook.test_execute_donate( context, params );
+    }
 }

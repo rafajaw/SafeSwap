@@ -35,10 +35,6 @@ library SafeSwapCommon {
 
     // ━━━━  CONSTANTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    uint160 constant MIN_SQRT_PRICE_LIMIT               =   4295128740;  // MIN_SQRT_PRICE + 1.
-    uint160 constant MAX_SQRT_PRICE_LIMIT               =   1461446703485210103287273052203988822378723970341;  // MAX_SQRT_PRICE - 1.
-    uint24  constant DYNAMIC_FEE_FLAG                   =   0x800000;    // Uniswap V4 sentinel for hook-controlled dynamic LP fees.
-
     // EIP-712 type hash for PoolInfo struct (shared across all action libs).
     bytes32 constant POOL_INFO_TYPEHASH  =  keccak256( "PoolInfo(uint24 fee,int24 tick_spacing)" );
 

@@ -13,6 +13,7 @@ import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { LiquidityAmounts } from "@UniswapV4Core/../test/utils/LiquidityAmounts.sol";
+import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -85,7 +86,7 @@ library AddLiquidityLib {
         address hook_address
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == SafeSwapCommon.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
+        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
 
         // *NOTE*  -  token_pair must be [token0, token1] in order matching the pool's currency order.
         IERC20 token0            =  token_pair[ 0 ].token;

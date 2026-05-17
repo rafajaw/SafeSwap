@@ -7,6 +7,8 @@ import "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
+import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
+import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 
 
 // ━━━━  PARAMETERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -63,7 +65,7 @@ library ExactInputSwapLib {
     function get_constraints( ExactInputSwapParams memory params, TokenAmount memory input_token )
     internal pure returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == SafeSwapCommon.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
+        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
 
         IERC20 token_in    =  input_token.token;
         uint256 amount_in  =  input_token.amount;
@@ -106,7 +108,7 @@ library ExactInputSwapLib {
         IPoolManager.SwapParams memory swap_params  =  IPoolManager.SwapParams({
             zeroForOne: zero_for_one,
             amountSpecified: -int256(amount_in),
-            sqrtPriceLimitX96: zero_for_one ? SafeSwapCommon.MIN_SQRT_PRICE_LIMIT : SafeSwapCommon.MAX_SQRT_PRICE_LIMIT
+            sqrtPriceLimitX96: zero_for_one ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
         });
 
         BalanceDelta delta  =  pool_manager.swap( pool_key, swap_params, "" );

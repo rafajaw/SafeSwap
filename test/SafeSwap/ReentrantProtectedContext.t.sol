@@ -12,6 +12,8 @@ import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
+import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
+import { Constants } from "@UniswapV4Core/../test/utils/Constants.sol";
 
 import { MockBondRoute, MockChainConfig, MockERC20 } from "./TestBase.t.sol";
 
@@ -131,7 +133,7 @@ contract ReentrantERC20 is IERC20 {
             IPoolManager.SwapParams({
                 zeroForOne: true,
                 amountSpecified: -int256(attack_amount),
-                sqrtPriceLimitX96: SafeSwapCommon.MIN_SQRT_PRICE_LIMIT
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             ""
         );
@@ -190,7 +192,7 @@ contract ReentrantProtectedContextTest is Test {
 
     uint24 constant POOL_FEE_030       =  3000;
     int24 constant TICK_SPACING_60     =  60;
-    uint160 constant SQRT_PRICE_1_1    =  79228162514264337593543950336;
+    uint160 constant SQRT_PRICE_1_1    =  Constants.SQRT_PRICE_1_1;
     uint256 constant INITIAL_BALANCE   =  1_000_000 ether;
     uint256 constant SEED_AMOUNT       =  10_000 ether;
 

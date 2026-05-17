@@ -7,6 +7,7 @@ import "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
+import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 import { PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
@@ -84,7 +85,7 @@ library RemoveLiquidityLib {
         address hook_address
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == SafeSwapCommon.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
+        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
         if(  address(params.token0) == address(params.token1)  )         revert( "Tokens must be different" );
 
         PoolKey memory pool_key  =  PoolKey({

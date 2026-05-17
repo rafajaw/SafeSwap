@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "./TestBase.t.sol";
+import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 
 
 contract BondRouteIntegrationTest is SafeSwapTestBase {
@@ -342,6 +343,18 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         hook.BondRoute_quote_call( call_data, token0, three_fundings );
     }
 
+    function test_quote_call_add_liquidity_returns_correct_execution_delays( ) external view
+    {
+        AddLiquidityParams memory params  =  _create_add_liquidity_params( );
+        bytes memory call_data  =  _encode_add_liquidity_calldata( params );
+
+        TokenAmount[] memory preferred_fundings  =  _create_liquidity_fundings( 100 ether, 100 ether );
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
+
+        assertEq( constraints.min_execution_delay_in_blocks,   3,       "Min delay should be 3 blocks." );
+        assertEq( constraints.max_execution_delay_in_seconds,  4 hours, "Max delay should be 4 hours for liquidity ops." );
+    }
+
 
     // ━━━━  BondRoute_quote_call( ) - Remove Liquidity  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -364,6 +377,18 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
 
         vm.expectRevert( "Tokens must be different" );
         hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
+    }
+
+    function test_quote_call_remove_liquidity_returns_correct_execution_delays( ) external view
+    {
+        RemoveLiquidityParams memory params  =  _create_remove_liquidity_params( 100 ether );
+        bytes memory call_data  =  _encode_remove_liquidity_calldata( params );
+
+        TokenAmount[] memory no_fundings  =  new TokenAmount[]( 0 );
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, token0, no_fundings );
+
+        assertEq( constraints.min_execution_delay_in_blocks,   3,       "Min delay should be 3 blocks." );
+        assertEq( constraints.max_execution_delay_in_seconds,  4 hours, "Max delay should be 4 hours for liquidity ops." );
     }
 
 
@@ -407,6 +432,18 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
     }
 
+    function test_quote_call_donate_returns_correct_execution_delays( ) external view
+    {
+        DonateParams memory params  =  _create_donate_params( );
+        bytes memory call_data  =  _encode_donate_calldata( params );
+
+        TokenAmount[] memory preferred_fundings  =  _create_liquidity_fundings( 100 ether, 100 ether );
+        BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
+
+        assertEq( constraints.min_execution_delay_in_blocks,   3,       "Min delay should be 3 blocks." );
+        assertEq( constraints.max_execution_delay_in_seconds,  4 hours, "Max delay should be 4 hours for liquidity ops." );
+    }
+
 
     // ━━━━  BondRoute_quote_call( ) - Unknown Selector  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -425,7 +462,7 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
 
     function test_quote_call_rejects_dynamic_fee_on_every_selector( ) external
     {
-        uint24 dynamic_fee  =  SafeSwapCommon.DYNAMIC_FEE_FLAG;
+        uint24 dynamic_fee  =  LPFeeLibrary.DYNAMIC_FEE_FLAG;
         bytes memory expected_revert  =  abi.encodeWithSelector( UnsupportedFeeTier.selector, dynamic_fee );
 
         // Exact input swap.
