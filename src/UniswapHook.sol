@@ -37,7 +37,7 @@ abstract contract UniswapHook is IUnlockCallback {
 
     IPoolManager public immutable PoolManager;
 
-    bool transient _is_next_hook_callback_allowed;
+    bool transient _is_hook_callback_allowed;
 
     bytes32 constant POOL_MANAGER_KEY  =   bytes32("v4.pool_manager.address");
     bytes4 constant ERC6909_INTERFACE_ID  =  0x0f632fb3;
@@ -76,31 +76,6 @@ abstract contract UniswapHook is IUnlockCallback {
     }
 
 
-    // ━━━━  PROTECTED CONTEXT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    function _allow_next_hook_callback( ) internal
-    {
-        _is_next_hook_callback_allowed  =  true;
-    }
-
-    function _clear_next_hook_callback( ) internal
-    {
-        _is_next_hook_callback_allowed  =  false;
-    }
-
-    function _consume_next_hook_callback( ) internal
-    {
-        if(  _is_next_hook_callback_allowed == false  )  revert BondRouteRequired( );
-
-        _is_next_hook_callback_allowed  =  false;
-    }
-
-    function _next_hook_callback_allowed( ) internal view returns ( bool )
-    {
-        return _is_next_hook_callback_allowed;
-    }
-
-
     // ━━━━  UNLOCK CALLBACK  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function unlockCallback( bytes calldata data )
@@ -110,6 +85,8 @@ abstract contract UniswapHook is IUnlockCallback {
 
         Action action           =  Action(uint8(data[ data.length - 1 ]));
         bytes calldata payload  =  data[ :data.length - 1 ];
+
+        _is_hook_callback_allowed  =  true;
 
         if(  action == Action.ExactInputSwap  )
         {
@@ -137,49 +114,49 @@ abstract contract UniswapHook is IUnlockCallback {
             DonateLib.execute( context, params, PoolManager, address(this) );
         }
 
+        _is_hook_callback_allowed  =  false;  // *SECURITY*  -  Likely already cleared at actual hook callback, yet cheap defensive good practice.
+
         return "";
     }
 
 
     // ━━━━  HOOK CALLBACKS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function beforeSwap( address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata )
-    external returns ( bytes4, BeforeSwapDelta, uint24 )
+    function _consume_hook_callback_allowance( ) private
     {
         if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
+        if(  _is_hook_callback_allowed == false  )  revert BondRouteRequired( );
 
-        _consume_next_hook_callback( );
+        _is_hook_callback_allowed  =  false;  // *SECURITY*  -  Defense against a malicious token re-entering the uniswap's pool_manager directly.
+    }
 
+    modifier consumeHookAllowance( )
+    {
+        _consume_hook_callback_allowance( );
+        _;
+    }
+
+    function beforeSwap( address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata )
+    external  consumeHookAllowance  returns ( bytes4, BeforeSwapDelta, uint24 )
+    {
         return ( IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0 );
     }
 
     function beforeAddLiquidity( address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata )
-    external returns ( bytes4 )
+    external  consumeHookAllowance  returns ( bytes4 )
     {
-        if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
-
-        _consume_next_hook_callback( );
-
         return IHooks.beforeAddLiquidity.selector;
     }
 
     function beforeRemoveLiquidity( address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata )
-    external returns ( bytes4 )
+    external  consumeHookAllowance  returns ( bytes4 )
     {
-        if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
-
-        _consume_next_hook_callback( );
-
         return IHooks.beforeRemoveLiquidity.selector;
     }
 
     function beforeDonate( address, PoolKey calldata, uint256, uint256, bytes calldata )
-    external returns ( bytes4 )
+    external  consumeHookAllowance  returns ( bytes4 )
     {
-        if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
-
-        _consume_next_hook_callback( );
-
         return IHooks.beforeDonate.selector;
     }
 }

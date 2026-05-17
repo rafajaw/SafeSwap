@@ -22,25 +22,19 @@ contract ReentryPoolTestHook is SafeSwap {
     function test_donate( BondContext memory context, DonateParams memory params )
     external
     {
-        _allow_next_hook_callback( );
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.Donate)) ) );
-        _clear_next_hook_callback( );
     }
 
     function test_add_liquidity( BondContext memory context, AddLiquidityParams memory params )
     external
     {
-        _allow_next_hook_callback( );
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.AddLiquidity)) ) );
-        _clear_next_hook_callback( );
     }
 
     function test_swap_exact_input( BondContext memory context, ExactInputSwapParams memory params )
     external
     {
-        _allow_next_hook_callback( );
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactInputSwap)) ) );
-        _clear_next_hook_callback( );
     }
 }
 

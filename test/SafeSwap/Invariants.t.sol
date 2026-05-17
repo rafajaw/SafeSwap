@@ -138,7 +138,7 @@ contract InvariantsTest is SafeSwapTestBase {
     {
         // After all operations, protected context should be cleared.
         assertEq(
-            hook.test_next_hook_callback_allowed( ),
+            hook.test_hook_callback_allowed( ),
             false,
             "Protected context should be cleared after operations."
         );
@@ -162,7 +162,7 @@ contract InvariantsTest is SafeSwapTestBase {
         });
 
         // Ensure not protected.
-        hook.test_clear_next_hook_callback( );
+        hook.test_revoke_hook_callback_permission( );
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( BondRouteRequired.selector );

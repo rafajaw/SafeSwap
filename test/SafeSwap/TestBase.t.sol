@@ -383,60 +383,60 @@ contract TestableSafeSwap is SafeSwap {
         return _mock_context;
     }
 
-    function test_set_next_hook_callback_allowed( bool is_allowed ) external
+    function test_set_hook_callback_allowed( bool is_allowed ) external
     {
-        if(  is_allowed  )  _allow_next_hook_callback( );
-        else               _clear_next_hook_callback( );
+        if(  is_allowed  )  _is_hook_callback_allowed  =  true;
+        else               _is_hook_callback_allowed  =  false;
     }
 
-    function test_allow_next_hook_callback( ) external
+    function test_allow_hook_callback( ) external
     {
-        _allow_next_hook_callback( );
+        _is_hook_callback_allowed  =  true;
     }
 
-    function test_clear_next_hook_callback( ) external
+    function test_revoke_hook_callback_permission( ) external
     {
-        _clear_next_hook_callback( );
+        _is_hook_callback_allowed  =  false;
     }
 
-    function test_next_hook_callback_allowed( ) external view returns ( bool )
+    function test_hook_callback_allowed( ) external view returns ( bool )
     {
-        return _next_hook_callback_allowed( );
+        return _is_hook_callback_allowed;
     }
 
     function test_execute_exact_input_swap( BondContext memory context, ExactInputSwapParams memory params ) external
     {
-        _allow_next_hook_callback( );
+        _is_hook_callback_allowed  =  true;
         ExactInputSwapLib.execute( context, params, PoolManager, address(this) );
-        _clear_next_hook_callback( );
+        _is_hook_callback_allowed  =  false;
     }
 
     function test_execute_exact_output_swap( BondContext memory context, ExactOutputSwapParams memory params ) external
     {
-        _allow_next_hook_callback( );
+        _is_hook_callback_allowed  =  true;
         ExactOutputSwapLib.execute( context, params, PoolManager, address(this) );
-        _clear_next_hook_callback( );
+        _is_hook_callback_allowed  =  false;
     }
 
     function test_execute_add_liquidity( BondContext memory context, AddLiquidityParams memory params ) external
     {
-        _allow_next_hook_callback( );
+        _is_hook_callback_allowed  =  true;
         AddLiquidityLib.execute( context, params, PoolManager, address(this) );
-        _clear_next_hook_callback( );
+        _is_hook_callback_allowed  =  false;
     }
 
     function test_execute_remove_liquidity( BondContext memory context, RemoveLiquidityParams memory params ) external
     {
-        _allow_next_hook_callback( );
+        _is_hook_callback_allowed  =  true;
         RemoveLiquidityLib.execute( context, params, PoolManager, address(this) );
-        _clear_next_hook_callback( );
+        _is_hook_callback_allowed  =  false;
     }
 
     function test_execute_donate( BondContext memory context, DonateParams memory params ) external
     {
-        _allow_next_hook_callback( );
+        _is_hook_callback_allowed  =  true;
         DonateLib.execute( context, params, PoolManager, address(this) );
-        _clear_next_hook_callback( );
+        _is_hook_callback_allowed  =  false;
     }
 
     function test_build_pool_key( IERC20 token_in, IERC20 token_out, uint24 fee, int24 tick_spacing )

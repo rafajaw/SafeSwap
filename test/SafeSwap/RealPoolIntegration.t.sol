@@ -31,46 +31,36 @@ contract RealPoolTestHook is SafeSwap {
     function test_swap_exact_input( BondContext memory context, ExactInputSwapParams memory params )
     external
     {
-        _allow_next_hook_callback( );
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactInputSwap)) ) );
-        _clear_next_hook_callback( );
     }
 
     function test_swap_exact_output( BondContext memory context, ExactOutputSwapParams memory params )
     external
     {
-        _allow_next_hook_callback( );
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactOutputSwap)) ) );
-        _clear_next_hook_callback( );
     }
 
     function test_add_liquidity( BondContext memory context, AddLiquidityParams memory params )
     external
     {
-        _allow_next_hook_callback( );
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.AddLiquidity)) ) );
-        _clear_next_hook_callback( );
     }
 
     function test_remove_liquidity( BondContext memory context, RemoveLiquidityParams memory params )
     external
     {
-        _allow_next_hook_callback( );
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.RemoveLiquidity)) ) );
-        _clear_next_hook_callback( );
     }
 
     function test_donate( BondContext memory context, DonateParams memory params )
     external
     {
-        _allow_next_hook_callback( );
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.Donate)) ) );
-        _clear_next_hook_callback( );
     }
 
-    function test_next_hook_callback_allowed( ) external view returns ( bool )
+    function test_hook_callback_allowed( ) external view returns ( bool )
     {
-        return _next_hook_callback_allowed( );
+        return _is_hook_callback_allowed;
     }
 }
 
@@ -808,7 +798,7 @@ contract RealPoolIntegrationTest is Test {
         hook.test_swap_exact_input( context, params );
 
         assertEq(
-            hook.test_next_hook_callback_allowed( ),
+            hook.test_hook_callback_allowed( ),
             false,
             "Protected context should be cleared after swap completes."
         );
