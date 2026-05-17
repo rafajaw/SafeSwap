@@ -86,7 +86,7 @@ library AddLiquidityLib {
         address hook_address
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
+        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier({ fee: params.pool_info.fee });
 
         // *NOTE*  -  token_pair must be [token0, token1] in order matching the pool's currency order.
         IERC20 token0            =  token_pair[ 0 ].token;
@@ -94,7 +94,7 @@ library AddLiquidityLib {
         IERC20 token1            =  token_pair[ 1 ].token;
         uint256 amount1_desired  =  token_pair[ 1 ].amount;
 
-        if(  address(token0) == address(token1)  )  revert( "Tokens must be different" );
+        if(  address(token0) == address(token1)  )  revert( TOKENS_MUST_BE_DIFFERENT );
 
         PoolKey memory pool_key  =  PoolKey({
             currency0: Currency.wrap( address(token0) ),
@@ -164,7 +164,7 @@ library AddLiquidityLib {
         if(  amount0 < 0  )
         {
             uint256 amount0_actual  =  uint256(uint128(-amount0));
-            if(  amount0_actual < params.amount0_min  )  revert SlippageExceeded( amount0_actual, params.amount0_min );
+            if(  amount0_actual < params.amount0_min  )  revert SlippageExceeded({ amount_received: amount0_actual, minimum_required: params.amount0_min });
 
             SafeSwapCommon.settle_input( pool_manager, context, token0, amount0_actual );
         }
@@ -177,7 +177,7 @@ library AddLiquidityLib {
         if(  amount1 < 0  )
         {
             uint256 amount1_actual  =  uint256(uint128(-amount1));
-            if(  amount1_actual < params.amount1_min  )  revert SlippageExceeded( amount1_actual, params.amount1_min );
+            if(  amount1_actual < params.amount1_min  )  revert SlippageExceeded({ amount_received: amount1_actual, minimum_required: params.amount1_min });
 
             SafeSwapCommon.settle_input( pool_manager, context, token1, amount1_actual );
         }

@@ -51,7 +51,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
         hook.harness_revoke_hook_callback_permission( );
 
         vm.prank( address(pool_manager) );
-        vm.expectRevert( BondRouteRequired.selector );
+        vm.expectRevert( abi.encodeWithSelector( BondRouteRequired.selector, address(pool_manager), address(BondRoute) ) );
         hook.beforeSwap( user, pool_key, swap_params, "" );
     }
 
@@ -148,7 +148,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
         hook.harness_revoke_hook_callback_permission( );
 
         vm.prank( address(pool_manager) );
-        vm.expectRevert( BondRouteRequired.selector );
+        vm.expectRevert( abi.encodeWithSelector( BondRouteRequired.selector, address(pool_manager), address(BondRoute) ) );
         hook.beforeAddLiquidity( user, pool_key, liq_params, "" );
     }
 
@@ -223,7 +223,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
         hook.harness_revoke_hook_callback_permission( );
 
         vm.prank( address(pool_manager) );
-        vm.expectRevert( BondRouteRequired.selector );
+        vm.expectRevert( abi.encodeWithSelector( BondRouteRequired.selector, address(pool_manager), address(BondRoute) ) );
         hook.beforeRemoveLiquidity( user, pool_key, liq_params, "" );
     }
 
@@ -284,7 +284,7 @@ contract HookCallbacksTest is SafeSwapTestBase {
         hook.harness_revoke_hook_callback_permission( );
 
         vm.prank( address(pool_manager) );
-        vm.expectRevert( BondRouteRequired.selector );
+        vm.expectRevert( abi.encodeWithSelector( BondRouteRequired.selector, address(pool_manager), address(BondRoute) ) );
         hook.beforeDonate( user, pool_key, 100 ether, 200 ether, "" );
     }
 

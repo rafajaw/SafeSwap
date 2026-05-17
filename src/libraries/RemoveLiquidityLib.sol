@@ -85,8 +85,8 @@ library RemoveLiquidityLib {
         address hook_address
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
-        if(  address(params.token0) == address(params.token1)  )         revert( "Tokens must be different" );
+        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier({ fee: params.pool_info.fee });
+        if(  address(params.token0) == address(params.token1)  )         revert( TOKENS_MUST_BE_DIFFERENT );
 
         PoolKey memory pool_key  =  PoolKey({
             currency0: Currency.wrap( address(params.token0) ),
@@ -152,8 +152,8 @@ library RemoveLiquidityLib {
         uint256 amount0  =  uint256(uint128(delta.amount0( )));
         uint256 amount1  =  uint256(uint128(delta.amount1( )));
 
-        if(  amount0 < params.amount0_min  )  revert SlippageExceeded( amount0, params.amount0_min );
-        if(  amount1 < params.amount1_min  )  revert SlippageExceeded( amount1, params.amount1_min );
+        if(  amount0 < params.amount0_min  )  revert SlippageExceeded({ amount_received: amount0, minimum_required: params.amount0_min });
+        if(  amount1 < params.amount1_min  )  revert SlippageExceeded({ amount_received: amount1, minimum_required: params.amount1_min });
 
         pool_manager.take( Currency.wrap(address(params.token0)), context.user, amount0 );
         pool_manager.take( Currency.wrap(address(params.token1)), context.user, amount1 );

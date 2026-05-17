@@ -65,12 +65,12 @@ library ExactOutputSwapLib {
     function get_constraints( ExactOutputSwapParams memory params, TokenAmount memory input_token )
     internal pure returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
+        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier({ fee: params.pool_info.fee });
 
         IERC20 token_in            =  input_token.token;
         uint256 maximum_amount_in  =  input_token.amount;
 
-        if(  address(token_in) == address(params.token_out)  )  revert( "Tokens must be different" );
+        if(  address(token_in) == address(params.token_out)  )  revert( TOKENS_MUST_BE_DIFFERENT );
 
         constraints.min_stake  =  SafeSwapCommon.calculate_swap_stake( token_in, maximum_amount_in );
 
@@ -136,7 +136,7 @@ library ExactOutputSwapLib {
         // *NOTE*  -  Input delta is ALWAYS negative (we owe pool). Negate to get positive amount for calculation.
         uint256 amount_in  =  zero_for_one ? uint256(-int256(delta.amount0( ))) : uint256(-int256(delta.amount1( )));
 
-        if(  amount_in > maximum_amount_in  )  revert SlippageExceeded( amount_in, maximum_amount_in );
+        if(  amount_in > maximum_amount_in  )  revert SlippageExceeded({ amount_received: amount_in, minimum_required: maximum_amount_in });
 
         uint256 user_output   =  target_user_output;
         uint256 protocol_fee  =  grossed_up_pool_output - target_user_output;

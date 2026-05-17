@@ -72,15 +72,15 @@ library DonateLib {
         address hook_address
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
-        if(  address(params.token0) == address(params.token1)  )         revert( "Tokens must be different" );
+        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier({ fee: params.pool_info.fee });
+        if(  address(params.token0) == address(params.token1)  )         revert( TOKENS_MUST_BE_DIFFERENT );
 
         IERC20 token0    =  token_pair[ 0 ].token;
         uint256 amount0  =  token_pair[ 0 ].amount;
         IERC20 token1    =  token_pair[ 1 ].token;
         uint256 amount1  =  token_pair[ 1 ].amount;
 
-        if(  address(token0) != address(params.token0) || address(token1) != address(params.token1)  )  revert( "Fundings must match donation tokens" );
+        if(  address(token0) != address(params.token0) || address(token1) != address(params.token1)  )  revert( FUNDINGS_MUST_MATCH_DONATION_TOKENS );
 
         PoolKey memory pool_key  =  PoolKey({
             currency0: Currency.wrap( address(token0) ),

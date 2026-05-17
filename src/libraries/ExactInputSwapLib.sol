@@ -65,12 +65,12 @@ library ExactInputSwapLib {
     function get_constraints( ExactInputSwapParams memory params, TokenAmount memory input_token )
     internal pure returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier( params.pool_info.fee );
+        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier({ fee: params.pool_info.fee });
 
         IERC20 token_in    =  input_token.token;
         uint256 amount_in  =  input_token.amount;
 
-        if(  address(token_in) == address(params.token_out)  )  revert( "Tokens must be different" );
+        if(  address(token_in) == address(params.token_out)  )  revert( TOKENS_MUST_BE_DIFFERENT );
 
         constraints.min_stake  =  SafeSwapCommon.calculate_swap_stake( token_in, amount_in );
 
@@ -120,7 +120,7 @@ library ExactInputSwapLib {
         // Split the pool output into the user's share and the protocol's share, then enforce slippage on the user's net receipt.
         ( uint256 protocol_fee, uint256 user_output )  =  SafeSwapCommon.calculate_protocol_fee( pool_output, params.pool_info.fee );
 
-        if(  user_output < params.minimum_amount_out  )  revert SlippageExceeded( user_output, params.minimum_amount_out );
+        if(  user_output < params.minimum_amount_out  )  revert SlippageExceeded({ amount_received: user_output, minimum_required: params.minimum_amount_out });
 
         SafeSwapCommon.settle_and_take(
             pool_manager,
