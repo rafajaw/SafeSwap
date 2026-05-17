@@ -112,14 +112,6 @@ LP custody, swap execution, and donate flows all hinge on BondRoute. If the cano
 
 ---
 
-## Documentation drift
-
-- `CLAUDE.md` references `src/BondRouteProtected.sol` and `src/SafeSwapHook.sol` — actual paths are `src/integrations/BondRouteProtected.sol` and `src/UniswapHook.sol`.
-- `README.md` claims "180 tests across 14 suites" — current is 201 tests across 15 suites.
-- `foundry.toml` `optimizer_runs = 10_000` is provisional headroom for in-flight changes. Pin to the maximum value that keeps SafeSwap runtime under 24,576 bytes once the code is final.
-
----
-
 ## Pre-deployment checklist
 
 1. [ ] Verify ChainConfig contract is deployed at `0x5Afec0de00EB1c5323C7faA110f67499F744467b` on the target chain.
@@ -129,11 +121,10 @@ LP custody, swap execution, and donate flows all hinge on BondRoute. If the cano
 5. [ ] Decide the `initial_collector` address. It also functions as the ChainConfig signer at deploy time.
 6. [ ] Pin `foundry.toml` `optimizer_runs` to the largest value that keeps SafeSwap runtime under 24,576 bytes, then commit.
 7. [ ] Document M-2 / D-2 (LP custody depends on BondRoute) in user-facing docs.
-8. [ ] Update `CLAUDE.md` paths and `README.md` test counts.
-9. [ ] Run `forge test -vvv` on the exact deployment commit; archive the output.
-10. [ ] External security audit, with attention to: BondRoute integration semantics and the normalized-stake math.
-11. [ ] Mainnet-fork simulation: end-to-end swap / add / remove against forked V4 + the real BondRoute deployment.
-12. [ ] Verify hook source on Etherscan / Sourcify immediately after deploy.
+8. [ ] Run `forge test -vvv` on the exact deployment commit; archive the output.
+9. [ ] External security audit, with attention to: BondRoute integration semantics and the normalized-stake math.
+10. [ ] Mainnet-fork simulation: end-to-end swap / add / remove against forked V4 + the real BondRoute deployment.
+11. [ ] Verify hook source on Etherscan / Sourcify immediately after deploy.
 
 ---
 

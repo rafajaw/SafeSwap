@@ -85,7 +85,7 @@ forge build
 forge test
 ```
 
-180 tests across 14 suites: unit, integration, fuzz, invariant, and real pool tests against the actual Uniswap V4 PoolManager.
+202 tests across 15 suites: unit, integration, fuzz, invariant, and real pool tests against the actual Uniswap V4 PoolManager.
 
 ## License
 
