@@ -78,14 +78,17 @@ interface IBondRouteIntegrationTests {
     // ─── BondRoute_quote_call( ) - Add Liquidity ───────────────────────────────────
     function test_quote_call_add_liquidity_reverts_if_tokens_same( ) external;
     function test_quote_call_add_liquidity_reverts_if_funding_count_not_2( ) external;
+    function test_quote_call_add_liquidity_returns_correct_execution_delays( ) external;
 
     // ─── BondRoute_quote_call( ) - Remove Liquidity ────────────────────────────────
     function test_quote_call_remove_liquidity_reverts_if_tokens_same( ) external;
+    function test_quote_call_remove_liquidity_returns_correct_execution_delays( ) external;
 
     // ─── BondRoute_quote_call( ) - Donate ─────────────────────────────────────────
     function test_quote_call_donate_reverts_if_tokens_same( ) external;
     function test_quote_call_donate_reverts_if_funding_count_not_2( ) external;
     function test_quote_call_donate_reverts_if_fundings_do_not_match_params( ) external;
+    function test_quote_call_donate_returns_correct_execution_delays( ) external;
 
     // ─── BondRoute_quote_call( ) - Unknown Selector ────────────────────────────────
     function test_quote_call_reverts_on_unknown_selector( ) external;
@@ -217,6 +220,8 @@ interface ILiquidityExecutionTests {
     function test_add_liquidity_uses_correct_tick_range( ) external;
     function test_add_liquidity_uses_salt_for_position( ) external;
     function test_add_liquidity_passes_when_amounts_meet_minimums( ) external;
+    function test_add_liquidity_reverts_on_one_sided_mismatch_token0_expected( ) external;
+    function test_add_liquidity_reverts_on_one_sided_mismatch_token1_expected( ) external;
 
     // ─── Add Liquidity — Position Isolation ─────────────────────────────────────────
     function test_add_liquidity_different_users_same_salt_produce_different_effective_salts( ) external;
@@ -431,6 +436,10 @@ interface IFuzzTests {
     // ─── Slippage Protection ───────────────────────────────────────────────────────
     function testFuzz_exact_input_respects_minimum_output( uint256 amount_in, uint256 min_out ) external;
     function testFuzz_exact_output_respects_maximum_input( uint256 amount_out, uint256 max_in ) external;
+
+    // ─── Donate ────────────────────────────────────────────────────────────────────
+    function testFuzz_donate_executes_for_arbitrary_split( uint128 amount0, uint128 amount1 ) external;
+    function testFuzz_donate_executes_for_one_sided_split( uint128 amount, bool donate_token0 ) external;
 }
 
 
@@ -487,17 +496,17 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Total Tests Declared:       204
-// Implemented & Passing:      204 ✓
+// Total Tests Declared:       211
+// Implemented & Passing:      211 ✓
 //
 // Coverage by Section:
 // - Constructor:                6 tests  ✓
 // - Collector:                  5 tests  ✓
-// - BondRoute Integration:     38 tests  ✓
+// - BondRoute Integration:     41 tests  ✓
 // - Hook Callbacks:            21 tests  ✓
 // - Unlock Callback:            9 tests  ✓
 // - Swap Execution:            14 tests  ✓
-// - Liquidity Execution:       21 tests  ✓
+// - Liquidity Execution:       23 tests  ✓
 // - Donate Execution:           3 tests  ✓
 // - Protocol Fee:              13 tests  ✓
 // - Fee Withdrawal:            10 tests  ✓
@@ -505,7 +514,7 @@ interface IGasBenchmarkTests {
 // - Integration Tests:         12 tests  ✓
 // - Real Pool Integration:     30 tests  ✓
 // - Reentrant Context:          1 test    ✓
-// - Fuzz Tests:                 6 tests  ✓
+// - Fuzz Tests:                 8 tests  ✓
 // - Invariant Tests:            7 tests  ✓
 // - Gas Benchmarks:            10 tests  (declared, not yet implemented)
 //
