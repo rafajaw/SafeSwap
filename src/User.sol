@@ -63,9 +63,14 @@ abstract contract User is UniswapHook, BondRouteProtected {
     }
 
 
-    // ━━━━  OFF-CHAIN GETTERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  POSITION GETTERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function __OFF_CHAIN__get_position_info( PoolId pool_id, address user, int24 tick_lower, int24 tick_upper, bytes32 salt )
+    /**
+     * @notice Read a user's LP position state directly from the PoolManager.
+     * @dev    Positions are owned by the hook under `keccak256(user, salt)`; this lets users (or any
+     *         aggregator) inspect their position without going through BondRoute. Safe to call on-chain.
+     */
+    function get_position_info( PoolId pool_id, address user, int24 tick_lower, int24 tick_upper, bytes32 salt )
     external view returns ( uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128 )
     {
         bytes32 effective_salt  =  SafeSwapCommon._position_salt( user, salt );
