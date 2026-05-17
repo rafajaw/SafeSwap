@@ -16,8 +16,8 @@ using StateLibrary for IPoolManager;
  */
 abstract contract User is UniswapHook, BondRouteProtected {
 
-    constructor( address config_signer )
-    UniswapHook( config_signer )
+    constructor( )
+    UniswapHook( )
     BondRouteProtected( "SafeSwap", "Trustless MEV-free Uniswap V4 Hook" ) { }
 
     // ━━━━  USER FUNCTIONS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

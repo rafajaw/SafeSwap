@@ -6,6 +6,7 @@ import "@SafeSwap/SafeSwap.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
 import { POOL_MANAGER_KEY } from "@SafeSwap/UniswapHook.sol";
+import { CONFIG_SIGNER } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -217,7 +218,7 @@ contract ReentrantProtectedContextTest is Test {
         require( ok, "PoolManager deployment failed" );
         real_pool_manager  =  IPoolManager(abi.decode( ret, (address) ));
 
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(real_pool_manager) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(real_pool_manager) );
 
         address hook_target  =  address(uint160(0x0AA0));
         deployCodeTo( "ReentrantProtectedContext.t.sol:ReentryPoolTestHook", abi.encode( collector ), hook_target );

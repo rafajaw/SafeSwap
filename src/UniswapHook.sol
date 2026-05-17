@@ -8,6 +8,7 @@ import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
+import "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IProtocolFees } from "@UniswapV4Core/interfaces/IProtocolFees.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
@@ -48,11 +49,11 @@ abstract contract UniswapHook is IUnlockCallback {
 
     enum Action { ExactInputSwap, ExactOutputSwap, AddLiquidity, RemoveLiquidity, Donate }
 
-    constructor( address config_signer )
+    constructor( )
     {
         if(  _is_valid_safeswap_hook_address( address(this) ) == false  )  revert( "SafeSwap: Invalid hook address" );
 
-        address pool_manager  =  ChainConfig.read_address( config_signer, POOL_MANAGER_KEY );
+        address pool_manager  =  ChainConfig.read_address( CONFIG_SIGNER, POOL_MANAGER_KEY );
         if(  _is_valid_pool_manager( pool_manager ) == false  )  revert( "SafeSwap: Invalid pool_manager" );
 
         PoolManager  =  IPoolManager(pool_manager);

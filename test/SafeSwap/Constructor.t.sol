@@ -28,25 +28,25 @@ contract ConstructorTest is SafeSwapTestBase {
     function test_constructor_reverts_if_pool_manager_not_set( ) external
     {
         // Clear pool manager entry in ChainConfig.
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(0) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(0) );
 
         vm.expectRevert( bytes("SafeSwap: Invalid pool_manager") );
         deployCodeTo( "TestBase.t.sol:TestableSafeSwap", abi.encode( collector ), address(uint160(0x4AA0)) );
 
         // Restore pool manager entry.
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(pool_manager) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(pool_manager) );
     }
 
     function test_constructor_reverts_if_chain_config_points_to_non_pool_manager( ) external
     {
         NotPoolManager not_pool_manager  =  new NotPoolManager( );
 
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(not_pool_manager) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(not_pool_manager) );
 
         vm.expectRevert( bytes("SafeSwap: Invalid pool_manager") );
         deployCodeTo( "TestBase.t.sol:TestableSafeSwap", abi.encode( collector ), address(uint160(0x4AA0)) );
 
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(pool_manager) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(pool_manager) );
     }
 
     function test_constructor_reverts_if_hook_address_has_wrong_flags( ) external

@@ -9,7 +9,7 @@ import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
-import { PROTOCOL_FEE_DIVISOR } from "@SafeSwap/Definitions.sol";
+import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER } from "@SafeSwap/Definitions.sol";
 import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
 import { POOL_MANAGER_KEY } from "@SafeSwap/UniswapHook.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
@@ -184,7 +184,7 @@ contract RealPoolIntegrationTest is Test {
         }
 
         // Store pool manager address in ChainConfig.
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(real_pool_manager) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(real_pool_manager) );
 
         // Deploy hook at the address carrying SafeSwap's Uniswap V4 permission flags:
         // BEFORE_SWAP(0x80) | BEFORE_DONATE(0x20) | BEFORE_REMOVE_LIQUIDITY(0x200) | BEFORE_ADD_LIQUIDITY(0x800) = 0x0AA0.

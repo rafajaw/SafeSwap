@@ -11,6 +11,7 @@ import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
 import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
 import { POOL_MANAGER_KEY } from "@SafeSwap/UniswapHook.sol";
+import { CONFIG_SIGNER } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -523,8 +524,8 @@ abstract contract SafeSwapTestBase is Test {
         vm.etch( CHAINCONFIG_ADDRESS, address(chain_config).code );
         vm.etch( BONDROUTE_ADDRESS, address(bond_route).code );
 
-        // Set pool manager in ChainConfig.
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(pool_manager) );
+        // Set pool manager in ChainConfig under the hardcoded CONFIG_SIGNER keyspace.
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(pool_manager) );
 
         // Set skip_actual_transfer to true on the etched BondRoute.
         MockBondRoute(payable(BONDROUTE_ADDRESS)).set_skip_actual_transfer( true );
