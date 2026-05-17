@@ -391,6 +391,11 @@ interface IRealPoolIntegrationTests {
     function test_real_pool_donate_basic( ) external;
     function test_real_pool_donate_one_sided( ) external;
 
+    // ─── Native ETH (end-to-end) ──────────────────────────────────────────────────
+    function test_real_pool_native_exact_input_swap_eth_to_erc20( ) external;
+    function test_real_pool_native_exact_input_swap_erc20_to_eth( ) external;
+    function test_real_pool_native_add_and_remove_liquidity( ) external;
+
     // ─── Security ─────────────────────────────────────────────────────────────────
     function test_real_pool_hook_rejects_direct_pool_swap( ) external;
     function test_real_pool_hook_rejects_direct_pool_donate( ) external;
@@ -496,8 +501,8 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Total Tests Declared:       211
-// Implemented & Passing:      211 ✓
+// Total Tests Declared:       214
+// Implemented & Passing:      214 ✓
 //
 // Coverage by Section:
 // - Constructor:                6 tests  ✓
@@ -512,7 +517,7 @@ interface IGasBenchmarkTests {
 // - Fee Withdrawal:            10 tests  ✓
 // - Stake Calculation:          8 tests  ✓
 // - Integration Tests:         12 tests  ✓
-// - Real Pool Integration:     30 tests  ✓
+// - Real Pool Integration:     33 tests  ✓
 // - Reentrant Context:          1 test    ✓
 // - Fuzz Tests:                 8 tests  ✓
 // - Invariant Tests:            7 tests  ✓

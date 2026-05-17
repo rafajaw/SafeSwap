@@ -140,6 +140,32 @@ library SafeSwapCommon {
 
     // ━━━━  SETTLEMENT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    // *NATIVE*  -  V4 PoolManager has no receive(); native ETH cannot be transferred to it separately and then settled.
+    //              It must arrive bundled with `settle{value:}()`. So for native we pull ETH to the hook (which has
+    //              receive()) and forward via msg.value on settle. For ERC20 we keep the direct user→PM path.
+    function settle_input(
+        IPoolManager pool_manager,
+        BondContext memory context,
+        IERC20 token,
+        uint256 amount
+    ) internal
+    {
+        if(  amount == 0  )  return;
+
+        pool_manager.sync( Currency.wrap( address(token) ) );
+
+        if(  address(token) == address(0)  )
+        {
+            context.pull( token, amount );
+            pool_manager.settle{ value: amount }( );
+        }
+        else
+        {
+            context.send( token, amount, address(pool_manager) );
+            pool_manager.settle( );
+        }
+    }
+
     function settle_and_take(
         IPoolManager pool_manager,
         BondContext memory context,
@@ -151,12 +177,9 @@ library SafeSwapCommon {
         address hook_address
     ) internal
     {
-        Currency currency_in   =  Currency.wrap( address(token_in) );
         Currency currency_out  =  Currency.wrap( address(token_out) );
 
-        pool_manager.sync( currency_in );
-        context.send( token_in, amount_in, address(pool_manager) );
-        pool_manager.settle( );
+        settle_input( pool_manager, context, token_in, amount_in );
 
         pool_manager.take( currency_out, context.user, user_output );
         pool_manager.take( currency_out, hook_address, protocol_fee );

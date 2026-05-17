@@ -3,7 +3,7 @@
 ## Status
 
 - **Build:** SafeSwap runtime = 23,286 bytes (1,290 B under the EIP-170 cap, with `optimizer_runs = 10_000`). Re-measure after each iteration.
-- **Tests:** 211/211 passing across 16 suites.
+- **Tests:** 214/214 passing across 16 suites.
 - **Scope:** `src/SafeSwap.sol`, `src/User.sol`, `src/Collector.sol`, `src/UniswapHook.sol`, `src/Definitions.sol`, `src/libraries/*`, `src/integrations/BondRouteProtected.sol`, `src/integrations/IChainConfig.sol`, plus the `test/SafeSwap/` suites.
 
 ---
@@ -37,6 +37,7 @@ Operational requirements that must be true at or before deployment. Not security
 - **Coverage gap — CREATE2 hook-flags smoke test.** `test_constructor_reverts_if_hook_address_has_wrong_flags` confirms a wrong-bit address is rejected.
 - **Coverage gap (partial) — donate fuzz.** Two fuzz tests (`testFuzz_donate_executes_for_arbitrary_split`, `testFuzz_donate_executes_for_one_sided_split`) exercise arbitrary and one-sided splits. Donate invariants still not added.
 - **Coverage gap (partial) — constraint timing.** `BondRoute_quote_call` execution-delay assertions added for all five action types (add/remove liquidity and donate were previously untested). The `block.number == creation_block` boundary itself is enforced inside BondRoute, not here, so it stays untested at the SafeSwap layer.
+- **M-5 — Native-ETH settlement.** Fixed via `SafeSwapCommon.settle_input`: native inputs are pulled to the hook (which has `receive()`) and then forwarded as `pool_manager.settle{value: amount}()`, satisfying V4's "ETH must ride msg.value" contract. ERC20 path unchanged. End-to-end coverage in `test_real_pool_native_exact_input_swap_eth_to_erc20`, `..._erc20_to_eth`, and `test_real_pool_native_add_and_remove_liquidity`.
 
 ### Medium
 
@@ -56,13 +57,7 @@ Liquidity positions are owned by the hook contract under salts derived from `(us
 
 `SafeSwapCommon._position_salt(user, salt) = keccak256(user, salt)`. Account-abstraction wallets and relayers that delegate differently per bond must ensure `ctx.user` always reflects the intended beneficiary, otherwise positions are inaccessible from the user's wallet view. The canonical BondRoute is expected to deliver "the user who created the bond" semantics — confirm this matches the deployed contract.
 
-**M-5: Native-ETH settlement path is likely broken**
-
-`SafeSwapCommon.settle_and_take` calls `context.send(token_in, amount_in, address(pool_manager))` followed by `pool_manager.settle()`. For ETH (`token_in == address(0)`) this routes through `BondRoute.transfer_funding`, whose canonical contract presumably forwards native via a plain transfer to the recipient. Uniswap V4 `PoolManager` has no `receive()` or payable `fallback()` — native must come via `pool_manager.settle{value: amount}()`. An attempted real-pool native swap in `RealPoolIntegration.t.sol` reverts at exactly this boundary (raw ETH transfer to `PoolManager`). Either:
-- The real BondRoute's native handling differs from a plain transfer in some way that side-steps this — needs verification against the canonical BondRoute source, OR
-- `settle_and_take` needs a native branch that calls `pool_manager.settle{value: amount}()` directly instead of routing the ETH through BondRoute first.
-
-Block on resolution before any deployment that intends to support native pools. ERC20-only deployments are unaffected.
+**M-5:** *Resolved — see Resolved section above. `SafeSwapCommon.settle_input` now routes native via the hook + `settle{value:}`.*
 
 ### Low
 
@@ -119,15 +114,16 @@ Hardcoded in `src/Definitions.sol` so the SafeSwap binary points at a single can
 ## Coverage gaps still open
 
 - **Donate invariants** — fuzz tests are in place; a handler-driven invariant for donate (e.g., total donated equals sum of fundings) is still missing.
-- **Native ETH end-to-end execution** — blocked by M-5 above. A real-pool native swap test reverts at the BondRoute → PoolManager settlement boundary; resolve M-5 before adding the e2e test.
 - **`creation_block == block.number` boundary** — enforced by BondRoute, not SafeSwap. Best covered via a mainnet-fork or canonical-BondRoute integration test, not a unit test in this repo.
 - **Unknown selector graceful settle** — `revert UnknownSelector(selector)` is asserted on-chain, but no test confirms BondRoute treats this as "graceful settle, refund stake" rather than `PossiblyBondFarming`. Cross-system test.
+- **Native-ETH e2e under a realistic BondRoute** — present tests confirm SafeSwap's settle path works end-to-end against real V4, but `MockBondRoute` forwards native from its own balance instead of escrowing the user's ETH. A mainnet-fork test against the canonical BondRoute would confirm the user-escrow side.
 
 ## Coverage gaps resolved
 
 - **Donate fuzz** — `testFuzz_donate_executes_for_arbitrary_split` and `testFuzz_donate_executes_for_one_sided_split`.
 - **Constraint-delay values** — `test_quote_call_*_returns_correct_execution_delays` now covers all five action types.
 - **CREATE2 hook-flags smoke test** — `test_constructor_reverts_if_hook_address_has_wrong_flags`.
+- **Native-ETH end-to-end execution** — three real-pool tests confirm ETH→ERC20 swap, ERC20→ETH swap, and ETH-side add/remove liquidity all settle correctly.
 
 ---
 
@@ -147,8 +143,7 @@ Hardcoded in `src/Definitions.sol` so the SafeSwap binary points at a single can
 
 ## Pre-deployment checklist
 
-1. [ ] **Resolve M-5** (native-ETH settlement path) or restrict the launch to ERC20-only pools.
-2. [ ] **Replace the `CONFIG_SIGNER` placeholder in `src/Definitions.sol`** with the canonical SafeSwap signer for the target chain. The `// ***TODO***  -  Fix before deployment!` marker must be gone before a deploy commit is tagged.
+1. [ ] **Replace the `CONFIG_SIGNER` placeholder in `src/Definitions.sol`** with the canonical SafeSwap signer for the target chain. The `// ***TODO***  -  Fix before deployment!` marker must be gone before a deploy commit is tagged.
 3. [ ] Verify ChainConfig contract is deployed at `0x5Afec0de00EB1c5323C7faA110f67499F744467b` on the target chain.
 4. [ ] Write the `uniswap_v4/pool_manager` ChainConfig entry under the `CONFIG_SIGNER` keyspace, pointing at the canonical Uniswap V4 PoolManager for the target chain.
 5. [ ] Verify BondRoute is deployed at `0xb01d00000000440215e86e0A436f9b59FeB2F14a` on the target chain.
@@ -167,4 +162,4 @@ Hardcoded in `src/Definitions.sol` so the SafeSwap binary points at a single can
 
 The codebase is small, well-structured, and reads cleanly. Access control is airtight: every V4 hook callback gates on both PoolManager identity and the per-operation `_is_hook_callback_allowed` flag, BondRoute is the only path into protected functions, and direct-pool attack vectors are tested and rejected. Liquidity-bond stake is slot0-normalized across both legs; swap-exact-input slippage protects the user's net receipt; swap-exact-output delivers the requested amount exactly. The constructor enforces the V4 hook permission flags before any pool can be initialized. Policy constants live in a single `Definitions.sol`, and Uniswap V4 primitives are referenced canonically (no local hardcoded mirrors of `MIN/MAX_SQRT_PRICE`, `SQRT_PRICE_1_1`, or `DYNAMIC_FEE_FLAG`).
 
-The one outstanding gating item is **M-5** (native-ETH settlement). All other medium/low items are documented design choices or operational requirements the deployer can resolve.
+All medium/low items are now documented design choices or operational requirements the deployer can resolve. No outstanding code-level blockers.

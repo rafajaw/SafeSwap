@@ -166,9 +166,7 @@ library AddLiquidityLib {
             uint256 amount0_actual  =  uint256(uint128(-amount0));
             if(  amount0_actual < params.amount0_min  )  revert SlippageExceeded( amount0_actual, params.amount0_min );
 
-            pool_manager.sync( Currency.wrap( address(token0) ) );
-            context.send( token0, amount0_actual, address(pool_manager) );
-            pool_manager.settle( );
+            SafeSwapCommon.settle_input( pool_manager, context, token0, amount0_actual );
         }
         else if(  params.amount0_min > 0  )
         {
@@ -181,9 +179,7 @@ library AddLiquidityLib {
             uint256 amount1_actual  =  uint256(uint128(-amount1));
             if(  amount1_actual < params.amount1_min  )  revert SlippageExceeded( amount1_actual, params.amount1_min );
 
-            pool_manager.sync( Currency.wrap( address(token1) ) );
-            context.send( token1, amount1_actual, address(pool_manager) );
-            pool_manager.settle( );
+            SafeSwapCommon.settle_input( pool_manager, context, token1, amount1_actual );
         }
         else if(  params.amount1_min > 0  )
         {

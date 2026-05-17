@@ -128,18 +128,7 @@ library DonateLib {
         int128 delta0  =  delta.amount0( );
         int128 delta1  =  delta.amount1( );
 
-        if(  delta0 < 0  )
-        {
-            pool_manager.sync( Currency.wrap(address(params.token0)) );
-            context.send( params.token0, uint256(uint128(-delta0)), address(pool_manager) );
-            pool_manager.settle( );
-        }
-
-        if(  delta1 < 0  )
-        {
-            pool_manager.sync( Currency.wrap(address(params.token1)) );
-            context.send( params.token1, uint256(uint128(-delta1)), address(pool_manager) );
-            pool_manager.settle( );
-        }
+        if(  delta0 < 0  )  SafeSwapCommon.settle_input( pool_manager, context, params.token0, uint256(uint128(-delta0)) );
+        if(  delta1 < 0  )  SafeSwapCommon.settle_input( pool_manager, context, params.token1, uint256(uint128(-delta1)) );
     }
 }

@@ -142,6 +142,11 @@ contract RealPoolIntegrationTest is Test {
     MockERC20 public token0;
     MockERC20 public token1;
 
+    // Native-ETH pool: currency0 = address(0) (ETH), currency1 = erc20_token.
+    MockERC20 public erc20_token;
+    PoolKey public native_pool_key;
+    bool private _native_pool_initialized;
+
     address public collector;
     address public user;
     address public other_user;
@@ -1127,5 +1132,214 @@ contract RealPoolIntegrationTest is Test {
             creation_block: block.number - 5,
             creation_timestamp: block.timestamp - 1 hours
         });
+    }
+
+
+    // ━━━━  NATIVE-ETH HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// @dev Lazily initializes a (ETH, ERC20) pool and seeds it with full-range liquidity from `lp`.
+    function _ensure_native_pool_ready( ) internal
+    {
+        if(  _native_pool_initialized  )  return;
+        _native_pool_initialized  =  true;
+
+        // address(0) is the canonical V4 native-ETH currency and is guaranteed < any deployed ERC20.
+        erc20_token  =  new MockERC20( "NativePairERC20", "NPE", 18 );
+
+        native_pool_key  =  PoolKey({
+            currency0: Currency.wrap( address(0) ),
+            currency1: Currency.wrap( address(erc20_token) ),
+            fee: POOL_FEE_030,
+            tickSpacing: TICK_SPACING_60,
+            hooks: IHooks(address(hook))
+        });
+        real_pool_manager.initialize( native_pool_key, SQRT_PRICE_1_1 );
+
+        // Mint ERC20 + grant ETH to the seeding LP and the test users.
+        erc20_token.mint( user,       INITIAL_BALANCE );
+        erc20_token.mint( other_user, INITIAL_BALANCE );
+        erc20_token.mint( lp,         INITIAL_BALANCE );
+        erc20_token.mint( address(hook), 1 );  // dust to avoid 0->nonzero on fee collection
+        vm.deal( user,       INITIAL_BALANCE );
+        vm.deal( other_user, INITIAL_BALANCE );
+        vm.deal( lp,         INITIAL_BALANCE );
+        vm.deal( address(hook), 1 );
+
+        // MockBondRoute forwards native funding from its own balance; pre-fund it generously.
+        vm.deal( BONDROUTE_ADDRESS, 10 * INITIAL_BALANCE );
+
+        // Approve BondRoute to pull the ERC20 for any of the three signers.
+        vm.startPrank( user );        erc20_token.approve( BONDROUTE_ADDRESS, type(uint256).max );  vm.stopPrank( );
+        vm.startPrank( other_user );  erc20_token.approve( BONDROUTE_ADDRESS, type(uint256).max );  vm.stopPrank( );
+        vm.startPrank( lp );          erc20_token.approve( BONDROUTE_ADDRESS, type(uint256).max );  vm.stopPrank( );
+
+        // Seed the pool with full-range liquidity from lp.
+        BondContext memory seed_context  =  _create_native_two_funding_context( lp, SEED_AMOUNT, SEED_AMOUNT );
+        AddLiquidityParams memory seed_params  =  AddLiquidityParams({
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
+            tick_lower: FULL_RANGE_LOWER,
+            tick_upper: FULL_RANGE_UPPER,
+            amount0_min: 0,
+            amount1_min: 0,
+            salt: bytes32(0)
+        });
+        hook.test_add_liquidity( seed_context, seed_params );
+    }
+
+    function _create_native_one_funding_context_eth_in( address _user, uint256 amount )
+    internal view returns ( BondContext memory )
+    {
+        TokenAmount[] memory fundings  =  new TokenAmount[]( 1 );
+        fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(0)), amount: amount });
+
+        return BondContext({
+            user: _user,
+            stake: TokenAmount({ token: IERC20(address(0)), amount: amount / 100 }),
+            fundings: fundings,
+            creation_block: block.number - 5,
+            creation_timestamp: block.timestamp - 1 hours
+        });
+    }
+
+    function _create_native_one_funding_context_erc20_in( address _user, uint256 amount )
+    internal view returns ( BondContext memory )
+    {
+        TokenAmount[] memory fundings  =  new TokenAmount[]( 1 );
+        fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(erc20_token)), amount: amount });
+
+        return BondContext({
+            user: _user,
+            stake: TokenAmount({ token: IERC20(address(erc20_token)), amount: amount / 100 }),
+            fundings: fundings,
+            creation_block: block.number - 5,
+            creation_timestamp: block.timestamp - 1 hours
+        });
+    }
+
+    function _create_native_two_funding_context( address _user, uint256 amount_eth, uint256 amount_erc20 )
+    internal view returns ( BondContext memory )
+    {
+        TokenAmount[] memory fundings  =  new TokenAmount[]( 2 );
+        fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(0)),            amount: amount_eth   });
+        fundings[ 1 ]  =  TokenAmount({ token: IERC20(address(erc20_token)),  amount: amount_erc20 });
+
+        return BondContext({
+            user: _user,
+            stake: TokenAmount({ token: IERC20(address(0)), amount: amount_eth / 100 }),
+            fundings: fundings,
+            creation_block: block.number - 5,
+            creation_timestamp: block.timestamp - 1 hours
+        });
+    }
+
+
+    // ━━━━  NATIVE-ETH TESTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function test_real_pool_native_exact_input_swap_eth_to_erc20( ) external
+    {
+        _ensure_native_pool_ready( );
+
+        uint256 swap_amount  =  100 ether;
+        BondContext memory context  =  _create_native_one_funding_context_eth_in( user, swap_amount );
+
+        ExactInputSwapParams memory params  =  ExactInputSwapParams({
+            token_out: IERC20(address(erc20_token)),
+            minimum_amount_out: 0,
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
+        });
+
+        uint256 user_erc20_before     =  erc20_token.balanceOf( user );
+        uint256 bondroute_eth_before  =  BONDROUTE_ADDRESS.balance;
+
+        hook.test_swap_exact_input( context, params );
+
+        uint256 erc20_received  =  erc20_token.balanceOf( user ) - user_erc20_before;
+        uint256 eth_paid        =  bondroute_eth_before - BONDROUTE_ADDRESS.balance;
+
+        // *NOTE*  -  MockBondRoute funds native transfers from its own balance, not from the user, so we observe
+        //            the ETH leaving BondRoute rather than the user. The property under test is that the native
+        //            settle{value:} path completes end-to-end and the user receives the swap output.
+        assertEq( eth_paid,       swap_amount, "BondRoute should forward exactly the ETH input to settlement." );
+        assertGt( erc20_received, 0,           "User should receive some ERC20." );
+        assertLt( erc20_received, swap_amount, "Output should be less than input due to fee + price impact." );
+    }
+
+    function test_real_pool_native_exact_input_swap_erc20_to_eth( ) external
+    {
+        _ensure_native_pool_ready( );
+
+        uint256 swap_amount  =  100 ether;
+        BondContext memory context  =  _create_native_one_funding_context_erc20_in( user, swap_amount );
+
+        ExactInputSwapParams memory params  =  ExactInputSwapParams({
+            token_out: IERC20(address(0)),
+            minimum_amount_out: 0,
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
+        });
+
+        uint256 user_eth_before    =  user.balance;
+        uint256 user_erc20_before  =  erc20_token.balanceOf( user );
+
+        hook.test_swap_exact_input( context, params );
+
+        uint256 erc20_spent   =  user_erc20_before - erc20_token.balanceOf( user );
+        uint256 eth_received  =  user.balance - user_eth_before;
+
+        assertEq( erc20_spent,  swap_amount, "User should spend exactly the ERC20 input." );
+        assertGt( eth_received, 0,           "User should receive some ETH." );
+        assertLt( eth_received, swap_amount, "Output should be less than input due to fee + price impact." );
+    }
+
+    function test_real_pool_native_add_and_remove_liquidity( ) external
+    {
+        _ensure_native_pool_ready( );
+
+        uint256 amount  =  500 ether;
+
+        // ━━━━  ADD  ━━━━
+        // *NOTE*  -  MockBondRoute pays native from its own balance, not from the user, so we observe the ETH leaving
+        //            BondRoute rather than the user. ERC20 still moves from the user via real transferFrom.
+        BondContext memory add_context  =  _create_native_two_funding_context( user, amount, amount );
+        AddLiquidityParams memory add_params  =  AddLiquidityParams({
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
+            tick_lower: -TICK_SPACING_60 * 100,
+            tick_upper:  TICK_SPACING_60 * 100,
+            amount0_min: 0,
+            amount1_min: 0,
+            salt: keccak256("native-position")
+        });
+
+        uint256 user_erc20_before     =  erc20_token.balanceOf( user );
+        uint256 bondroute_eth_before  =  BONDROUTE_ADDRESS.balance;
+
+        hook.test_add_liquidity( add_context, add_params );
+
+        assertLt( BONDROUTE_ADDRESS.balance,     bondroute_eth_before, "ETH should leave BondRoute on add_liquidity." );
+        assertLt( erc20_token.balanceOf( user ), user_erc20_before,    "ERC20 should leave the user on add_liquidity." );
+
+        // ━━━━  REMOVE  ━━━━
+        uint128 liquidity_to_remove  =  10_000;  // small but non-trivial
+        BondContext memory remove_context  =  _create_zero_funding_context( user );
+        remove_context.stake  =  TokenAmount({ token: IERC20(address(0)), amount: 0 });
+        RemoveLiquidityParams memory remove_params  =  RemoveLiquidityParams({
+            token0: IERC20(address(0)),
+            token1: IERC20(address(erc20_token)),
+            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
+            tick_lower: -TICK_SPACING_60 * 100,
+            tick_upper:  TICK_SPACING_60 * 100,
+            liquidity: liquidity_to_remove,
+            amount0_min: 0,
+            amount1_min: 0,
+            salt: keccak256("native-position")
+        });
+
+        uint256 user_eth_after_add    =  user.balance;
+        uint256 user_erc20_after_add  =  erc20_token.balanceOf( user );
+
+        hook.test_remove_liquidity( remove_context, remove_params );
+
+        // Remove sends ETH back to the user via V4's `take` — V4 transfers real ETH from PoolManager to the user EOA.
+        assertGt( user.balance,                  user_eth_after_add,   "ETH should return to user on remove_liquidity." );
+        assertGt( erc20_token.balanceOf( user ), user_erc20_after_add, "ERC20 should return to user on remove_liquidity." );
     }
 }
