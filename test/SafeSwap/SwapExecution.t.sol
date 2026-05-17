@@ -67,13 +67,13 @@ contract SwapExecutionTest is SafeSwapTestBase {
     function test_exact_input_swap_reverts_on_slippage_exceeded( ) external
     {
         BondContext memory context  =  _create_bond_context( user, 100 ether );
-        ExactInputSwapParams memory params  =  _create_exact_input_params( 95 ether );  // min 95 out.
+        ExactInputSwapParams memory params  =  _create_exact_input_params( 95 ether );  // min 95 out (net of fee).
 
-        // Mock returns only 90, less than minimum.
+        // Mock returns 90 gross, so user_output net of fee = 90 - (90 * 3000 / 10_000_000) = 89.973.
         pool_manager.set_mock_swap_amounts( -100 ether, 90 ether );
 
         vm.prank( address(pool_manager) );
-        vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 90 ether, 95 ether ) );
+        vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 89.973 ether, 95 ether ) );
         hook.test_execute_exact_input_swap( context, params );
     }
 
@@ -217,12 +217,11 @@ contract SwapExecutionTest is SafeSwapTestBase {
         vm.prank( address(pool_manager) );
         hook.test_execute_exact_output_swap( context, params );
 
-        // amount_out = 90, fee = 90 * 3000 / 10_000_000 = 0.027 ether.
-        // User receives 90 - 0.027 = 89.973 ether.
+        // Exact-output: user receives exactly the requested amount; protocol fee is grossed up on top.
         assertEq(
             token1.balanceOf( user ) - balance_before,
-            89.973 ether,
-            "User should receive 89.973 ether of token1 after protocol fee."
+            90 ether,
+            "User should receive exactly the requested output amount."
         );
     }
 
@@ -256,17 +255,16 @@ contract SwapExecutionTest is SafeSwapTestBase {
         vm.prank( address(pool_manager) );
         hook.test_execute_exact_output_swap( context, params );
 
-        // User pays token0 (95 from delta), receives token1 (90 - fee).
+        // User pays token0 (95 from delta), receives exactly the requested amount of token1.
         assertEq(
             user_token0_before - token0.balanceOf( user ),
             95 ether,
             "Zero-for-one: user should pay 95 ether of token0."
         );
-        // fee = 90 * 3000 / 10_000_000 = 0.027, user gets 89.973.
         assertEq(
             token1.balanceOf( user ) - user_token1_before,
-            89.973 ether,
-            "Zero-for-one: user should receive 89.973 ether of token1."
+            90 ether,
+            "Zero-for-one: user should receive exactly 90 ether of token1."
         );
     }
 
@@ -297,17 +295,16 @@ contract SwapExecutionTest is SafeSwapTestBase {
         vm.prank( address(pool_manager) );
         hook.test_execute_exact_output_swap( context, params );
 
-        // User pays token1 (95 from delta), receives token0 (90 - fee).
+        // User pays token1 (95 from delta), receives exactly the requested amount of token0.
         assertEq(
             user_token1_before - token1.balanceOf( user ),
             95 ether,
             "One-for-zero: user should pay 95 ether of token1."
         );
-        // fee = 90 * 3000 / 10_000_000 = 0.027, user gets 89.973.
         assertEq(
             token0.balanceOf( user ) - user_token0_before,
-            89.973 ether,
-            "One-for-zero: user should receive 89.973 ether of token0."
+            90 ether,
+            "One-for-zero: user should receive exactly 90 ether of token0."
         );
     }
 
@@ -324,17 +321,17 @@ contract SwapExecutionTest is SafeSwapTestBase {
         vm.prank( address(pool_manager) );
         hook.test_execute_exact_output_swap( context, params );
 
-        // Protocol fee = 100 * 3000 / 10_000_000 = 0.03 ether.
-        assertEq(
-            token1.balanceOf( address(hook) ) - hook_balance_before,
-            0.03 ether,
-            "Hook should receive 0.03 ether protocol fee."
-        );
-        // User receives 100 - 0.03 = 99.97 ether.
+        // Gross-up math: pool produces 100 * 10_000_000 / 9_997_000 = 100.030009002700810243 ether.
+        // User receives exactly 100 ether (their request); the hook keeps the grossed-up surplus.
         assertEq(
             token1.balanceOf( user ) - user_balance_before,
-            99.97 ether,
-            "User should receive 99.97 ether after protocol fee."
+            100 ether,
+            "User should receive exactly the requested output amount."
+        );
+        assertEq(
+            token1.balanceOf( address(hook) ) - hook_balance_before,
+            30_009_002_700_810_243,
+            "Hook should receive the grossed-up surplus as protocol fee."
         );
     }
 

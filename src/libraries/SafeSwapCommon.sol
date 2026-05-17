@@ -156,8 +156,8 @@ library SafeSwapCommon {
         IERC20 token_in,
         IERC20 token_out,
         uint256 amount_in,
-        uint256 amount_out,
-        uint24 pool_fee,
+        uint256 user_output,
+        uint256 protocol_fee,
         address hook_address
     ) internal
     {
@@ -165,15 +165,10 @@ library SafeSwapCommon {
         Currency currency_out  =  Currency.wrap( address(token_out) );
 
         pool_manager.sync( currency_in );
-
         context.send( token_in, amount_in, address(pool_manager) );
-
         pool_manager.settle( );
 
-        // Protocol fee from output: LPs get full pool fee, SafeSwap takes 10% of LP fee rate (0.01% floor).
-        ( uint256 protocol_fee, uint256 user_amount )  =  calculate_protocol_fee( amount_out, pool_fee );
-
-        pool_manager.take( currency_out, context.user, user_amount );
+        pool_manager.take( currency_out, context.user, user_output );
         pool_manager.take( currency_out, hook_address, protocol_fee );
     }
 }

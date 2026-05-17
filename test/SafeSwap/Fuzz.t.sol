@@ -111,12 +111,15 @@ contract FuzzTest is SafeSwapTestBase {
             pool_info: _default_pool_info( )
         });
 
-        // Mock returns less than minimum - should revert.
-        int128 mock_output  =  int128(uint128(min_out - 1));
-        pool_manager.set_mock_swap_amounts( -int128(uint128(amount_in)), mock_output );
+        // Mock returns pool_output one wei under min_out. The net amount delivered to the user (after protocol fee)
+        // is necessarily even smaller, so the net-of-fee slippage check must revert.
+        uint256 pool_output  =  min_out - 1;
+        pool_manager.set_mock_swap_amounts( -int128(uint128(amount_in)), int128(uint128(pool_output)) );
+
+        ( , uint256 expected_user_output )  =  SafeSwapCommon.calculate_protocol_fee( pool_output, POOL_FEE_030 );
 
         vm.prank( address(pool_manager) );
-        vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, min_out - 1, min_out ) );
+        vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, expected_user_output, min_out ) );
         hook.test_execute_exact_input_swap( context, params );
     }
 

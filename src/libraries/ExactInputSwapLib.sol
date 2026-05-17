@@ -112,9 +112,12 @@ library ExactInputSwapLib {
 
         // *NOTE*  -  Swap output deltas are ALWAYS positive (pool owes us tokens). Input deltas are ALWAYS negative (we owe pool).
         // This is guaranteed by Uniswap V4 design (see SqrtPriceMath.sol:267-269 and Pool.sol:454-461).
-        uint256 amount_out  =  zero_for_one ? uint256(int256(delta.amount1( ))) : uint256(int256(delta.amount0( )));
+        uint256 pool_output  =  zero_for_one ? uint256(int256(delta.amount1( ))) : uint256(int256(delta.amount0( )));
 
-        if(  amount_out < params.minimum_amount_out  )  revert SlippageExceeded( amount_out, params.minimum_amount_out );
+        // Split the pool output into the user's share and the protocol's share, then enforce slippage on the user's net receipt.
+        ( uint256 protocol_fee, uint256 user_output )  =  SafeSwapCommon.calculate_protocol_fee( pool_output, params.pool_info.fee );
+
+        if(  user_output < params.minimum_amount_out  )  revert SlippageExceeded( user_output, params.minimum_amount_out );
 
         SafeSwapCommon.settle_and_take(
             pool_manager,
@@ -122,8 +125,8 @@ library ExactInputSwapLib {
             token_in,
             params.token_out,
             amount_in,
-            amount_out,
-            params.pool_info.fee,
+            user_output,
+            protocol_fee,
             hook_address
         );
     }

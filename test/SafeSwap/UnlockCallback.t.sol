@@ -84,17 +84,16 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         vm.prank( address(pool_manager) );
         hook.unlockCallback( data );
 
-        // Verify dispatch happened: user paid token0 and received token1.
+        // Verify dispatch happened: user paid token0 and received exactly the requested output amount.
         assertEq(
             user_token0_before - token0.balanceOf( user ),
             95 ether,
             "Exact output dispatch: user should pay 95 ether of token0."
         );
-        // fee = 90 * 3000 / 10_000_000 = 0.027, user gets 89.973.
         assertEq(
             token1.balanceOf( user ) - user_token1_before,
-            89.973 ether,
-            "Exact output dispatch: user should receive 89.973 ether of token1."
+            90 ether,
+            "Exact output dispatch: user should receive exactly the requested output amount."
         );
     }
 

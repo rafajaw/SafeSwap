@@ -385,9 +385,7 @@ contract RealPoolIntegrationTest is Test {
         assertGt( token0_spent, 0, "User should spend some token0." );
         assertLe( token0_spent, max_input, "User should not spend more than max input." );
 
-        // User receives desired_out minus protocol fee.
-        uint256 expected_fee  =  desired_out * POOL_FEE_030 / PROTOCOL_FEE_DIVISOR;
-        assertEq( token1_received, desired_out - expected_fee, "User should receive desired output minus protocol fee." );
+        assertEq( token1_received, desired_out, "User should receive exactly the requested output amount." );
     }
 
     function test_real_pool_exact_output_swap_respects_slippage( ) external
@@ -422,10 +420,11 @@ contract RealPoolIntegrationTest is Test {
 
         hook.test_swap_exact_output( context, params );
 
-        uint256 protocol_fee  =  token1.balanceOf( address(hook) ) - hook_balance_before;
-        uint256 expected_fee  =  desired_out * POOL_FEE_030 / PROTOCOL_FEE_DIVISOR;
+        uint256 protocol_fee   =  token1.balanceOf( address(hook) ) - hook_balance_before;
+        uint256 grossed_up     =  desired_out * PROTOCOL_FEE_DIVISOR / (PROTOCOL_FEE_DIVISOR - POOL_FEE_030);
+        uint256 expected_fee   =  grossed_up - desired_out;
 
-        assertEq( protocol_fee, expected_fee, "Protocol fee should be pool_fee / PROTOCOL_FEE_DIVISOR of gross output." );
+        assertEq( protocol_fee, expected_fee, "Protocol fee should be the grossed-up surplus delivered on top of the user's exact output." );
     }
 
 

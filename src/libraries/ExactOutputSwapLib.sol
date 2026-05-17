@@ -100,11 +100,30 @@ library ExactOutputSwapLib {
             hook_address
         );
 
+        // ━━━━  GROSS-UP MATH  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        //
+        // The user wants to receive exactly `target_user_output` tokens, NET of the protocol fee.
+        // The pool itself doesn't know about our fee; it produces whatever we ask for via `amountSpecified`.
+        // So we instruct the pool to produce a slightly larger `grossed_up_pool_output`, then split it on settlement:
+        // the user gets exactly `target_user_output`, the hook keeps `grossed_up_pool_output - target_user_output`.
+        //
+        //     user_output       =  pool_output * ( DIVISOR - effective_fee_rate ) / DIVISOR
+        //     target_user_output  =  grossed_up_pool_output * ( DIVISOR - effective_fee_rate ) / DIVISOR
+        //     grossed_up_pool_output  =  target_user_output * DIVISOR / ( DIVISOR - effective_fee_rate )
+        //
+
+        uint256 target_user_output      =  params.amount_out;
+        uint256 effective_fee_rate      =  params.pool_info.fee < SafeSwapCommon.MIN_PROTOCOL_FEE_RATE
+                                            ? SafeSwapCommon.MIN_PROTOCOL_FEE_RATE
+                                            : params.pool_info.fee;
+        uint256 fee_complement          =  SafeSwapCommon.PROTOCOL_FEE_DIVISOR - effective_fee_rate;
+        uint256 grossed_up_pool_output  =  target_user_output * SafeSwapCommon.PROTOCOL_FEE_DIVISOR / fee_complement;
+
         bool zero_for_one  =  address(token_in) < address(params.token_out);
 
         IPoolManager.SwapParams memory swap_params  =  IPoolManager.SwapParams({
             zeroForOne: zero_for_one,
-            amountSpecified: int256(params.amount_out),
+            amountSpecified: int256(grossed_up_pool_output),
             sqrtPriceLimitX96: zero_for_one ? SafeSwapCommon.MIN_SQRT_PRICE_LIMIT : SafeSwapCommon.MAX_SQRT_PRICE_LIMIT
         });
 
@@ -115,14 +134,17 @@ library ExactOutputSwapLib {
 
         if(  amount_in > maximum_amount_in  )  revert SlippageExceeded( amount_in, maximum_amount_in );
 
+        uint256 user_output   =  target_user_output;
+        uint256 protocol_fee  =  grossed_up_pool_output - target_user_output;
+
         SafeSwapCommon.settle_and_take(
             pool_manager,
             context,
             token_in,
             params.token_out,
             amount_in,
-            params.amount_out,
-            params.pool_info.fee,
+            user_output,
+            protocol_fee,
             hook_address
         );
     }
