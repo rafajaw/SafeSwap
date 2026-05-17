@@ -9,6 +9,8 @@ import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
+import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
+import { POOL_MANAGER_KEY } from "@SafeSwap/UniswapHook.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -498,8 +500,7 @@ abstract contract SafeSwapTestBase is Test {
     uint160 constant SQRT_PRICE_1_1    =  79228162514264337593543950336;  // 1:1 price.
     uint256 constant INITIAL_BALANCE   =  1_000_000 ether;
 
-    address constant CHAINCONFIG_ADDRESS  =  0x5Afec0de00EB1c5323C7faA110f67499F744467b;
-    bytes32 constant POOL_MANAGER_KEY     =  bytes32("v4.pool_manager.address");
+    address constant HOOK_TARGET          =  address(uint160(0x0AA0));
 
     function setUp( ) public virtual
     {
@@ -540,9 +541,9 @@ abstract contract SafeSwapTestBase is Test {
             ( token0, token1 )  =  ( token1, token0 );
         }
 
-        // Deploy hook.
-        vm.prank( collector );
-        hook  =  new TestableSafeSwap( collector );
+        // Deploy hook at the address carrying SafeSwap's Uniswap V4 permission flags.
+        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", abi.encode( collector ), HOOK_TARGET );
+        hook  =  TestableSafeSwap(payable(HOOK_TARGET));
 
         // Initialize pool in mock pool manager.
         PoolKey memory pool_key  =  PoolKey({

@@ -4,6 +4,8 @@ pragma solidity ^0.8.30;
 import "forge-std/Test.sol";
 import "@SafeSwap/SafeSwap.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
+import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
+import { POOL_MANAGER_KEY } from "@SafeSwap/UniswapHook.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -194,9 +196,6 @@ contract ReentrantProtectedContextTest is Test {
     int24 constant FULL_RANGE_LOWER    =  -887220;
     int24 constant FULL_RANGE_UPPER    =   887220;
 
-    address constant CHAINCONFIG_ADDRESS  =  0x5Afec0de00EB1c5323C7faA110f67499F744467b;
-    bytes32 constant POOL_MANAGER_KEY     =  bytes32("v4.pool_manager.address");
-
     function setUp( ) public
     {
         vm.roll( 1000 );
@@ -220,9 +219,8 @@ contract ReentrantProtectedContextTest is Test {
 
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(real_pool_manager) );
 
-        ReentryPoolTestHook deployed_hook  =  new ReentryPoolTestHook( collector );
         address hook_target  =  address(uint160(0x0AA0));
-        vm.cloneAccount( address(deployed_hook), hook_target );
+        deployCodeTo( "ReentrantProtectedContext.t.sol:ReentryPoolTestHook", abi.encode( collector ), hook_target );
         hook  =  ReentryPoolTestHook(payable(hook_target));
 
         malicious_token  =  new ReentrantERC20( );

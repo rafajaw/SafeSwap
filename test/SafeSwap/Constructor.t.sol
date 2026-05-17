@@ -30,8 +30,8 @@ contract ConstructorTest is SafeSwapTestBase {
         // Clear pool manager entry in ChainConfig.
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(0) );
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidPoolManager.selector, address(0) ) );
-        new TestableSafeSwap( collector );
+        vm.expectRevert( bytes("SafeSwap: Invalid pool_manager") );
+        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", abi.encode( collector ), address(uint160(0x4AA0)) );
 
         // Restore pool manager entry.
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(pool_manager) );
@@ -43,10 +43,16 @@ contract ConstructorTest is SafeSwapTestBase {
 
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(not_pool_manager) );
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidPoolManager.selector, address(not_pool_manager) ) );
-        new TestableSafeSwap( collector );
+        vm.expectRevert( bytes("SafeSwap: Invalid pool_manager") );
+        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", abi.encode( collector ), address(uint160(0x4AA0)) );
 
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(pool_manager) );
+    }
+
+    function test_constructor_reverts_if_hook_address_has_wrong_flags( ) external
+    {
+        vm.expectRevert( bytes("SafeSwap: Invalid hook address") );
+        new TestableSafeSwap( collector );
     }
 
     function test_constructor_announces_protocol_to_bondroute( ) external
@@ -56,6 +62,6 @@ contract ConstructorTest is SafeSwapTestBase {
         vm.expectEmit( true, true, true, true, BONDROUTE_ADDRESS );
         emit MockBondRoute.ProtocolAnnounced( "SafeSwap", "Trustless MEV-free Uniswap V4 Hook" );
 
-        new TestableSafeSwap( collector );
+        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", abi.encode( collector ), address(uint160(0x4AA0)) );
     }
 }

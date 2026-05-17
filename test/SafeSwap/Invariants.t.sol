@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import "./TestBase.t.sol";
 import { SafeSwapCommon } from "@SafeSwap/libraries/SafeSwapCommon.sol";
+import { PROTOCOL_FEE_DIVISOR } from "@SafeSwap/Definitions.sol";
 
 
 /// @dev Handler contract for invariant testing.
@@ -62,7 +63,7 @@ contract SafeSwapHandler is Test {
         try hook.test_execute_exact_input_swap( context, params )
         {
             // Calculate protocol fee: 10% of 0.30% = 0.03%.
-            uint256 protocol_fee  =  mock_output * 3000 / SafeSwapCommon.PROTOCOL_FEE_DIVISOR;
+            uint256 protocol_fee  =  mock_output * 3000 / PROTOCOL_FEE_DIVISOR;
             uint256 user_amount   =  mock_output - protocol_fee;
 
             total_protocol_fees_collected  =  total_protocol_fees_collected + protocol_fee;

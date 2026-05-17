@@ -2,13 +2,13 @@
 pragma solidity ^0.8.30;
 
 import "./TestBase.t.sol";
-import { SafeSwapCommon } from "@SafeSwap/libraries/SafeSwapCommon.sol";
+import {
+    PROTOCOL_FEE_DIVISOR as SAFESWAP_PROTOCOL_FEE_DIVISOR,
+    MIN_PROTOCOL_FEE_RATE as SAFESWAP_MIN_PROTOCOL_FEE_RATE
+} from "@SafeSwap/Definitions.sol";
 
 
 contract ProtocolFeeTest is SafeSwapTestBase {
-
-    uint256 constant PROTOCOL_FEE_DIVISOR   =  SafeSwapCommon.PROTOCOL_FEE_DIVISOR;
-    uint256 constant MIN_PROTOCOL_FEE_RATE  =  SafeSwapCommon.MIN_PROTOCOL_FEE_RATE;
 
     function setUp( ) public override
     {
@@ -32,7 +32,7 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 pool_fee    =  3000;
         uint256 amount_out  =  1_000_000 ether;
 
-        uint256 protocol_fee  =  amount_out * pool_fee / PROTOCOL_FEE_DIVISOR;
+        uint256 protocol_fee  =  amount_out * pool_fee / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // Expected: 1_000_000 * 3000 / 10_000_000 = 300 ether.
         assertEq(
@@ -48,8 +48,8 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 pool_fee    =  100;
         uint256 amount_out  =  1_000_000 ether;
 
-        uint256 effective_fee_rate  =  pool_fee < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee;
-        uint256 protocol_fee  =  amount_out * effective_fee_rate / PROTOCOL_FEE_DIVISOR;
+        uint256 effective_fee_rate  =  pool_fee < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee;
+        uint256 protocol_fee  =  amount_out * effective_fee_rate / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // With floor: 1_000_000 * 1000 / 10_000_000 = 100 ether (0.01%).
         assertEq(
@@ -62,12 +62,12 @@ contract ProtocolFeeTest is SafeSwapTestBase {
     function test_protocol_fee_floor_is_001_percent( ) external pure
     {
         // Floor rate is 1000 out of 10_000_000 = 0.01%.
-        uint256 floor_percentage  =  MIN_PROTOCOL_FEE_RATE * 100 / PROTOCOL_FEE_DIVISOR;
+        uint256 floor_percentage  =  SAFESWAP_MIN_PROTOCOL_FEE_RATE * 100 / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // 1000 * 100 / 10_000_000 = 0 (integer division).
         // Better check: 1000 / 10_000_000 = 0.0001 = 0.01%.
         uint256 amount  =  10_000 ether;
-        uint256 fee     =  amount * MIN_PROTOCOL_FEE_RATE / PROTOCOL_FEE_DIVISOR;
+        uint256 fee     =  amount * SAFESWAP_MIN_PROTOCOL_FEE_RATE / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // 10_000 * 1000 / 10_000_000 = 1 ether.
         assertEq(
@@ -86,15 +86,15 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 pool_fee_011  =  1100;  // 0.11%.
 
         // 0.09% pool uses floor.
-        uint256 effective_009  =  pool_fee_009 < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee_009;
-        assertEq( effective_009, MIN_PROTOCOL_FEE_RATE, "0.09% pool should use floor." );
+        uint256 effective_009  =  pool_fee_009 < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee_009;
+        assertEq( effective_009, SAFESWAP_MIN_PROTOCOL_FEE_RATE, "0.09% pool should use floor." );
 
         // 0.10% pool is at floor (no change).
-        uint256 effective_010  =  pool_fee_010 < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee_010;
+        uint256 effective_010  =  pool_fee_010 < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee_010;
         assertEq( effective_010, pool_fee_010, "0.10% pool should equal floor." );
 
         // 0.11% pool uses own rate.
-        uint256 effective_011  =  pool_fee_011 < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee_011;
+        uint256 effective_011  =  pool_fee_011 < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee_011;
         assertEq( effective_011, pool_fee_011, "0.11% pool should use own rate." );
     }
 
@@ -107,8 +107,8 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 pool_fee    =  100;
         uint256 amount_out  =  100_000 ether;
 
-        uint256 effective_fee_rate  =  pool_fee < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee;
-        uint256 protocol_fee  =  amount_out * effective_fee_rate / PROTOCOL_FEE_DIVISOR;
+        uint256 effective_fee_rate  =  pool_fee < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee;
+        uint256 protocol_fee  =  amount_out * effective_fee_rate / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // With floor: 100_000 * 1000 / 10_000_000 = 10 ether.
         assertEq(
@@ -124,8 +124,8 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 pool_fee    =  500;
         uint256 amount_out  =  100_000 ether;
 
-        uint256 effective_fee_rate  =  pool_fee < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee;
-        uint256 protocol_fee  =  amount_out * effective_fee_rate / PROTOCOL_FEE_DIVISOR;
+        uint256 effective_fee_rate  =  pool_fee < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee;
+        uint256 protocol_fee  =  amount_out * effective_fee_rate / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // 0.05% < 0.10%, so floor applies: 100_000 * 1000 / 10_000_000 = 10 ether.
         assertEq(
@@ -141,8 +141,8 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 pool_fee    =  3000;
         uint256 amount_out  =  100_000 ether;
 
-        uint256 effective_fee_rate  =  pool_fee < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee;
-        uint256 protocol_fee  =  amount_out * effective_fee_rate / PROTOCOL_FEE_DIVISOR;
+        uint256 effective_fee_rate  =  pool_fee < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee;
+        uint256 protocol_fee  =  amount_out * effective_fee_rate / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // 0.30% > 0.10%, no floor: 100_000 * 3000 / 10_000_000 = 30 ether.
         assertEq(
@@ -158,8 +158,8 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 pool_fee    =  10000;
         uint256 amount_out  =  100_000 ether;
 
-        uint256 effective_fee_rate  =  pool_fee < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee;
-        uint256 protocol_fee  =  amount_out * effective_fee_rate / PROTOCOL_FEE_DIVISOR;
+        uint256 effective_fee_rate  =  pool_fee < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee;
+        uint256 protocol_fee  =  amount_out * effective_fee_rate / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // 1.00% > 0.10%, no floor: 100_000 * 10000 / 10_000_000 = 100 ether.
         assertEq(
@@ -221,7 +221,7 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 pool_fee    =  3000;
         uint256 amount_out  =  1;  // Minimum: 1 wei.
 
-        uint256 protocol_fee  =  amount_out * pool_fee / PROTOCOL_FEE_DIVISOR;
+        uint256 protocol_fee  =  amount_out * pool_fee / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // 1 * 3000 / 10_000_000 = 0 (rounds down).
         assertEq(
@@ -236,7 +236,7 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 pool_fee    =  3000;
         uint256 amount_out  =  type(uint128).max;  // Large but safe amount.
 
-        uint256 protocol_fee  =  amount_out * pool_fee / PROTOCOL_FEE_DIVISOR;
+        uint256 protocol_fee  =  amount_out * pool_fee / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // Should not overflow.
         assertGt(
@@ -259,8 +259,8 @@ contract ProtocolFeeTest is SafeSwapTestBase {
         uint256 pool_fee    =  1000;  // 0.10% = floor.
         uint256 amount_out  =  100_000 ether;
 
-        uint256 effective_fee_rate  =  pool_fee < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee;
-        uint256 protocol_fee  =  amount_out * effective_fee_rate / PROTOCOL_FEE_DIVISOR;
+        uint256 effective_fee_rate  =  pool_fee < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee;
+        uint256 protocol_fee  =  amount_out * effective_fee_rate / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // At threshold: 100_000 * 1000 / 10_000_000 = 10 ether.
         assertEq(

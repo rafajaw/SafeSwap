@@ -2,13 +2,13 @@
 pragma solidity ^0.8.30;
 
 import "./TestBase.t.sol";
-import { SafeSwapCommon } from "@SafeSwap/libraries/SafeSwapCommon.sol";
+import {
+    PROTOCOL_FEE_DIVISOR as SAFESWAP_PROTOCOL_FEE_DIVISOR,
+    MIN_PROTOCOL_FEE_RATE as SAFESWAP_MIN_PROTOCOL_FEE_RATE
+} from "@SafeSwap/Definitions.sol";
 
 
 contract FuzzTest is SafeSwapTestBase {
-
-    uint256 constant PROTOCOL_FEE_DIVISOR   =  SafeSwapCommon.PROTOCOL_FEE_DIVISOR;
-    uint256 constant MIN_PROTOCOL_FEE_RATE  =  SafeSwapCommon.MIN_PROTOCOL_FEE_RATE;
 
 
     // ━━━━  Fee Calculation  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -19,8 +19,8 @@ contract FuzzTest is SafeSwapTestBase {
         amount_out  =  bound( amount_out, 1, type(uint128).max );
         pool_fee    =  uint24( bound( pool_fee, 1, 1_000_000 ) );  // Max 100% fee.
 
-        uint256 effective_fee_rate  =  pool_fee < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee;
-        uint256 protocol_fee  =  amount_out * effective_fee_rate / PROTOCOL_FEE_DIVISOR;
+        uint256 effective_fee_rate  =  pool_fee < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee;
+        uint256 protocol_fee  =  amount_out * effective_fee_rate / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         assertLe(
             protocol_fee,
@@ -32,14 +32,14 @@ contract FuzzTest is SafeSwapTestBase {
     function testFuzz_protocol_fee_at_least_floor_rate( uint256 amount_out, uint24 pool_fee ) external pure
     {
         // Bound inputs.
-        amount_out  =  bound( amount_out, PROTOCOL_FEE_DIVISOR, type(uint128).max );  // Large enough for meaningful fee.
+        amount_out  =  bound( amount_out, SAFESWAP_PROTOCOL_FEE_DIVISOR, type(uint128).max );  // Large enough for meaningful fee.
         pool_fee    =  uint24( bound( pool_fee, 1, 500 ) );  // Below floor threshold.
 
-        uint256 effective_fee_rate  =  pool_fee < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee;
-        uint256 protocol_fee  =  amount_out * effective_fee_rate / PROTOCOL_FEE_DIVISOR;
+        uint256 effective_fee_rate  =  pool_fee < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee;
+        uint256 protocol_fee  =  amount_out * effective_fee_rate / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // Floor fee calculation.
-        uint256 floor_fee  =  amount_out * MIN_PROTOCOL_FEE_RATE / PROTOCOL_FEE_DIVISOR;
+        uint256 floor_fee  =  amount_out * SAFESWAP_MIN_PROTOCOL_FEE_RATE / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         assertGe(
             protocol_fee,
@@ -52,15 +52,15 @@ contract FuzzTest is SafeSwapTestBase {
     {
         // Bound inputs to avoid overflow and precision issues.
         // Use amounts divisible by divisor to avoid rounding issues.
-        amount_out  =  bound( amount_out, PROTOCOL_FEE_DIVISOR, type(uint64).max );
-        amount_out  =  amount_out - ( amount_out % PROTOCOL_FEE_DIVISOR );
-        pool_fee    =  uint24( bound( pool_fee, MIN_PROTOCOL_FEE_RATE, 50_000 ) );
+        amount_out  =  bound( amount_out, SAFESWAP_PROTOCOL_FEE_DIVISOR, type(uint64).max );
+        amount_out  =  amount_out - ( amount_out % SAFESWAP_PROTOCOL_FEE_DIVISOR );
+        pool_fee    =  uint24( bound( pool_fee, SAFESWAP_MIN_PROTOCOL_FEE_RATE, 50_000 ) );
 
-        uint256 protocol_fee  =  amount_out * pool_fee / PROTOCOL_FEE_DIVISOR;
+        uint256 protocol_fee  =  amount_out * pool_fee / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // Double the pool fee should approximately double the protocol fee.
         uint24 double_fee  =  pool_fee * 2;
-        uint256 double_protocol_fee  =  amount_out * double_fee / PROTOCOL_FEE_DIVISOR;
+        uint256 double_protocol_fee  =  amount_out * double_fee / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
         // Allow 1 wei difference due to rounding.
         assertApproxEqAbs(

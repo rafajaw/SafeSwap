@@ -9,6 +9,9 @@ import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
+import { PROTOCOL_FEE_DIVISOR } from "@SafeSwap/Definitions.sol";
+import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
+import { POOL_MANAGER_KEY } from "@SafeSwap/UniswapHook.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { IUnlockCallback } from "@UniswapV4Core/interfaces/callback/IUnlockCallback.sol";
@@ -151,12 +154,6 @@ contract RealPoolIntegrationTest is Test {
     int24 constant FULL_RANGE_LOWER    =  -887220;  // Near MIN_TICK, aligned to tickSpacing 60.
     int24 constant FULL_RANGE_UPPER    =   887220;  // Near MAX_TICK, aligned to tickSpacing 60.
 
-    address constant CHAINCONFIG_ADDRESS  =  0x5Afec0de00EB1c5323C7faA110f67499F744467b;
-    bytes32 constant POOL_MANAGER_KEY     =  bytes32("v4.pool_manager.address");
-
-    uint256 constant PROTOCOL_FEE_DIVISOR  =  10_000_000;
-
-
     function setUp( ) public
     {
         vm.roll( 1000 );
@@ -189,14 +186,10 @@ contract RealPoolIntegrationTest is Test {
         // Store pool manager address in ChainConfig.
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( collector, POOL_MANAGER_KEY, address(real_pool_manager) );
 
-        // Deploy hook normally (constructor reads ChainConfig, sets PoolManager immutable in bytecode).
-        RealPoolTestHook deployed_hook  =  new RealPoolTestHook( collector );
-
-        // Clone hook (code + storage) to address with correct hook permission bits.
+        // Deploy hook at the address carrying SafeSwap's Uniswap V4 permission flags:
         // BEFORE_SWAP(0x80) | BEFORE_DONATE(0x20) | BEFORE_REMOVE_LIQUIDITY(0x200) | BEFORE_ADD_LIQUIDITY(0x800) = 0x0AA0.
         address hook_target  =  address(uint160(0x0AA0));
-        vm.cloneAccount( address(deployed_hook), hook_target );
-
+        deployCodeTo( "RealPoolIntegration.t.sol:RealPoolTestHook", abi.encode( collector ), hook_target );
         hook  =  RealPoolTestHook(payable(hook_target));
 
         // Deploy tokens and ensure token0 < token1 for proper Uniswap V4 ordering.

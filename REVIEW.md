@@ -14,7 +14,7 @@ Operational requirements that must be true at or before deployment. Not security
 
 1. **ChainConfig is deployed at `0x5Afec0de00EB1c5323C7faA110f67499F744467b`** on the target chain. The constructor reads from this canonical address; if no code is present, every read reverts.
 
-2. **ChainConfig contains `v4.pool_manager.address`** under the deployer's signer keyspace, set to the canonical Uniswap V4 PoolManager for the target chain. Otherwise the constructor reverts with `InvalidPoolManager(0x0)`.
+2. **ChainConfig contains `uniswap_v4/pool_manager`** under the deployer's signer keyspace, set to the canonical Uniswap V4 PoolManager for the target chain. Otherwise the constructor reverts with `"SafeSwap: Invalid pool_manager"`.
 
 3. **BondRoute is deployed at `0xb01d00000000440215e86e0A436f9b59FeB2F14a`** on the target chain. The canonical address is baked into `BondRouteProtected.sol`. If no code is present, the constructor's `BondRoute.announce_protocol(...)` reverts.
 
@@ -115,7 +115,7 @@ LP custody, swap execution, and donate flows all hinge on BondRoute. If the cano
 ## Pre-deployment checklist
 
 1. [ ] Verify ChainConfig contract is deployed at `0x5Afec0de00EB1c5323C7faA110f67499F744467b` on the target chain.
-2. [ ] Write the `v4.pool_manager.address` ChainConfig entry under the deployer's signer keyspace, pointing at the canonical Uniswap V4 PoolManager for the target chain.
+2. [ ] Write the `uniswap_v4/pool_manager` ChainConfig entry under the deployer's signer keyspace, pointing at the canonical Uniswap V4 PoolManager for the target chain.
 3. [ ] Verify BondRoute is deployed at `0xb01d00000000440215e86e0A436f9b59FeB2F14a` on the target chain.
 4. [ ] Add a CREATE2 deploy script that mines a hook address whose low 14 bits equal `0x0AA0`. Smoke-test by initializing a throwaway pool.
 5. [ ] Decide the `initial_collector` address. It also functions as the ChainConfig signer at deploy time.

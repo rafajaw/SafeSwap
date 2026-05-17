@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import "@SafeSwap/integrations/BondRouteProtected.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
+import "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
@@ -74,8 +75,8 @@ library ExactOutputSwapLib {
         constraints.min_fundings  =  new TokenAmount[](1);
         constraints.min_fundings[ 0 ]  =  TokenAmount({ token: token_in, amount: maximum_amount_in });
 
-        constraints.min_execution_delay_in_blocks   =  SafeSwapCommon.MIN_EXECUTION_DELAY_IN_BLOCKS;
-        constraints.max_execution_delay_in_seconds  =  SafeSwapCommon.MAX_SWAP_EXECUTION_DELAY;
+        constraints.min_execution_delay_in_blocks   =  MIN_EXECUTION_DELAY_IN_BLOCKS;
+        constraints.max_execution_delay_in_seconds  =  MAX_SWAP_EXECUTION_DELAY;
     }
 
 
@@ -113,11 +114,11 @@ library ExactOutputSwapLib {
         //
 
         uint256 target_user_output      =  params.amount_out;
-        uint256 effective_fee_rate      =  params.pool_info.fee < SafeSwapCommon.MIN_PROTOCOL_FEE_RATE
-                                            ? SafeSwapCommon.MIN_PROTOCOL_FEE_RATE
+        uint256 effective_fee_rate      =  params.pool_info.fee < MIN_PROTOCOL_FEE_RATE
+                                            ? MIN_PROTOCOL_FEE_RATE
                                             : params.pool_info.fee;
-        uint256 fee_complement          =  SafeSwapCommon.PROTOCOL_FEE_DIVISOR - effective_fee_rate;
-        uint256 grossed_up_pool_output  =  target_user_output * SafeSwapCommon.PROTOCOL_FEE_DIVISOR / fee_complement;
+        uint256 fee_complement          =  PROTOCOL_FEE_DIVISOR - effective_fee_rate;
+        uint256 grossed_up_pool_output  =  target_user_output * PROTOCOL_FEE_DIVISOR / fee_complement;
 
         bool zero_for_one  =  address(token_in) < address(params.token_out);
 

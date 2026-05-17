@@ -25,7 +25,14 @@ interface IExtsloadSparse {
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 error BondRouteRequired( );
-error InvalidPoolManager( address pool_manager );
+
+
+// ━━━━  UNISWAP V4 CONFIG  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+bytes32 constant POOL_MANAGER_KEY  =   bytes32("uniswap_v4/pool_manager");
+bytes4 constant ERC6909_INTERFACE_ID  =  0x0f632fb3;
+uint160 constant HOOK_PERMISSION_MASK  =  uint160((1 << 14) - 1);
+uint160 constant EXPECTED_HOOK_FLAGS   =  0x0AA0;
 
 
 /**
@@ -39,22 +46,19 @@ abstract contract UniswapHook is IUnlockCallback {
 
     bool transient _is_hook_callback_allowed;
 
-    bytes32 constant POOL_MANAGER_KEY  =   bytes32("v4.pool_manager.address");
-    bytes4 constant ERC6909_INTERFACE_ID  =  0x0f632fb3;
-
     enum Action { ExactInputSwap, ExactOutputSwap, AddLiquidity, RemoveLiquidity, Donate }
 
     constructor( address config_signer )
     {
-        address pool_manager  =  ChainConfig.read_address( config_signer, POOL_MANAGER_KEY );
+        if(  _is_valid_safeswap_hook_address( address(this) ) == false  )  revert( "SafeSwap: Invalid hook address" );
 
-        if(  _is_valid_pool_manager( pool_manager ) == false  )  revert InvalidPoolManager( pool_manager );
+        address pool_manager  =  ChainConfig.read_address( config_signer, POOL_MANAGER_KEY );
+        if(  _is_valid_pool_manager( pool_manager ) == false  )  revert( "SafeSwap: Invalid pool_manager" );
 
         PoolManager  =  IPoolManager(pool_manager);
     }
 
-    function _is_valid_pool_manager( address pool_manager )
-    internal view returns ( bool )
+    function _is_valid_pool_manager( address pool_manager ) internal view returns ( bool )
     {
         if(  pool_manager.code.length == 0  )  return false;
 
@@ -73,6 +77,11 @@ abstract contract UniswapHook is IUnlockCallback {
         if(  ok_erc6909 == false || erc6909_data.length != 32 || abi.decode( erc6909_data, (bool) ) == false  )  return false;
 
         return true;
+    }
+
+    function _is_valid_safeswap_hook_address( address hook_address ) internal pure returns ( bool )
+    {
+        return   (  uint160(hook_address) & HOOK_PERMISSION_MASK  ==  EXPECTED_HOOK_FLAGS  );
     }
 
 
