@@ -27,7 +27,7 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         BondContext memory context  =  _create_bond_context( user, 100 ether );
         ExactInputSwapParams memory params  =  _create_exact_input_params( 90 ether );
 
-        bytes memory data  =  bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactInputSwap)) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.ExactInputSwap)), abi.encode( context, params ) );
 
         vm.prank( user );
         vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, address(pool_manager) ) );
@@ -45,7 +45,7 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         // Set mock amounts (negative for input, positive for output).
         pool_manager.set_mock_swap_amounts( -100 ether, 95 ether );
 
-        bytes memory data  =  bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactInputSwap)) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.ExactInputSwap)), abi.encode( context, params ) );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
@@ -76,7 +76,7 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         // Set mock amounts.
         pool_manager.set_mock_swap_amounts( -95 ether, 90 ether );
 
-        bytes memory data  =  bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactOutputSwap)) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.ExactOutputSwap)), abi.encode( context, params ) );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
@@ -105,7 +105,7 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         // Set mock amounts (negative means user provides).
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
-        bytes memory data  =  bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.AddLiquidity)) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.AddLiquidity)), abi.encode( context, params ) );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
@@ -134,7 +134,7 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         // Set mock amounts (positive means pool returns to user).
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
 
-        bytes memory data  =  bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.RemoveLiquidity)) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.RemoveLiquidity)), abi.encode( context, params ) );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
@@ -162,7 +162,7 @@ contract UnlockCallbackTest is SafeSwapTestBase {
 
         pool_manager.set_mock_donate_amounts( -100 ether, -200 ether );
 
-        bytes memory data  =  bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.Donate)) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.Donate)), abi.encode( context, params ) );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
@@ -188,7 +188,7 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         ExactInputSwapParams memory params  =  _create_exact_input_params( 90 ether );
 
         // Use invalid action (99 is outside enum range 0-3).
-        bytes memory data  =  bytes.concat( abi.encode( context, params ), bytes1(uint8(99)) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(99)), abi.encode( context, params ) );
 
         vm.prank( address(pool_manager) );
         // Enum conversion panics with error code 0x21.
@@ -197,24 +197,24 @@ contract UnlockCallbackTest is SafeSwapTestBase {
     }
 
 
-    // ━━━━  Trailing Byte Encoding  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  Leading Byte Encoding  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function test_unlock_callback_reads_operation_type_from_last_byte( ) external
+    function test_unlock_callback_reads_operation_type_from_first_byte( ) external
     {
         BondContext memory context  =  _create_bond_context( user, 100 ether );
         ExactInputSwapParams memory params  =  _create_exact_input_params( 90 ether );
 
         pool_manager.set_mock_swap_amounts( -100 ether, 95 ether );
 
-        // Construct data with trailing byte.
+        // Construct data with leading action byte.
         bytes memory encoded_payload  =  abi.encode( context, params );
-        bytes memory data  =  bytes.concat( encoded_payload, bytes1(uint8(UniswapHook.Action.ExactInputSwap)) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.ExactInputSwap)), encoded_payload );
 
-        // Verify the last byte is the operation type.
+        // Verify the first byte is the operation type.
         assertEq(
-            uint8(data[ data.length - 1 ]),
+            uint8(data[0]),
             uint8(UniswapHook.Action.ExactInputSwap),
-            "Last byte should be operation type."
+            "First byte should be operation type."
         );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
@@ -230,7 +230,7 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         );
     }
 
-    function test_unlock_callback_decodes_payload_without_trailing_byte( ) external
+    function test_unlock_callback_decodes_payload_after_leading_byte( ) external
     {
         BondContext memory context  =  _create_bond_context( user, 100 ether );
         ExactInputSwapParams memory params  =  _create_exact_input_params( 90 ether );
@@ -238,13 +238,13 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         pool_manager.set_mock_swap_amounts( -100 ether, 95 ether );
 
         bytes memory encoded_payload  =  abi.encode( context, params );
-        bytes memory data  =  bytes.concat( encoded_payload, bytes1(uint8(UniswapHook.Action.ExactInputSwap)) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.ExactInputSwap)), encoded_payload );
 
         // The payload length should be data.length - 1.
         assertEq(
             data.length,
             encoded_payload.length + 1,
-            "Data should be payload + 1 byte for operation type."
+            "Data should be 1 action byte + payload."
         );
 
         uint256 user_token1_before  =  token1.balanceOf( user );

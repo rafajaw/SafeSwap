@@ -35,31 +35,31 @@ contract RealPoolTestHook is SafeSwap {
     function harness_swap_exact_input( BondContext memory context, ExactInputSwapParams memory params )
     external
     {
-        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactInputSwap)) ) );
+        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.ExactInputSwap)), abi.encode( context, params ) ) );
     }
 
     function harness_swap_exact_output( BondContext memory context, ExactOutputSwapParams memory params )
     external
     {
-        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.ExactOutputSwap)) ) );
+        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.ExactOutputSwap)), abi.encode( context, params ) ) );
     }
 
     function harness_add_liquidity( BondContext memory context, AddLiquidityParams memory params )
     external
     {
-        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.AddLiquidity)) ) );
+        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.AddLiquidity)), abi.encode( context, params ) ) );
     }
 
     function harness_remove_liquidity( BondContext memory context, RemoveLiquidityParams memory params )
     external
     {
-        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.RemoveLiquidity)) ) );
+        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.RemoveLiquidity)), abi.encode( context, params ) ) );
     }
 
     function harness_donate( BondContext memory context, DonateParams memory params )
     external
     {
-        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(UniswapHook.Action.Donate)) ) );
+        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.Donate)), abi.encode( context, params ) ) );
     }
 
     function harness_hook_callback_allowed( ) external view returns ( bool )

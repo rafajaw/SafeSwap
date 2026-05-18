@@ -41,7 +41,8 @@ abstract contract User is UniswapHook, BondRouteProtected {
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.ExactInputSwap)) ) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(Action.ExactInputSwap)), abi.encode( context, params ) );
+        PoolManager.unlock( data );
     }
 
     /**
@@ -63,7 +64,8 @@ abstract contract User is UniswapHook, BondRouteProtected {
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.ExactOutputSwap)) ) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(Action.ExactOutputSwap)), abi.encode( context, params ) );
+        PoolManager.unlock( data );
     }
 
     /**
@@ -89,7 +91,8 @@ abstract contract User is UniswapHook, BondRouteProtected {
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.AddLiquidity)) ) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(Action.AddLiquidity)), abi.encode( context, params ) );
+        PoolManager.unlock( data );
     }
 
     /**
@@ -111,7 +114,8 @@ abstract contract User is UniswapHook, BondRouteProtected {
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.RemoveLiquidity)) ) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(Action.RemoveLiquidity)), abi.encode( context, params ) );
+        PoolManager.unlock( data );
     }
 
     /**
@@ -132,7 +136,8 @@ abstract contract User is UniswapHook, BondRouteProtected {
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.Donate)) ) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(Action.Donate)), abi.encode( context, params ) );
+        PoolManager.unlock( data );
     }
 
 

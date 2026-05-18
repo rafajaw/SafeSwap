@@ -98,7 +98,7 @@ abstract contract UniswapHook is IUnlockCallback {
 
     /**
      * @notice Dispatch a PoolManager unlock callback to the SafeSwap action encoded in `data`.
-     * @param data ABI-encoded `(BondContext, action params)` with the final byte identifying the SafeSwap action.
+     * @param data First byte identifies the SafeSwap action; remaining bytes are ABI-encoded `(BondContext, action params)`.
      * @return Empty bytes after successful action execution.
      *
      * @dev SECURITY MODEL:
@@ -114,34 +114,34 @@ abstract contract UniswapHook is IUnlockCallback {
     {
         if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
 
-        Action action           =  Action(uint8(data[ data.length - 1 ]));
-        bytes calldata payload  =  data[ :data.length - 1 ];
+        Action action           =  Action(uint8(data[ 0 ]));
+        bytes calldata payload  =  data[ 1: ];
 
         _is_hook_callback_allowed  =  true;
 
         if(  action == Action.ExactInputSwap  )
         {
-            ( BondContext memory context, ExactInputSwapParams memory params )  =  abi.decode(  payload,  ( BondContext, ExactInputSwapParams )  );
+            ( BondContext memory context, ExactInputSwapParams memory params )  =  abi.decode( payload, (BondContext, ExactInputSwapParams) );
             ExactInputSwapLib.execute( context, params, PoolManager, address(this) );
         }
         else if(  action == Action.ExactOutputSwap  )
         {
-            ( BondContext memory context, ExactOutputSwapParams memory params )  =  abi.decode(  payload,  ( BondContext, ExactOutputSwapParams )  );
+            ( BondContext memory context, ExactOutputSwapParams memory params )  =  abi.decode( payload, (BondContext, ExactOutputSwapParams) );
             ExactOutputSwapLib.execute( context, params, PoolManager, address(this) );
         }
         else if(  action == Action.AddLiquidity  )
         {
-            ( BondContext memory context, AddLiquidityParams memory params )  =  abi.decode(  payload,  ( BondContext, AddLiquidityParams )  );
+            ( BondContext memory context, AddLiquidityParams memory params )  =  abi.decode( payload, (BondContext, AddLiquidityParams) );
             AddLiquidityLib.execute( context, params, PoolManager, address(this) );
         }
         else if(  action == Action.RemoveLiquidity  )
         {
-            ( BondContext memory context, RemoveLiquidityParams memory params )  =  abi.decode(  payload,  ( BondContext, RemoveLiquidityParams )  );
+            ( BondContext memory context, RemoveLiquidityParams memory params )  =  abi.decode( payload, (BondContext, RemoveLiquidityParams) );
             RemoveLiquidityLib.execute( context, params, PoolManager, address(this) );
         }
         else if(  action == Action.Donate  )
         {
-            ( BondContext memory context, DonateParams memory params )  =  abi.decode(  payload,  ( BondContext, DonateParams )  );
+            ( BondContext memory context, DonateParams memory params )  =  abi.decode( payload, (BondContext, DonateParams) );
             DonateLib.execute( context, params, PoolManager, address(this) );
         }
 
