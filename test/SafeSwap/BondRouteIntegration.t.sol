@@ -368,8 +368,7 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
             tick_upper: 600,
             liquidity: 100 ether,
             amount0_min: 0,
-            amount1_min: 0,
-            salt: bytes32(0)
+            amount1_min: 0
         });
         bytes memory call_data  =  _encode_remove_liquidity_calldata( params );
 

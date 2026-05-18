@@ -327,8 +327,7 @@ contract ReentrantProtectedContextTest is Test {
             tick_lower: FULL_RANGE_LOWER,
             tick_upper: FULL_RANGE_UPPER,
             min_a: TokenAmount({ token: IERC20(Currency.unwrap( key.currency0 )), amount: 0 }),
-            min_b: TokenAmount({ token: IERC20(Currency.unwrap( key.currency1 )), amount: 0 }),
-            salt: bytes32(0)
+            min_b: TokenAmount({ token: IERC20(Currency.unwrap( key.currency1 )), amount: 0 })
         });
 
         hook.harness_add_liquidity( _create_liquidity_context( key, lp, SEED_AMOUNT, SEED_AMOUNT ), params );

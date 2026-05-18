@@ -241,8 +241,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower: FULL_RANGE_LOWER,
             tick_upper: FULL_RANGE_UPPER,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         hook.harness_add_liquidity( seed_context, seed_params );
     }
@@ -430,8 +429,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: bytes32(uint256(1))
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         uint256 user_token0_before  =  token0.balanceOf( user );
@@ -461,19 +459,16 @@ contract RealPoolIntegrationTest is Test {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: amount + 1 ether }),  // Require more than available - guaranteed to fail.
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: bytes32(uint256(2))
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         vm.expectRevert( );
         hook.harness_add_liquidity( context, params );
     }
 
-    function test_real_pool_add_liquidity_position_salt_isolation( ) external
+    function test_real_pool_add_liquidity_user_position_isolation( ) external
     {
         uint256 amount  =  100 ether;
-        bytes32 same_salt  =  keccak256( "shared_salt" );
-
         int24 tick_lower  =  -TICK_SPACING_60 * 10;
         int24 tick_upper  =  TICK_SPACING_60 * 10;
 
@@ -482,8 +477,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: same_salt
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         // User A adds liquidity.
@@ -492,19 +486,17 @@ contract RealPoolIntegrationTest is Test {
 
         uint256 user_a_token0_before  =  token0.balanceOf( user );
 
-        // User B adds liquidity with the same salt.
+        // User B adds liquidity at the same range — must land on a different V4 position (keyed by user address as the V4 salt).
         BondContext memory context_b  =  _create_two_funding_context( other_user, amount, amount );
         hook.harness_add_liquidity( context_b, params );
 
-        // User A should be unaffected by user B's add.
         assertEq(
             token0.balanceOf( user ),
             user_a_token0_before,
-            "User A's balance should not change when user B adds liquidity with the same salt."
+            "User A's balance should not change when user B adds liquidity at the same range."
         );
 
-        // Now user B tries to remove "user A's position" by using the same salt.
-        // With salt isolation, this targets user B's own position, not user A's.
+        // User B removes from their own position at the same range — must not touch user A's.
         BondContext memory remove_context_b  =  _create_zero_funding_context( other_user );
         RemoveLiquidityParams memory remove_params  =  RemoveLiquidityParams({
             token0: token0,
@@ -512,18 +504,16 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
-            liquidity: 1,  // Remove minimal liquidity.
+            liquidity: 1,
             amount0_min: 0,
-            amount1_min: 0,
-            salt: same_salt
+            amount1_min: 0
         });
         hook.harness_remove_liquidity( remove_context_b, remove_params );
 
-        // User A's balance should still be unaffected.
         assertEq(
             token0.balanceOf( user ),
             user_a_token0_before,
-            "User B removing liquidity with same salt should not affect user A."
+            "User B removing liquidity at the same range should not affect user A."
         );
     }
 
@@ -533,7 +523,6 @@ contract RealPoolIntegrationTest is Test {
     function test_real_pool_remove_liquidity_basic( ) external
     {
         uint256 amount  =  500 ether;
-        bytes32 salt  =  bytes32(uint256(10));
         int24 tick_lower  =  -TICK_SPACING_60 * 10;
         int24 tick_upper  =  TICK_SPACING_60 * 10;
 
@@ -544,20 +533,18 @@ contract RealPoolIntegrationTest is Test {
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: salt
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         hook.harness_add_liquidity( add_context, add_params );
 
         // Read the position's liquidity from the real PoolManager.
-        bytes32 effective_salt  =  SafeSwapCommon._position_salt( user, salt );
         ( uint128 position_liquidity, , )  =  StateLibrary.getPositionInfo(
             real_pool_manager,
             pool_key.toId( ),
             address(hook),
             tick_lower,
             tick_upper,
-            effective_salt
+            bytes32(uint256(uint160(user)))
         );
         assertGt( position_liquidity, 0, "Position should have liquidity after adding." );
 
@@ -574,8 +561,7 @@ contract RealPoolIntegrationTest is Test {
             tick_upper: tick_upper,
             liquidity: position_liquidity,
             amount0_min: 0,
-            amount1_min: 0,
-            salt: salt
+            amount1_min: 0
         });
         hook.harness_remove_liquidity( remove_context, remove_params );
 
@@ -586,7 +572,6 @@ contract RealPoolIntegrationTest is Test {
     function test_real_pool_remove_liquidity_respects_slippage( ) external
     {
         uint256 amount  =  500 ether;
-        bytes32 salt  =  bytes32(uint256(11));
         int24 tick_lower  =  -TICK_SPACING_60 * 10;
         int24 tick_upper  =  TICK_SPACING_60 * 10;
 
@@ -597,8 +582,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: salt
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         hook.harness_add_liquidity( add_context, add_params );
 
@@ -612,8 +596,7 @@ contract RealPoolIntegrationTest is Test {
             tick_upper: tick_upper,
             liquidity: 1,  // Tiny removal.
             amount0_min: 1000 ether,  // Impossibly high requirement.
-            amount1_min: 0,
-            salt: salt
+            amount1_min: 0
         });
 
         vm.expectRevert( );
@@ -623,7 +606,6 @@ contract RealPoolIntegrationTest is Test {
     function test_real_pool_remove_liquidity_correct_amounts( ) external
     {
         uint256 amount  =  500 ether;
-        bytes32 salt  =  bytes32(uint256(12));
         int24 tick_lower  =  -TICK_SPACING_60 * 10;
         int24 tick_upper  =  TICK_SPACING_60 * 10;
 
@@ -637,8 +619,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: salt
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         hook.harness_add_liquidity( add_context, add_params );
 
@@ -646,14 +627,13 @@ contract RealPoolIntegrationTest is Test {
         uint256 token1_deposited  =  user_token1_before_add - token1.balanceOf( user );
 
         // Read position liquidity.
-        bytes32 effective_salt  =  SafeSwapCommon._position_salt( user, salt );
         ( uint128 position_liquidity, , )  =  StateLibrary.getPositionInfo(
             real_pool_manager,
             pool_key.toId( ),
             address(hook),
             tick_lower,
             tick_upper,
-            effective_salt
+            bytes32(uint256(uint160(user)))
         );
 
         // Remove all liquidity.
@@ -669,8 +649,7 @@ contract RealPoolIntegrationTest is Test {
             tick_upper: tick_upper,
             liquidity: position_liquidity,
             amount0_min: 0,
-            amount1_min: 0,
-            salt: salt
+            amount1_min: 0
         });
         hook.harness_remove_liquidity( remove_context, remove_params );
 
@@ -696,8 +675,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower: -TICK_SPACING_60 * 5,
             tick_upper: TICK_SPACING_60 * 5,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: bytes32(uint256(20))
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         hook.harness_add_liquidity( add_context, add_params );
 
@@ -864,8 +842,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower:  -TICK_SPACING_60 * 10,
             tick_upper:  TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt:        bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
 
@@ -886,8 +863,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower:  -TICK_SPACING_60 * 10,
             tick_upper:  TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt:        bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
 
@@ -908,8 +884,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower:  TICK_SPACING_60 * 5,
             tick_upper:  TICK_SPACING_60 * 15,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt:        bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
 
@@ -930,8 +905,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower:  -TICK_SPACING_60 * 10,
             tick_upper:  TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt:        bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
 
@@ -961,8 +935,7 @@ contract RealPoolIntegrationTest is Test {
             tick_upper:  TICK_SPACING_60 * 10,
             liquidity:   100 ether,
             amount0_min: 0,
-            amount1_min: 0,
-            salt:        bytes32(0)
+            amount1_min: 0
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.remove_liquidity.selector, params );
 
@@ -986,8 +959,7 @@ contract RealPoolIntegrationTest is Test {
             tick_upper:  TICK_SPACING_60 * 10,
             liquidity:   100 ether,
             amount0_min: 0,
-            amount1_min: 0,
-            salt:        bytes32(0)
+            amount1_min: 0
         });
         RemoveLiquidityParams memory params_high_mins  =  RemoveLiquidityParams({
             token0:      IERC20(address(token0)),
@@ -997,8 +969,7 @@ contract RealPoolIntegrationTest is Test {
             tick_upper:  TICK_SPACING_60 * 10,
             liquidity:   100 ether,
             amount0_min: 1_000_000 ether,
-            amount1_min: 1_000_000 ether,
-            salt:        bytes32(0)
+            amount1_min: 1_000_000 ether
         });
 
         TokenAmount[] memory no_fundings  =  new TokenAmount[]( 0 );
@@ -1170,8 +1141,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower: FULL_RANGE_LOWER,
             tick_upper: FULL_RANGE_UPPER,
             min_a: TokenAmount({ token: IERC20(address(0)),           amount: 0 }),
-            min_b: TokenAmount({ token: IERC20(address(erc20_token)), amount: 0 }),
-            salt: bytes32(0)
+            min_b: TokenAmount({ token: IERC20(address(erc20_token)), amount: 0 })
         });
         hook.harness_add_liquidity( seed_context, seed_params );
     }
@@ -1295,8 +1265,7 @@ contract RealPoolIntegrationTest is Test {
             tick_lower: -TICK_SPACING_60 * 100,
             tick_upper:  TICK_SPACING_60 * 100,
             min_a: TokenAmount({ token: IERC20(address(0)),           amount: 0 }),
-            min_b: TokenAmount({ token: IERC20(address(erc20_token)), amount: 0 }),
-            salt: keccak256("native-position")
+            min_b: TokenAmount({ token: IERC20(address(erc20_token)), amount: 0 })
         });
 
         uint256 user_erc20_before     =  erc20_token.balanceOf( user );
@@ -1319,8 +1288,7 @@ contract RealPoolIntegrationTest is Test {
             tick_upper:  TICK_SPACING_60 * 100,
             liquidity: liquidity_to_remove,
             amount0_min: 0,
-            amount1_min: 0,
-            salt: keccak256("native-position")
+            amount1_min: 0
         });
 
         uint256 user_eth_after_add    =  user.balance;

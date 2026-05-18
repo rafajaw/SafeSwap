@@ -218,28 +218,25 @@ interface ILiquidityExecutionTests {
     function test_add_liquidity_reverts_on_amount1_slippage( ) external;
     function test_add_liquidity_handles_single_sided_deposit( ) external;
     function test_add_liquidity_uses_correct_tick_range( ) external;
-    function test_add_liquidity_uses_salt_for_position( ) external;
     function test_add_liquidity_passes_when_amounts_meet_minimums( ) external;
     function test_add_liquidity_reverts_on_one_sided_mismatch_token0_expected( ) external;
     function test_add_liquidity_reverts_on_one_sided_mismatch_token1_expected( ) external;
 
     // ─── Add Liquidity — Position Isolation ─────────────────────────────────────────
-    function test_add_liquidity_different_users_same_salt_produce_different_effective_salts( ) external;
-    function test_add_liquidity_same_user_same_salt_produce_same_effective_salt( ) external;
+    function test_add_liquidity_different_users_produce_isolated_position_salts( ) external;
 
     // ─── Remove Liquidity ──────────────────────────────────────────────────────────
     function test_remove_liquidity_returns_tokens_to_user( ) external;
     function test_remove_liquidity_reverts_on_amount0_slippage( ) external;
     function test_remove_liquidity_reverts_on_amount1_slippage( ) external;
     function test_remove_liquidity_uses_correct_tick_range( ) external;
-    function test_remove_liquidity_uses_salt_for_position( ) external;
     function test_remove_liquidity_full_position( ) external;
     function test_remove_liquidity_partial_position( ) external;
     function test_remove_liquidity_passes_when_amounts_meet_minimums( ) external;
 
     // ─── Remove Liquidity — Position Isolation ──────────────────────────────────────
-    function test_remove_liquidity_different_users_same_salt_produce_different_effective_salts( ) external;
-    function test_remove_liquidity_effective_salt_matches_add_liquidity( ) external;
+    function test_remove_liquidity_different_users_produce_isolated_position_salts( ) external;
+    function test_remove_liquidity_position_salt_matches_add_liquidity( ) external;
 }
 
 
@@ -377,7 +374,7 @@ interface IRealPoolIntegrationTests {
     // ─── Liquidity ────────────────────────────────────────────────────────────────
     function test_real_pool_add_liquidity_basic( ) external;
     function test_real_pool_add_liquidity_respects_slippage( ) external;
-    function test_real_pool_add_liquidity_position_salt_isolation( ) external;
+    function test_real_pool_add_liquidity_user_position_isolation( ) external;
     function test_real_pool_remove_liquidity_basic( ) external;
     function test_real_pool_remove_liquidity_correct_amounts( ) external;
     function test_real_pool_remove_liquidity_respects_slippage( ) external;

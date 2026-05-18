@@ -100,8 +100,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 60 ether }),  // Require at least 60 ether.
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         // Mock returns only 50 ether for token0, less than min.
@@ -120,8 +119,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 60 ether }),  // Require at least 60 ether.
-            salt: bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 60 ether })  // Require at least 60 ether.
         });
 
         // Mock returns only 50 ether for token1, less than min.
@@ -140,8 +138,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 50 ether }),
-            min_b: TokenAmount({ token: token1, amount: 50 ether }),
-            salt: bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 50 ether })
         });
 
         // Mock returns exactly the minimums.
@@ -173,8 +170,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 50 ether }),  // User expects token1 deposit.
-            salt: bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 50 ether })  // User expects token1 deposit.
         });
 
         // Pool decides only token0 is needed (e.g., price moved out of range above).
@@ -193,8 +189,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 50 ether }),  // User expects token0 deposit.
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         // Pool decides only token1 is needed.
@@ -213,8 +208,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 100,  // Wide range below current price.
             tick_upper: -TICK_SPACING_60 * 50,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         // Single-sided: only token0 is deposited, token1 delta is 0.
@@ -249,8 +243,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: bytes32(0)
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
@@ -268,101 +261,43 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         );
     }
 
-    function test_add_liquidity_uses_salt_for_position( ) external
+    function test_add_liquidity_different_users_produce_isolated_position_salts( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        bytes32 custom_salt  =  keccak256( "custom_position" );
-
         AddLiquidityParams memory params  =  AddLiquidityParams({
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: custom_salt
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
-
-        uint256 user_token0_before  =  token0.balanceOf( user );
-
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context, params );
-
-        // Verify execution completed with custom salt (position identifier).
-        assertEq(
-            user_token0_before - token0.balanceOf( user ),
-            50 ether,
-            "Tokens should transfer with custom salt position."
-        );
-    }
-
-    function test_add_liquidity_different_users_same_salt_produce_different_effective_salts( ) external
-    {
-        bytes32 same_salt  =  keccak256( "shared_salt" );
 
         // User A adds liquidity.
         BondContext memory context_a  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: same_salt
-        });
-
-        pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
-
         vm.prank( address(pool_manager) );
         hook.harness_execute_add_liquidity( context_a, params );
-
         bytes32 salt_from_user_a  =  pool_manager.last_modify_salt( );
 
-        // User B adds liquidity with the same params.salt.
+        // User B adds liquidity at the same range — must land on a distinct V4 position salt.
         BondContext memory context_b  =  _create_bond_context_two_fundings( other_user, 100 ether, 100 ether );
-
         vm.prank( address(pool_manager) );
         hook.harness_execute_add_liquidity( context_b, params );
-
         bytes32 salt_from_user_b  =  pool_manager.last_modify_salt( );
 
+        assertEq(
+            salt_from_user_a,
+            bytes32(uint256(uint160(user))),
+            "User A's position salt must equal their address padded to 32 bytes."
+        );
+        assertEq(
+            salt_from_user_b,
+            bytes32(uint256(uint160(other_user))),
+            "User B's position salt must equal their address padded to 32 bytes."
+        );
         assertTrue(
             salt_from_user_a != salt_from_user_b,
-            "Different users with same params.salt must produce different effective salts - positions must be isolated."
-        );
-    }
-
-    function test_add_liquidity_same_user_same_salt_produce_same_effective_salt( ) external
-    {
-        bytes32 same_salt  =  keccak256( "my_position" );
-
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: same_salt
-        });
-
-        pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
-
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context, params );
-
-        bytes32 salt_first_call  =  pool_manager.last_modify_salt( );
-
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context, params );
-
-        bytes32 salt_second_call  =  pool_manager.last_modify_salt( );
-
-        assertEq(
-            salt_first_call,
-            salt_second_call,
-            "Same user with same params.salt must produce identical effective salt - position must be addressable."
+            "Different users at the same range must produce different position salts - positions must be isolated."
         );
     }
 
@@ -406,8 +341,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
             amount0_min: 60 ether,  // Require at least 60 ether.
-            amount1_min: 0,
-            salt: bytes32(0)
+            amount1_min: 0
         });
 
         // Returns only 50 ether for token0.
@@ -429,8 +363,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
             amount0_min: 0,
-            amount1_min: 60 ether,  // Require at least 60 ether.
-            salt: bytes32(0)
+            amount1_min: 60 ether  // Require at least 60 ether.
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
@@ -451,8 +384,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
             amount0_min: 50 ether,
-            amount1_min: 50 ether,
-            salt: bytes32(0)
+            amount1_min: 50 ether
         });
 
         // Returns exactly the minimums.
@@ -490,8 +422,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_upper: tick_upper,
             liquidity: 100 ether,
             amount0_min: 0,
-            amount1_min: 0,
-            salt: bytes32(0)
+            amount1_min: 0
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
@@ -508,11 +439,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         );
     }
 
-    function test_remove_liquidity_uses_salt_for_position( ) external
+    function test_remove_liquidity_different_users_produce_isolated_position_salts( ) external
     {
-        BondContext memory context  =  _create_bond_context( user, 0 );
-        bytes32 custom_salt  =  keccak256( "custom_position" );
-
         RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
             token0: token0,
             token1: token1,
@@ -521,77 +449,46 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
             amount0_min: 0,
-            amount1_min: 0,
-            salt: custom_salt
+            amount1_min: 0
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
 
-        uint256 user_token0_before  =  token0.balanceOf( user );
-
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( context, params );
-
-        assertEq(
-            token0.balanceOf( user ) - user_token0_before,
-            50 ether,
-            "Tokens should be returned with custom salt position."
-        );
-    }
-
-    function test_remove_liquidity_different_users_same_salt_produce_different_effective_salts( ) external
-    {
-        bytes32 same_salt  =  keccak256( "shared_salt" );
-
-        RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            liquidity: 100 ether,
-            amount0_min: 0,
-            amount1_min: 0,
-            salt: same_salt
-        });
-
-        pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
-
-        // User A removes liquidity.
         BondContext memory context_a  =  _create_bond_context( user, 0 );
-
         vm.prank( address(pool_manager) );
         hook.harness_execute_remove_liquidity( context_a, params );
-
         bytes32 salt_from_user_a  =  pool_manager.last_modify_salt( );
 
-        // User B removes liquidity with the same params.salt.
         BondContext memory context_b  =  _create_bond_context( other_user, 0 );
-
         vm.prank( address(pool_manager) );
         hook.harness_execute_remove_liquidity( context_b, params );
-
         bytes32 salt_from_user_b  =  pool_manager.last_modify_salt( );
 
+        assertEq(
+            salt_from_user_a,
+            bytes32(uint256(uint160(user))),
+            "User A's position salt must equal their address padded to 32 bytes."
+        );
+        assertEq(
+            salt_from_user_b,
+            bytes32(uint256(uint160(other_user))),
+            "User B's position salt must equal their address padded to 32 bytes."
+        );
         assertTrue(
             salt_from_user_a != salt_from_user_b,
-            "Different users with same params.salt must produce different effective salts - positions must be isolated."
+            "Different users at the same range must produce different position salts - removals are isolated."
         );
     }
 
-    function test_remove_liquidity_effective_salt_matches_add_liquidity( ) external
+    function test_remove_liquidity_position_salt_matches_add_liquidity( ) external
     {
-        bytes32 same_salt  =  keccak256( "my_position" );
-
-        // Add liquidity as user.
         BondContext memory add_context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
         AddLiquidityParams memory add_params  =  AddLiquidityParams({
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 }),
-            salt: same_salt
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
@@ -601,7 +498,6 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
 
         bytes32 salt_from_add  =  pool_manager.last_modify_salt( );
 
-        // Remove liquidity as same user with same salt.
         BondContext memory remove_context  =  _create_bond_context( user, 0 );
         RemoveLiquidityParams memory remove_params  =  RemoveLiquidityParams({
             token0: token0,
@@ -611,8 +507,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
             amount0_min: 0,
-            amount1_min: 0,
-            salt: same_salt
+            amount1_min: 0
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
@@ -625,7 +520,7 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         assertEq(
             salt_from_add,
             salt_from_remove,
-            "Same user with same salt must produce identical effective salt across add and remove - position must be round-trippable."
+            "Same user must produce identical position salt across add and remove - position must be round-trippable."
         );
     }
 

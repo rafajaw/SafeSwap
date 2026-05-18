@@ -175,21 +175,6 @@ library SafeSwapCommon {
     }
 
 
-    // ━━━━  POSITION SALT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    // *SECURITY*  -  Positions are owned by the hook contract, so salt must incorporate the user address
-    //                to prevent users from interfering with each other's liquidity positions.
-    function _position_salt( address user, bytes32 salt ) internal pure returns ( bytes32 result )
-    {
-        assembly ("memory-safe")
-        {
-            mstore( 0x00, user )
-            mstore( 0x20, salt )
-            result  :=  keccak256( 0x00, 0x40 )
-        }
-    }
-
-
     // ━━━━  SETTLEMENT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     // *NATIVE*  -  V4 PoolManager has no receive(); native ETH cannot be transferred to it separately and then settled.

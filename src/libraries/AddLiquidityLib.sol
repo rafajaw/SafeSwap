@@ -31,7 +31,6 @@ error MinTokensMismatch( address funding_token0, address funding_token1, address
  * @param tick_upper Upper tick of the liquidity position.
  * @param min_a Minimum deposit for one of the two pool tokens (token field identifies which).
  * @param min_b Minimum deposit for the other pool token (token field identifies which).
- * @param salt User-provided salt for deriving the SafeSwap-owned Uniswap position.
  *
  * @dev MIN ORDER: `min_a` and `min_b` are matched to the pool's currency0/currency1 by token address at execute time,
  *      so they can be supplied in any order. Both `token` fields must equal the two funding tokens; otherwise `MinTokensMismatch` reverts.
@@ -43,7 +42,6 @@ struct AddLiquidityParams {
     int24 tick_upper;
     TokenAmount min_a;
     TokenAmount min_b;
-    bytes32 salt;
 }
 
 
@@ -61,17 +59,17 @@ library AddLiquidityLib {
 
     string constant EIP712_TYPE_STRING  =
         "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,AddLiquidity call)"
-        "AddLiquidity(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,TokenAmount min_a,TokenAmount min_b,bytes32 salt)"
+        "AddLiquidity(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,TokenAmount min_a,TokenAmount min_b)"
         "PoolInfo(uint24 fee,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)";
 
     bytes32 constant EIP712_TYPEHASH  =  keccak256(
-        "AddLiquidity(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,TokenAmount min_a,TokenAmount min_b,bytes32 salt)"
+        "AddLiquidity(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,TokenAmount min_a,TokenAmount min_b)"
         "PoolInfo(uint24 fee,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)"
     );
 
-    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  257;
+    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  244;
 
     function get_signing_info( AddLiquidityParams memory params )
     internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
@@ -84,8 +82,7 @@ library AddLiquidityLib {
             params.tick_lower,
             params.tick_upper,
             SafeSwapCommon.hash_token_amount( params.min_a ),
-            SafeSwapCommon.hash_token_amount( params.min_b ),
-            params.salt
+            SafeSwapCommon.hash_token_amount( params.min_b )
         ));
 
         token_amount_offset  =  EIP712_TOKEN_AMOUNT_OFFSET;
@@ -156,13 +153,11 @@ library AddLiquidityLib {
         uint160 sqrt_price_b_x96  =  TickMath.getSqrtPriceAtTick( params.tick_upper );
         uint128 liquidity  =  LiquidityAmounts.getLiquidityForAmounts( sqrt_price_x96, sqrt_price_a_x96, sqrt_price_b_x96, amount0_desired, amount1_desired );
 
-        bytes32 effective_salt  =  SafeSwapCommon._position_salt( context.user, params.salt );
-
         IPoolManager.ModifyLiquidityParams memory mod_params  =  IPoolManager.ModifyLiquidityParams({
             tickLower: params.tick_lower,
             tickUpper: params.tick_upper,
             liquidityDelta: int256(uint256(liquidity)),
-            salt: effective_salt
+            salt: bytes32(uint256(uint160(context.user)))
         });
 
         ( BalanceDelta delta, )  =  pool_manager.modifyLiquidity( pool_key, mod_params, "" );

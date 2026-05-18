@@ -28,7 +28,6 @@ import { LiquidityAmounts } from "@UniswapV4Core/../test/utils/LiquidityAmounts.
  * @param liquidity Liquidity amount to remove.
  * @param amount0_min Minimum token0 amount the user must receive.
  * @param amount1_min Minimum token1 amount the user must receive.
- * @param salt User-provided salt used when the SafeSwap-owned Uniswap position was created.
  */
 struct RemoveLiquidityParams {
     IERC20 token0;
@@ -39,7 +38,6 @@ struct RemoveLiquidityParams {
     uint128 liquidity;
     uint256 amount0_min;
     uint256 amount1_min;
-    bytes32 salt;
 }
 
 
@@ -56,16 +54,16 @@ library RemoveLiquidityLib {
 
     string constant EIP712_TYPE_STRING  =
         "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,RemoveLiquidity call)"
-        "RemoveLiquidity(address token0,address token1,PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,uint256 amount0_min,uint256 amount1_min,bytes32 salt)"
+        "RemoveLiquidity(address token0,address token1,PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,uint256 amount0_min,uint256 amount1_min)"
         "PoolInfo(uint24 fee,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)";
 
     bytes32 constant EIP712_TYPEHASH  =  keccak256(
-        "RemoveLiquidity(address token0,address token1,PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,uint256 amount0_min,uint256 amount1_min,bytes32 salt)"
+        "RemoveLiquidity(address token0,address token1,PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,uint256 amount0_min,uint256 amount1_min)"
         "PoolInfo(uint24 fee,int24 tick_spacing)"
     );
 
-    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  315;
+    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  302;
 
     function get_signing_info( RemoveLiquidityParams memory params )
     internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
@@ -81,8 +79,7 @@ library RemoveLiquidityLib {
             params.tick_upper,
             params.liquidity,
             params.amount0_min,
-            params.amount1_min,
-            params.salt
+            params.amount1_min
         ));
 
         token_amount_offset  =  EIP712_TOKEN_AMOUNT_OFFSET;
@@ -143,13 +140,11 @@ library RemoveLiquidityLib {
             hooks: IHooks(hook_address)
         });
 
-        bytes32 effective_salt  =  SafeSwapCommon._position_salt( context.user, params.salt );
-
         IPoolManager.ModifyLiquidityParams memory mod_params  =  IPoolManager.ModifyLiquidityParams({
             tickLower: params.tick_lower,
             tickUpper: params.tick_upper,
             liquidityDelta: -int128(params.liquidity),
-            salt: effective_salt
+            salt: bytes32(uint256(uint160(context.user)))
         });
 
         ( BalanceDelta delta, )  =  pool_manager.modifyLiquidity( pool_key, mod_params, "" );

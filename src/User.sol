@@ -70,7 +70,7 @@ abstract contract User is UniswapHook, BondRouteProtected {
 
     /**
      * @notice Add liquidity to a Uniswap V4 position through BondRoute.
-     * @param params Pool configuration, tick range, minimum deposited amounts, and position salt.
+     * @param params Pool configuration, tick range, and minimum deposited amounts.
      *
      * @dev BONDROUTE EXECUTION:
      *      - Callable only through a valid BondRoute bond.
@@ -78,8 +78,8 @@ abstract contract User is UniswapHook, BondRouteProtected {
      *      - Stake is quoted as `LIQUIDITY_STAKE_PERCENTAGE` of total normalized value, denominated in token0.
      *
      * @dev POSITION OWNERSHIP:
-     *      Positions are owned by the hook contract. The effective Uniswap salt is derived from `(user, params.salt)`
-     *      so different users cannot collide on the same tick range and salt.
+     *      Positions are owned by the hook contract under the user's address as the V4 salt, so each user has
+     *      exactly one position per `(pool, tick_lower, tick_upper)`; subsequent adds to the same range merge in.
      *
      * @dev ERROR CODES:
      *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
@@ -97,7 +97,7 @@ abstract contract User is UniswapHook, BondRouteProtected {
 
     /**
      * @notice Remove liquidity from a SafeSwap-owned Uniswap V4 position through BondRoute.
-     * @param params Pool tokens, pool configuration, tick range, liquidity amount, minimum outputs, and position salt.
+     * @param params Pool tokens, pool configuration, tick range, liquidity amount, and minimum outputs.
      *
      * @dev BONDROUTE EXECUTION:
      *      - Callable only through a valid BondRoute bond.
@@ -146,28 +146,25 @@ abstract contract User is UniswapHook, BondRouteProtected {
     /**
      * @notice Read a user's SafeSwap LP position state directly from the PoolManager.
      * @param pool_id Uniswap V4 pool identifier.
-     * @param user SafeSwap user whose derived position salt should be queried.
+     * @param user SafeSwap user whose position should be queried.
      * @param tick_lower Lower tick of the position.
      * @param tick_upper Upper tick of the position.
-     * @param salt User-provided salt used when adding liquidity.
      * @return liquidity Current position liquidity.
      * @return fee_growth_inside_0_last_x128 Last recorded token0 fee growth inside the tick range.
      * @return fee_growth_inside_1_last_x128 Last recorded token1 fee growth inside the tick range.
      *
-     * @dev Positions are owned by the hook under `keccak256(user, salt)`. This lets users or aggregators inspect
-     *      positions directly from the PoolManager.
+     * @dev Positions are owned by the hook with the user's address as the V4 salt. This lets users or aggregators
+     *      inspect positions directly from the PoolManager.
      */
-    function get_position_info( PoolId pool_id, address user, int24 tick_lower, int24 tick_upper, bytes32 salt )
+    function get_position_info( PoolId pool_id, address user, int24 tick_lower, int24 tick_upper )
     external  view  returns ( uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128 )
     {
-        bytes32 effective_salt  =  SafeSwapCommon._position_salt( user, salt );
-
         ( liquidity, fee_growth_inside_0_last_x128, fee_growth_inside_1_last_x128 )  =  PoolManager.getPositionInfo(
             pool_id,
             address(this),
             tick_lower,
             tick_upper,
-            effective_salt
+            bytes32(uint256(uint160(user)))
         );
     }
 }
