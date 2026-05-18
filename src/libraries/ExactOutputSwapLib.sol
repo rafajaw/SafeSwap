@@ -70,21 +70,15 @@ library ExactOutputSwapLib {
 
     // ━━━━  GET CONSTRAINTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function get_constraints( ExactOutputSwapParams memory params, TokenAmount memory input_token )
+    function get_constraints( ExactOutputSwapParams memory params, TokenAmount[] memory preferred_fundings )
     internal pure returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier({ fee: params.pool_info.fee });
+        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )               revert UnsupportedFeeTier({ fee: params.pool_info.fee });
+        if(  preferred_fundings.length != 1  )                                      revert( SWAPS_REQUIRE_EXACTLY_ONE_FUNDING );
+        if(  address(preferred_fundings[0].token) == address(params.token_out)  )   revert( TOKENS_MUST_BE_DIFFERENT );
 
-        IERC20 token_in            =  input_token.token;
-        uint256 maximum_amount_in  =  input_token.amount;
-
-        if(  address(token_in) == address(params.token_out)  )  revert( TOKENS_MUST_BE_DIFFERENT );
-
-        constraints.min_stake  =  SafeSwapCommon.calculate_swap_stake( token_in, maximum_amount_in );
-
-        constraints.min_fundings  =  new TokenAmount[](1);
-        constraints.min_fundings[ 0 ]  =  TokenAmount({ token: token_in, amount: maximum_amount_in });
-
+        constraints.min_stake                       =  SafeSwapCommon.calculate_swap_stake( preferred_fundings[ 0 ] );
+        constraints.min_fundings                    =  preferred_fundings;
         constraints.min_execution_delay_in_blocks   =  MIN_EXECUTION_DELAY_IN_BLOCKS;
         constraints.max_execution_delay_in_seconds  =  MAX_EXECUTION_DELAY;
     }

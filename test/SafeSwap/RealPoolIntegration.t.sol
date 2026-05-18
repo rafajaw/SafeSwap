@@ -240,8 +240,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: FULL_RANGE_LOWER,
             tick_upper: FULL_RANGE_UPPER,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: bytes32(0)
         });
         hook.harness_add_liquidity( seed_context, seed_params );
@@ -429,8 +429,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: bytes32(uint256(1))
         });
 
@@ -460,8 +460,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: amount + 1 ether,  // Require more than available - guaranteed to fail.
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: amount + 1 ether }),  // Require more than available - guaranteed to fail.
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: bytes32(uint256(2))
         });
 
@@ -481,8 +481,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: same_salt
         });
 
@@ -543,8 +543,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: salt
         });
         hook.harness_add_liquidity( add_context, add_params );
@@ -596,8 +596,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: salt
         });
         hook.harness_add_liquidity( add_context, add_params );
@@ -636,8 +636,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: salt
         });
         hook.harness_add_liquidity( add_context, add_params );
@@ -695,8 +695,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: -TICK_SPACING_60 * 5,
             tick_upper: TICK_SPACING_60 * 5,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: bytes32(uint256(20))
         });
         hook.harness_add_liquidity( add_context, add_params );
@@ -863,8 +863,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower:  -TICK_SPACING_60 * 10,
             tick_upper:  TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt:        bytes32(0)
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
@@ -885,8 +885,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower:  -TICK_SPACING_60 * 10,
             tick_upper:  TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt:        bytes32(0)
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
@@ -907,8 +907,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower:  TICK_SPACING_60 * 5,
             tick_upper:  TICK_SPACING_60 * 15,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt:        bytes32(0)
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
@@ -929,8 +929,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower:  -TICK_SPACING_60 * 10,
             tick_upper:  TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt:        bytes32(0)
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
@@ -1169,8 +1169,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: FULL_RANGE_LOWER,
             tick_upper: FULL_RANGE_UPPER,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: IERC20(address(0)),           amount: 0 }),
+            min_b: TokenAmount({ token: IERC20(address(erc20_token)), amount: 0 }),
             salt: bytes32(0)
         });
         hook.harness_add_liquidity( seed_context, seed_params );
@@ -1294,8 +1294,8 @@ contract RealPoolIntegrationTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: -TICK_SPACING_60 * 100,
             tick_upper:  TICK_SPACING_60 * 100,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: IERC20(address(0)),           amount: 0 }),
+            min_b: TokenAmount({ token: IERC20(address(erc20_token)), amount: 0 }),
             salt: keccak256("native-position")
         });
 

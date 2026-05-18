@@ -326,8 +326,8 @@ contract ReentrantProtectedContextTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: FULL_RANGE_LOWER,
             tick_upper: FULL_RANGE_UPPER,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: IERC20(Currency.unwrap( key.currency0 )), amount: 0 }),
+            min_b: TokenAmount({ token: IERC20(Currency.unwrap( key.currency1 )), amount: 0 }),
             salt: bytes32(0)
         });
 

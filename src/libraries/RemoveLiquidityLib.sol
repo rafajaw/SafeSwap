@@ -93,12 +93,14 @@ library RemoveLiquidityLib {
 
     function get_constraints(
         RemoveLiquidityParams memory params,
+        TokenAmount[] memory preferred_fundings,
         IPoolManager pool_manager,
         address hook_address
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier({ fee: params.pool_info.fee });
-        if(  address(params.token0) == address(params.token1)  )         revert( TOKENS_MUST_BE_DIFFERENT );
+        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )   revert UnsupportedFeeTier({ fee: params.pool_info.fee });
+        if(  preferred_fundings.length != 0  )                          revert( REMOVE_LIQUIDITY_REQUIRES_NO_FUNDINGS );
+        if(  address(params.token0) == address(params.token1)  )        revert( TOKENS_MUST_BE_DIFFERENT );
 
         PoolKey memory pool_key  =  PoolKey({
             currency0: Currency.wrap( address(params.token0) ),
@@ -122,10 +124,8 @@ library RemoveLiquidityLib {
             params.liquidity
         );
 
-        constraints.min_stake  =  SafeSwapCommon.calculate_normalized_liquidity_stake( sqrtPriceX96, params.token0, amount0_released, amount1_released );
-
-        constraints.min_fundings  =  new TokenAmount[](0);
-
+        constraints.min_stake                       =  SafeSwapCommon.calculate_normalized_liquidity_stake( sqrtPriceX96, params.token0, amount0_released, amount1_released );
+        constraints.min_fundings                    =  new TokenAmount[](0);
         constraints.min_execution_delay_in_blocks   =  MIN_EXECUTION_DELAY_IN_BLOCKS;
         constraints.max_execution_delay_in_seconds  =  MAX_EXECUTION_DELAY;
     }

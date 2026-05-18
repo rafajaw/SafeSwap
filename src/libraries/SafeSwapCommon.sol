@@ -40,24 +40,77 @@ library SafeSwapCommon {
 
     // ━━━━  CONSTANTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    // EIP-712 type hash for PoolInfo struct (shared across all action libs).
-    bytes32 constant POOL_INFO_TYPEHASH  =  keccak256( "PoolInfo(uint24 fee,int24 tick_spacing)" );
+    // EIP-712 type hashes shared across action libs.
+    bytes32 constant POOL_INFO_TYPEHASH     =  keccak256( "PoolInfo(uint24 fee,int24 tick_spacing)" );
+    bytes32 constant TOKEN_AMOUNT_TYPEHASH  =  keccak256( "TokenAmount(address token,uint256 amount)" );
 
 
     // ━━━━  EIP-712 HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function hash_pool_info( PoolInfo memory pool_info ) internal pure returns ( bytes32 )
+    function hash_pool_info( PoolInfo memory pool_info ) internal pure returns ( bytes32 result )
     {
         bytes32 typehash  =  POOL_INFO_TYPEHASH;
-        bytes32 result;
-        assembly ("memory-safe") {
-            let ptr := mload(0x40)
-            mstore(ptr, typehash)
-            mstore(add(ptr, 0x20), mload(pool_info))
-            mstore(add(ptr, 0x40), signextend(2, mload(add(pool_info, 0x20))))
-            result := keccak256(ptr, 0x60)
+
+        assembly ("memory-safe")
+        {
+            let saved_free_memory_pointer  :=  mload( 0x40 )
+
+            // EIP-712 encodes signed integers sign-extended into a full 32-byte word.
+            // signextend( 2, x )  treats the low 3 bytes (= 24 bits = int24) of x as a signed value
+            // and fills the upper 29 bytes with the sign bit, so a negative tick_spacing hashes
+            // with 0xFF padding instead of 0x00.
+            let tick_spacing_signed_word  :=  signextend( 2, mload( add( pool_info, 0x20 ) ) )
+
+            // Lay out  typehash || fee || tick_spacing  across the 96 bytes spanning the scratch
+            // space (0x00-0x3f) and the free-memory-pointer slot (0x40-0x5f). This leaves no
+            // garbage above the free memory pointer.
+            mstore( 0x00, typehash )
+            mstore( 0x20, mload( pool_info ) )
+            mstore( 0x40, tick_spacing_signed_word )
+
+            result  :=  keccak256( 0x00, 0x60 )
+
+            mstore( 0x40, saved_free_memory_pointer )    // *SECURITY*  -  Restore the free memory pointer we just clobbered.
         }
-        return result;
+    }
+
+    function hash_token_amount( TokenAmount memory token_amount ) internal pure returns ( bytes32 result )
+    {
+        bytes32 typehash  =  TOKEN_AMOUNT_TYPEHASH;
+
+        assembly ("memory-safe")
+        {
+            let saved_free_memory_pointer  :=  mload( 0x40 )
+
+            // Lay out  typehash || token || amount  across the 96 bytes spanning the scratch
+            // space (0x00-0x3f) and the free-memory-pointer slot (0x40-0x5f). This leaves no
+            // garbage above the free memory pointer.
+            // The token field is a memory-stored address, already right-aligned in its 32-byte slot.
+            mstore( 0x00, typehash )
+            mstore( 0x20, mload( token_amount ) )                  // token
+            mstore( 0x40, mload( add( token_amount, 0x20 ) ) )     // amount
+
+            result  :=  keccak256( 0x00, 0x60 )
+
+            mstore( 0x40, saved_free_memory_pointer )    // *SECURITY*  -  Restore the free memory pointer we just clobbered.
+        }
+    }
+
+
+    // ━━━━  FUNDING PAIR HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /**
+     * @notice Sort a two-token funding pair into Uniswap V4 pool currency order.
+     * @dev Reverts with `TOKENS_MUST_BE_DIFFERENT` if both fundings reference the same token.
+     */
+    function sort_funding_pair( TokenAmount memory funding_a, TokenAmount memory funding_b )
+    internal pure returns ( IERC20 token0, uint256 amount0, IERC20 token1, uint256 amount1 )
+    {
+        if(  address(funding_a.token) == address(funding_b.token)  )  revert( TOKENS_MUST_BE_DIFFERENT );
+
+        ( token0, amount0, token1, amount1 )  =  address(funding_a.token) < address(funding_b.token)
+            ? ( funding_a.token, funding_a.amount, funding_b.token, funding_b.amount )
+            : ( funding_b.token, funding_b.amount, funding_a.token, funding_a.amount );
     }
 
 
@@ -82,14 +135,9 @@ library SafeSwapCommon {
 
     // ━━━━  STAKE CALCULATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function calculate_swap_stake( IERC20 token, uint256 amount ) internal pure returns ( TokenAmount memory )
+    function calculate_swap_stake( TokenAmount memory funding ) internal pure returns ( TokenAmount memory )
     {
-        return TokenAmount({ token: token, amount: amount * SWAP_STAKE_PERCENTAGE / 100 });
-    }
-
-    function calculate_liquidity_stake( IERC20 token, uint256 amount ) internal pure returns ( TokenAmount memory )
-    {
-        return TokenAmount({ token: token, amount: amount * LIQUIDITY_STAKE_PERCENTAGE / 100 });
+        return TokenAmount({ token: funding.token, amount: funding.amount * SWAP_STAKE_PERCENTAGE / 100 });
     }
 
     // *SECURITY*  -  Stake must reflect the total committed value across BOTH sides of a liquidity bond. Measuring

@@ -99,8 +99,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 60 ether,  // Require at least 60 ether.
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 60 ether }),  // Require at least 60 ether.
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: bytes32(0)
         });
 
@@ -119,8 +119,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 60 ether,  // Require at least 60 ether.
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 60 ether }),  // Require at least 60 ether.
             salt: bytes32(0)
         });
 
@@ -139,8 +139,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 50 ether,
-            amount1_min: 50 ether,
+            min_a: TokenAmount({ token: token0, amount: 50 ether }),
+            min_b: TokenAmount({ token: token1, amount: 50 ether }),
             salt: bytes32(0)
         });
 
@@ -172,8 +172,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 50 ether,  // User expects token1 deposit.
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 50 ether }),  // User expects token1 deposit.
             salt: bytes32(0)
         });
 
@@ -192,8 +192,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 50 ether,  // User expects token0 deposit.
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 50 ether }),  // User expects token0 deposit.
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: bytes32(0)
         });
 
@@ -212,8 +212,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 100,  // Wide range below current price.
             tick_upper: -TICK_SPACING_60 * 50,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: bytes32(0)
         });
 
@@ -248,8 +248,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: bytes32(0)
         });
 
@@ -277,8 +277,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: custom_salt
         });
 
@@ -307,8 +307,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: same_salt
         });
 
@@ -342,8 +342,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: same_salt
         });
 
@@ -589,8 +589,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: same_salt
         });
 

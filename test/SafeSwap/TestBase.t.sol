@@ -448,16 +448,10 @@ contract TestableSafeSwap is SafeSwap {
         return SafeSwapCommon.build_pool_key( token_in, token_out, fee, tick_spacing, address(this) );
     }
 
-    function harness_calculate_swap_stake( IERC20 token, uint256 amount )
+    function harness_calculate_swap_stake( TokenAmount memory funding )
     external pure returns ( TokenAmount memory )
     {
-        return SafeSwapCommon.calculate_swap_stake( token, amount );
-    }
-
-    function harness_calculate_liquidity_stake( IERC20 token, uint256 amount )
-    external pure returns ( TokenAmount memory )
-    {
-        return SafeSwapCommon.calculate_liquidity_stake( token, amount );
+        return SafeSwapCommon.calculate_swap_stake( funding );
     }
 
     function harness_position_salt( address _user, bytes32 salt )
@@ -634,14 +628,14 @@ abstract contract SafeSwapTestBase is Test {
     }
 
     function _create_add_liquidity_params( )
-    internal pure returns ( AddLiquidityParams memory )
+    internal view returns ( AddLiquidityParams memory )
     {
         return AddLiquidityParams({
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            amount0_min: 0,
-            amount1_min: 0,
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 }),
             salt: bytes32(0)
         });
     }

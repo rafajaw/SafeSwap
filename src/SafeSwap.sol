@@ -83,38 +83,28 @@ contract SafeSwap is Collector {
 
         if(  selector == this.swap_exact_input.selector  )
         {
-            if(  preferred_fundings.length != 1  )  revert( SWAPS_REQUIRE_EXACTLY_ONE_FUNDING );
             ExactInputSwapParams memory params  =  abi.decode( call[ 4: ], (ExactInputSwapParams) );
-            return ExactInputSwapLib.get_constraints( params, preferred_fundings[ 0 ] );
+            return ExactInputSwapLib.get_constraints( params, preferred_fundings );
         }
         else if(  selector == this.swap_exact_output.selector  )
         {
-            if(  preferred_fundings.length != 1  )  revert( SWAPS_REQUIRE_EXACTLY_ONE_FUNDING );
             ExactOutputSwapParams memory params  =  abi.decode( call[ 4: ], (ExactOutputSwapParams) );
-            return ExactOutputSwapLib.get_constraints( params, preferred_fundings[ 0 ] );
+            return ExactOutputSwapLib.get_constraints( params, preferred_fundings );
         }
         else if(  selector == this.add_liquidity.selector  )
         {
-            if(  preferred_fundings.length != 2  )  revert( ADD_LIQUIDITY_REQUIRES_TWO_FUNDINGS );
             AddLiquidityParams memory params  =  abi.decode( call[ 4: ], (AddLiquidityParams) );
-            TokenAmount[2] memory token_pair;
-            token_pair[ 0 ]  =  preferred_fundings[ 0 ];
-            token_pair[ 1 ]  =  preferred_fundings[ 1 ];
-            return AddLiquidityLib.get_constraints( params, token_pair, PoolManager, address(this) );
+            return AddLiquidityLib.get_constraints( params, preferred_fundings, PoolManager, address(this) );
         }
         else if(  selector == this.remove_liquidity.selector  )
         {
             RemoveLiquidityParams memory params  =  abi.decode( call[ 4: ], (RemoveLiquidityParams) );
-            return RemoveLiquidityLib.get_constraints( params, PoolManager, address(this) );
+            return RemoveLiquidityLib.get_constraints( params, preferred_fundings, PoolManager, address(this) );
         }
         else if(  selector == this.donate.selector  )
         {
-            if(  preferred_fundings.length != 2  )  revert( DONATE_REQUIRES_TWO_FUNDINGS );
             DonateParams memory params  =  abi.decode( call[ 4: ], (DonateParams) );
-            TokenAmount[2] memory token_pair;
-            token_pair[ 0 ]  =  preferred_fundings[ 0 ];
-            token_pair[ 1 ]  =  preferred_fundings[ 1 ];
-            return DonateLib.get_constraints( params, token_pair, PoolManager, address(this) );
+            return DonateLib.get_constraints( params, preferred_fundings, PoolManager, address(this) );
         }
         else
         {
