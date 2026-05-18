@@ -115,7 +115,7 @@ library RemoveLiquidityLib {
         constraints.min_fundings  =  new TokenAmount[](0);
 
         constraints.min_execution_delay_in_blocks   =  MIN_EXECUTION_DELAY_IN_BLOCKS;
-        constraints.max_execution_delay_in_seconds  =  MAX_LIQUIDITY_EXECUTION_DELAY;
+        constraints.max_execution_delay_in_seconds  =  MAX_EXECUTION_DELAY;
     }
 
 

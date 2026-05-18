@@ -78,7 +78,7 @@ library ExactInputSwapLib {
         constraints.min_fundings[ 0 ]  =  TokenAmount({ token: token_in, amount: amount_in });
 
         constraints.min_execution_delay_in_blocks   =  MIN_EXECUTION_DELAY_IN_BLOCKS;
-        constraints.max_execution_delay_in_seconds  =  MAX_SWAP_EXECUTION_DELAY;
+        constraints.max_execution_delay_in_seconds  =  MAX_EXECUTION_DELAY;
     }
 
 

@@ -352,7 +352,7 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
 
         assertEq( constraints.min_execution_delay_in_blocks,   3,       "Min delay should be 3 blocks." );
-        assertEq( constraints.max_execution_delay_in_seconds,  4 hours, "Max delay should be 4 hours for liquidity ops." );
+        assertEq( constraints.max_execution_delay_in_seconds,  1 hours, "Max delay should be 1 hour for all SafeSwap actions." );
     }
 
 
@@ -388,7 +388,7 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, token0, no_fundings );
 
         assertEq( constraints.min_execution_delay_in_blocks,   3,       "Min delay should be 3 blocks." );
-        assertEq( constraints.max_execution_delay_in_seconds,  4 hours, "Max delay should be 4 hours for liquidity ops." );
+        assertEq( constraints.max_execution_delay_in_seconds,  1 hours, "Max delay should be 1 hour for all SafeSwap actions." );
     }
 
 
@@ -428,7 +428,7 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
 
         assertEq( constraints.min_execution_delay_in_blocks,   3,       "Min delay should be 3 blocks." );
-        assertEq( constraints.max_execution_delay_in_seconds,  4 hours, "Max delay should be 4 hours for liquidity ops." );
+        assertEq( constraints.max_execution_delay_in_seconds,  1 hours, "Max delay should be 1 hour for all SafeSwap actions." );
     }
 
 

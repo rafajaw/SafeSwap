@@ -55,26 +55,26 @@ contract StakeCalculationTest is SafeSwapTestBase {
 
     // ━━━━  Liquidity Stake  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function test_liquidity_stake_is_2_percent( ) external view
+    function test_liquidity_stake_is_1_percent( ) external view
     {
         TokenAmount memory stake  =  hook.harness_calculate_liquidity_stake( token0, 100 ether );
 
         assertEq(
             stake.amount,
-            2 ether,
-            "Liquidity stake should be 2% of token0 amount."
+            1 ether,
+            "Liquidity stake should be 1% of normalized value."
         );
     }
 
-    function test_liquidity_stake_is_double_swap_stake( ) external view
+    function test_liquidity_stake_matches_swap_stake_rate( ) external view
     {
         TokenAmount memory swap_stake       =  hook.harness_calculate_swap_stake( token0, 100 ether );
         TokenAmount memory liquidity_stake  =  hook.harness_calculate_liquidity_stake( token0, 100 ether );
 
         assertEq(
             liquidity_stake.amount,
-            swap_stake.amount * 2,
-            "Liquidity stake should be exactly 2x swap stake."
+            swap_stake.amount,
+            "Liquidity stake should use the same percentage rate as swaps."
         );
     }
 
@@ -95,8 +95,8 @@ contract StakeCalculationTest is SafeSwapTestBase {
 
         assertEq(
             stake.amount,
-            20_000 ether,
-            "Liquidity stake should be 2% of large value."
+            10_000 ether,
+            "Liquidity stake should be 1% of large value."
         );
     }
 }

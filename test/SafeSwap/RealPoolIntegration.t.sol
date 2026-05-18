@@ -875,7 +875,7 @@ contract RealPoolIntegrationTest is Test {
 
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
 
-        assertEq( constraints.min_stake.amount, 6 ether, "At 1:1 price, stake is 2% of (100 + 200) = 6 ether." );
+        assertEq( constraints.min_stake.amount, 3 ether, "At 1:1 price, stake is 1% of (100 + 200) = 3 ether." );
         assertEq( address(constraints.min_stake.token), address(token0), "Stake is always denominated in token0." );
     }
 
@@ -898,7 +898,7 @@ contract RealPoolIntegrationTest is Test {
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
 
         assertGt( constraints.min_stake.amount, 0, "1 wei on one side must not zero the stake when real value sits on the other." );
-        assertApproxEqAbs( constraints.min_stake.amount, 0.02 ether, 1, "Stake reflects the dominant side: 2% of ~1 ether." );
+        assertApproxEqAbs( constraints.min_stake.amount, 0.01 ether, 1, "Stake reflects the dominant side: 1% of ~1 ether." );
     }
 
     function test_real_pool_quote_add_liquidity_one_sided_above_yields_real_stake( ) external view
@@ -919,7 +919,7 @@ contract RealPoolIntegrationTest is Test {
 
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
 
-        assertEq( constraints.min_stake.amount, 2 ether, "Stake on a one-sided (0, 100) position at 1:1 = 2% of 100 ether." );
+        assertEq( constraints.min_stake.amount, 1 ether, "Stake on a one-sided (0, 100) position at 1:1 = 1% of 100 ether." );
         assertEq( address(constraints.min_stake.token), address(token0), "Stake is always denominated in token0." );
     }
 
@@ -948,7 +948,7 @@ contract RealPoolIntegrationTest is Test {
         assertEq( constraints.min_fundings[ 1 ].amount, 200 ether, "Second funding amount echoes input." );
 
         assertEq( constraints.min_execution_delay_in_blocks, 3, "Liquidity bonds require 3 blocks of delay." );
-        assertEq( constraints.max_execution_delay_in_seconds, 4 hours, "Liquidity bonds have a 4-hour execution window." );
+        assertEq( constraints.max_execution_delay_in_seconds, 1 hours, "All SafeSwap bonds have a 1-hour execution window." );
     }
 
     function test_real_pool_quote_remove_liquidity_stake_uses_position_amounts( ) external view
@@ -973,7 +973,7 @@ contract RealPoolIntegrationTest is Test {
         assertEq( address(constraints.min_stake.token), address(token0), "Stake is always denominated in token0." );
         assertEq( constraints.min_fundings.length, 0, "Remove liquidity requires no fundings." );
         assertEq( constraints.min_execution_delay_in_blocks, 3, "Liquidity bonds require 3 blocks of delay." );
-        assertEq( constraints.max_execution_delay_in_seconds, 4 hours, "Liquidity bonds have a 4-hour execution window." );
+        assertEq( constraints.max_execution_delay_in_seconds, 1 hours, "All SafeSwap bonds have a 1-hour execution window." );
     }
 
     function test_real_pool_quote_remove_liquidity_stake_ignores_user_supplied_mins( ) external view
@@ -1030,7 +1030,7 @@ contract RealPoolIntegrationTest is Test {
 
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
 
-        assertEq( constraints.min_stake.amount, 6 ether, "At 1:1 price, donate stake is 2% of (100 + 200) = 6 ether." );
+        assertEq( constraints.min_stake.amount, 3 ether, "At 1:1 price, donate stake is 1% of (100 + 200) = 3 ether." );
         assertEq( address(constraints.min_stake.token), address(token0), "Stake is always denominated in token0." );
     }
 
@@ -1048,7 +1048,7 @@ contract RealPoolIntegrationTest is Test {
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
 
         assertGt( constraints.min_stake.amount, 0, "1 wei on one side must not zero the stake when real value sits on the other." );
-        assertApproxEqAbs( constraints.min_stake.amount, 0.02 ether, 1, "Stake reflects the dominant side: 2% of ~1 ether." );
+        assertApproxEqAbs( constraints.min_stake.amount, 0.01 ether, 1, "Stake reflects the dominant side: 1% of ~1 ether." );
     }
 
     function test_real_pool_quote_donate_one_sided_yields_real_stake( ) external view
@@ -1064,7 +1064,7 @@ contract RealPoolIntegrationTest is Test {
 
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), fundings );
 
-        assertEq( constraints.min_stake.amount, 4 ether, "Stake on a one-sided (0, 200) donate at 1:1 = 2% of 200 ether." );
+        assertEq( constraints.min_stake.amount, 2 ether, "Stake on a one-sided (0, 200) donate at 1:1 = 1% of 200 ether." );
         assertEq( address(constraints.min_stake.token), address(token0), "Stake is always denominated in token0." );
     }
 
