@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+/*
+
+        ███████╗ █████╗ ███████╗███████╗███████╗██╗    ██╗ █████╗ ██████╗
+        ██╔════╝██╔══██╗██╔════╝██╔════╝██╔════╝██║    ██║██╔══██╗██╔══██╗
+        ███████╗███████║█████╗  █████╗  ███████╗██║ █╗ ██║███████║██████╔╝
+        ╚════██║██╔══██║██╔══╝  ██╔══╝  ╚════██║██║███╗██║██╔══██║██╔═══╝
+        ███████║██║  ██║██║     ███████╗███████║╚███╔███╔╝██║  ██║██║
+        ╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝
+        ━━━━━━━━━━━━━━━━━  MEV-protected Uniswap pools  ━━━━━━━━━━━━━━━━━━
+
+*/
+
 import "@SafeSwap/Collector.sol";
 
 
@@ -11,8 +23,8 @@ error UnknownSelector( bytes4 selector );
 
 /**
  * @title SafeSwap
- * @notice MEV-protected Uniswap V4 hook powered by BondRoute
- * @dev Pools using this hook require all swaps and liquidity operations to go through BondRoute protection
+ * @notice MEV-protected Uniswap V4 hook powered by BondRoute.
+ * @dev Pools using this hook require swaps, liquidity operations, and donations to execute through BondRoute protection.
  *
  * Inheritance Chain (base → derived):
  *   BondRouteProtected, UniswapHook → User → Collector → SafeSwap
@@ -25,14 +37,22 @@ error UnknownSelector( bytes4 selector );
  */
 contract SafeSwap is Collector {
 
+    /**
+     * @notice Deploy SafeSwap and initialize PoolManager, BondRoute, and collector configuration.
+     * @dev Constructor reads deployment configuration from ChainConfig and reverts with string errors for human-facing deployment failures.
+     */
     constructor( )
     Collector( ) { }
 
 
     // ━━━━  BONDROUTE INTERFACE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /**
+     * @notice Return the SafeSwap selectors that require BondRoute execution.
+     * @return selectors Protected function selectors exposed by this contract.
+     */
     function BondRoute_get_protected_selectors( )
-    public pure override returns ( bytes4[] memory selectors )
+    public  pure  override  returns ( bytes4[] memory selectors )
     {
         selectors       =  new bytes4[]( 5 );
         selectors[ 0 ]  =  this.swap_exact_input.selector;
@@ -42,8 +62,22 @@ contract SafeSwap is Collector {
         selectors[ 4 ]  =  this.donate.selector;
     }
 
+    /**
+     * @notice Quote BondRoute constraints for a SafeSwap action.
+     * @param call Encoded SafeSwap function call.
+     * @param preferred_fundings Funding tokens and amounts the user intends to authorize.
+     * @return constraints Required stake, fundings, and timing constraints for the call.
+     *
+     * @dev The preferred stake token argument is intentionally unused. SafeSwap derives stake token from action economics:
+     *      swap stake is in the input token; liquidity and donation stake is denominated in token0.
+     *
+     * @dev ERROR CODES:
+     *      - `UnknownSelector(bytes4 selector)` if `call` does not target a protected SafeSwap action.
+     *      - `Error(string)` if the funding count is invalid or token pair is invalid.
+     *      - `UnsupportedFeeTier(uint24 fee)` if the target pool uses dynamic fees.
+     */
     function BondRoute_quote_call( bytes calldata call, IERC20, TokenAmount[] memory preferred_fundings )
-    public view override returns ( BondConstraints memory constraints )
+    public  view  override  returns ( BondConstraints memory constraints )
     {
         bytes4 selector  =  bytes4(call);
 
@@ -88,8 +122,17 @@ contract SafeSwap is Collector {
         }
     }
 
+    /**
+     * @notice Return SafeSwap-specific EIP-712 signing information for a protected call.
+     * @param call Encoded SafeSwap function call.
+     * @return typed_string Complete EIP-712 type string for wallet display.
+     * @return struct_hash Hash of the typed SafeSwap call struct.
+     * @return token_amount_offset Byte offset used by BondRoute wallet tooling for TokenAmount display.
+     *
+     * @dev Unknown selectors revert so wallets do not present unsupported SafeSwap actions for signing.
+     */
     function BondRoute_get_signing_info( bytes calldata call )
-    external pure override returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
+    external  pure  override  returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
         bytes4 selector  =  bytes4(call);
 
@@ -120,10 +163,14 @@ contract SafeSwap is Collector {
         }
         else
         {
-            return ( "", bytes32(0), 0 );  // Fallback to calldata hash for unknown selectors.
+            revert UnknownSelector( selector );
         }
     }
 
+    /**
+     * @notice Receive native token funding for PoolManager settlement.
+     * @dev Native token inputs are pulled from BondRoute into SafeSwap, then forwarded through `PoolManager.settle{ value: amount }()`.
+     */
     receive( )
-    external payable { }
+    external  payable { }
 }

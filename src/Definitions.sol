@@ -27,6 +27,9 @@ uint256 constant MIN_PROTOCOL_FEE_RATE              =   1000;       // 0.01% flo
 
 // ━━━━  STRINGS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+string constant SAFESWAP_PROTOCOL_NAME                  =  "SafeSwap";
+string constant SAFESWAP_PROTOCOL_DESCRIPTION           =  "MEV-protected Uniswap pools";
+
 string constant SWAPS_REQUIRE_EXACTLY_ONE_FUNDING       =  "Swaps require exactly 1 funding";
 string constant ADD_LIQUIDITY_REQUIRES_TWO_FUNDINGS     =  "Add liquidity requires exactly 2 fundings";
 string constant DONATE_REQUIRES_TWO_FUNDINGS            =  "Donate requires exactly 2 fundings";

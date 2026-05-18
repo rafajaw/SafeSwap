@@ -23,7 +23,7 @@ event FeesWithdrawn( IERC20 indexed token, address indexed recipient, uint256 am
 
 /**
  * @title Collector
- * @notice Fee withdrawal and role transfer
+ * @notice Fee withdrawal and collector role transfer.
  */
 abstract contract Collector is User {
     using SafeERC20 for OZ_IERC20;
@@ -31,6 +31,10 @@ abstract contract Collector is User {
     address public collector;
     address public pending_collector;
 
+    /**
+     * @notice Initialize the collector from ChainConfig.
+     * @dev Reverts with a string error if `INITIAL_COLLECTOR_KEY` is unset or resolves to the zero address.
+     */
     constructor( )
     User( )
     {
@@ -49,9 +53,17 @@ abstract contract Collector is User {
     /**
      * @notice Nominate `new_collector` as the pending collector. The transfer completes
      *         only when the nominee calls `accept_collector`. Two-step to prevent typo loss.
+     * @param new_collector Address nominated to become collector. Use `address(0)` to cancel an outstanding nomination.
+     *
      * @dev    Passing `address(0)` is the cancel path: it clears any pending nomination
      *         since no one can `accept_collector` as the zero address. No separate cancel
      *         function exists by design.
+     *
+     * @dev EMITTED EVENTS:
+     *      - `CollectorTransferStarted(current_collector, pending_collector)` on success.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if caller is not current collector.
      */
     function transfer_collector( address new_collector )
     external
@@ -64,6 +76,12 @@ abstract contract Collector is User {
 
     /**
      * @notice Accept a pending collector nomination. Only callable by the pending collector.
+     *
+     * @dev EMITTED EVENTS:
+     *      - `CollectorTransferred(previous_collector, new_collector)` on success.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if caller is not pending collector.
      */
     function accept_collector( )
     external
@@ -80,6 +98,22 @@ abstract contract Collector is User {
 
     // ━━━━  FEE WITHDRAWAL  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /**
+     * @notice Withdraw accumulated SafeSwap protocol fees.
+     * @param token Token to withdraw. Use `NATIVE_TOKEN` for native ETH.
+     * @param recipient Address receiving withdrawn fees.
+     * @return withdraw_amount Amount transferred to `recipient`.
+     *
+     * @dev Keeps 1 wei of each token in the contract to avoid zero-to-nonzero storage/accounting costs on future fee collection.
+     *
+     * @dev EMITTED EVENTS:
+     *      - `FeesWithdrawn(token, recipient, amount)` when a nonzero withdrawal happens.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if caller is not collector.
+     *      - `Invalid(string field, uint256 value)` if `recipient` is zero address.
+     *      - `TransferFailed(address token, address recipient, uint256 amount)` if token or native transfer fails.
+     */
     function withdraw_fees( IERC20 token, address recipient )
     external  returns ( uint256 withdraw_amount )
     {

@@ -84,12 +84,7 @@ library ExactInputSwapLib {
 
     // ━━━━  EXECUTE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function execute(
-        BondContext memory context,
-        ExactInputSwapParams memory params,
-        IPoolManager pool_manager,
-        address hook_address
-    ) internal
+    function execute( BondContext memory context, ExactInputSwapParams memory params, IPoolManager pool_manager, address hook_address ) internal
     {
         // *NOTE*  -  Token in and amount come from fundings. Multi-funding: pick best at execution time.
         IERC20 token_in    =  context.fundings[ 0 ].token;

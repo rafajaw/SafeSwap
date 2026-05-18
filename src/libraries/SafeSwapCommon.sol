@@ -114,8 +114,7 @@ library SafeSwapCommon {
 
     // ━━━━  PROTOCOL FEE CALCULATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function calculate_protocol_fee( uint256 amount_out, uint24 pool_fee )
-    internal pure returns ( uint256 protocol_fee, uint256 user_amount )
+    function calculate_protocol_fee( uint256 amount_out, uint24 pool_fee ) internal pure returns ( uint256 protocol_fee, uint256 user_amount )
     {
         uint256 effective_fee_rate  =  pool_fee < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  pool_fee;
         protocol_fee                =  amount_out * effective_fee_rate / PROTOCOL_FEE_DIVISOR;
@@ -143,12 +142,7 @@ library SafeSwapCommon {
     // *NATIVE*  -  V4 PoolManager has no receive(); native ETH cannot be transferred to it separately and then settled.
     //              It must arrive bundled with `settle{value:}()`. So for native we pull ETH to the hook (which has
     //              receive()) and forward via msg.value on settle. For ERC20 we keep the direct user→PM path.
-    function settle_input(
-        IPoolManager pool_manager,
-        BondContext memory context,
-        IERC20 token,
-        uint256 amount
-    ) internal
+    function settle_input( IPoolManager pool_manager, BondContext memory context, IERC20 token, uint256 amount ) internal
     {
         if(  amount == 0  )  return;
 

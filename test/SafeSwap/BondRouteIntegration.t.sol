@@ -567,15 +567,12 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         assertTrue( token_amount_offset > 0, "Token amount offset should be positive." );
     }
 
-    function test_get_signing_info_unknown_selector_returns_empty( ) external view
+    function test_get_signing_info_reverts_on_unknown_selector( ) external
     {
         bytes memory call_data  =  abi.encodeWithSelector( bytes4(0xdeadbeef) );
 
-        ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  hook.BondRoute_get_signing_info( call_data );
-
-        assertEq( bytes(typed_string).length, 0, "Type string should be empty for unknown selector." );
-        assertEq( struct_hash, bytes32(0), "Struct hash should be zero for unknown selector." );
-        assertEq( token_amount_offset, 0, "Token amount offset should be zero for unknown selector." );
+        vm.expectRevert( abi.encodeWithSelector( UnknownSelector.selector, bytes4(0xdeadbeef) ) );
+        hook.BondRoute_get_signing_info( call_data );
     }
 
     function test_get_signing_info_struct_hash_changes_with_params( ) external view

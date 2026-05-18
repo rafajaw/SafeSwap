@@ -19,6 +19,11 @@ import { ChainConfig } from "@SafeSwap/integrations/IChainConfig.sol";
 import { IERC165 } from "@OpenZeppelin/utils/introspection/IERC165.sol";
 
 interface IExtsloadSparse {
+    /**
+     * @notice Read arbitrary storage slots from a Uniswap V4 PoolManager-compatible contract.
+     * @param slots Storage slots to read.
+     * @return values Values loaded from the requested slots.
+     */
     function extsload( bytes32[] calldata slots ) external view returns ( bytes32[] memory values );
 }
 
@@ -37,7 +42,7 @@ uint160 constant EXPECTED_HOOK_FLAGS   =  0x0AA0;
 
 /**
  * @title UniswapHook
- * @notice Uniswap V4 interface + BondRoute base - PoolManager, callbacks, protected context
+ * @notice Uniswap V4 PoolManager integration, hook callbacks, and SafeSwap protected callback context.
  */
 abstract contract UniswapHook is IUnlockCallback {
     using FundingsLib for BondContext;
@@ -48,6 +53,10 @@ abstract contract UniswapHook is IUnlockCallback {
 
     enum Action { ExactInputSwap, ExactOutputSwap, AddLiquidity, RemoveLiquidity, Donate }
 
+    /**
+     * @notice Initialize PoolManager configuration and validate hook deployment flags.
+     * @dev Reverts with string errors for human-facing deployment failures.
+     */
     constructor( )
     {
         if(  _is_valid_safeswap_hook_address( address(this) ) == false  )  revert( "SafeSwap: Invalid hook address" );
@@ -87,8 +96,21 @@ abstract contract UniswapHook is IUnlockCallback {
 
     // ━━━━  UNLOCK CALLBACK  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /**
+     * @notice Dispatch a PoolManager unlock callback to the SafeSwap action encoded in `data`.
+     * @param data ABI-encoded `(BondContext, action params)` with the final byte identifying the SafeSwap action.
+     * @return Empty bytes after successful action execution.
+     *
+     * @dev SECURITY MODEL:
+     *      - Only the configured PoolManager may call this function.
+     *      - The hook callback allowance is enabled only while deferring into the PoolManager action.
+     *      - The allowance is defensively revoked after dispatch even though the real hook callback should already consume it.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if caller is not PoolManager.
+     */
     function unlockCallback( bytes calldata data )
-    external override returns ( bytes memory )
+    external  override  returns ( bytes memory )
     {
         if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
 
@@ -145,24 +167,56 @@ abstract contract UniswapHook is IUnlockCallback {
         _;
     }
 
+    /**
+     * @notice Authorize a BondRoute-protected Uniswap V4 swap callback.
+     * @return Hook selector, zero before-swap delta, and zero LP fee override.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if caller is not PoolManager.
+     *      - `BondRouteRequired(address caller, address bondroute)` if no SafeSwap action allowed this callback.
+     */
     function beforeSwap( address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata )
     external  consumeHookAllowance  returns ( bytes4, BeforeSwapDelta, uint24 )
     {
         return ( IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0 );
     }
 
+    /**
+     * @notice Authorize a BondRoute-protected Uniswap V4 add-liquidity callback.
+     * @return Hook selector.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if caller is not PoolManager.
+     *      - `BondRouteRequired(address caller, address bondroute)` if no SafeSwap action allowed this callback.
+     */
     function beforeAddLiquidity( address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata )
     external  consumeHookAllowance  returns ( bytes4 )
     {
         return IHooks.beforeAddLiquidity.selector;
     }
 
+    /**
+     * @notice Authorize a BondRoute-protected Uniswap V4 remove-liquidity callback.
+     * @return Hook selector.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if caller is not PoolManager.
+     *      - `BondRouteRequired(address caller, address bondroute)` if no SafeSwap action allowed this callback.
+     */
     function beforeRemoveLiquidity( address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata )
     external  consumeHookAllowance  returns ( bytes4 )
     {
         return IHooks.beforeRemoveLiquidity.selector;
     }
 
+    /**
+     * @notice Authorize a BondRoute-protected Uniswap V4 donation callback.
+     * @return Hook selector.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if caller is not PoolManager.
+     *      - `BondRouteRequired(address caller, address bondroute)` if no SafeSwap action allowed this callback.
+     */
     function beforeDonate( address, PoolKey calldata, uint256, uint256, bytes calldata )
     external  consumeHookAllowance  returns ( bytes4 )
     {

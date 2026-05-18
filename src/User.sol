@@ -12,16 +12,30 @@ using StateLibrary for IPoolManager;
 
 /**
  * @title User
- * @notice User-facing functions - swap and liquidity operations
+ * @notice User-facing SafeSwap operations and position helper functions.
  */
 abstract contract User is UniswapHook, BondRouteProtected {
 
     constructor( )
     UniswapHook( )
-    BondRouteProtected( "SafeSwap", "Trustless MEV-free Uniswap V4 Hook" ) { }
+    BondRouteProtected( SAFESWAP_PROTOCOL_NAME, SAFESWAP_PROTOCOL_DESCRIPTION ) { }
 
     // ━━━━  USER FUNCTIONS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /**
+     * @notice Execute an exact-input Uniswap V4 swap through BondRoute.
+     * @param params Swap output token, minimum net output, and pool configuration.
+     *
+     * @dev BONDROUTE EXECUTION:
+     *      - Callable only through a valid BondRoute bond.
+     *      - Input token and input amount come from the bond fundings, not from `params`.
+     *      - Stake is quoted as `SWAP_STAKE_PERCENTAGE` of the committed input amount.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
+     *      - `SlippageExceeded(uint256 amount_received, uint256 minimum_required)` if net output is below `minimum_amount_out`.
+     *      - `UnsupportedFeeTier(uint24 fee)` if the target pool uses dynamic fees.
+     */
     function swap_exact_input( ExactInputSwapParams calldata params )
     external
     {
@@ -30,6 +44,20 @@ abstract contract User is UniswapHook, BondRouteProtected {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.ExactInputSwap)) ) );
     }
 
+    /**
+     * @notice Execute an exact-output Uniswap V4 swap through BondRoute.
+     * @param params Swap output token, exact net output amount, and pool configuration.
+     *
+     * @dev BONDROUTE EXECUTION:
+     *      - Callable only through a valid BondRoute bond.
+     *      - Input token and maximum input amount come from the bond fundings, not from `params`.
+     *      - SafeSwap grosses up the pool output so the user receives `amount_out` after protocol fee.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
+     *      - `SlippageExceeded(uint256 amount_received, uint256 minimum_required)` if required input exceeds the committed maximum.
+     *      - `UnsupportedFeeTier(uint24 fee)` if the target pool uses dynamic fees.
+     */
     function swap_exact_output( ExactOutputSwapParams calldata params )
     external
     {
@@ -38,6 +66,24 @@ abstract contract User is UniswapHook, BondRouteProtected {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.ExactOutputSwap)) ) );
     }
 
+    /**
+     * @notice Add liquidity to a Uniswap V4 position through BondRoute.
+     * @param params Pool configuration, tick range, minimum deposited amounts, and position salt.
+     *
+     * @dev BONDROUTE EXECUTION:
+     *      - Callable only through a valid BondRoute bond.
+     *      - Token0, token1, and desired amounts come from the two bond fundings, not from `params`.
+     *      - Stake is quoted as `LIQUIDITY_STAKE_PERCENTAGE` of total normalized value, denominated in token0.
+     *
+     * @dev POSITION OWNERSHIP:
+     *      Positions are owned by the hook contract. The effective Uniswap salt is derived from `(user, params.salt)`
+     *      so different users cannot collide on the same tick range and salt.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
+     *      - `OneSidedDepositMismatch(address expected_token, uint256 minimum_required)` if a one-sided range consumes the wrong side.
+     *      - `SlippageExceeded(uint256 amount_received, uint256 minimum_required)` if actual deposited amounts are below user minimums.
+     */
     function add_liquidity( AddLiquidityParams calldata params )
     external
     {
@@ -46,6 +92,20 @@ abstract contract User is UniswapHook, BondRouteProtected {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.AddLiquidity)) ) );
     }
 
+    /**
+     * @notice Remove liquidity from a SafeSwap-owned Uniswap V4 position through BondRoute.
+     * @param params Pool tokens, pool configuration, tick range, liquidity amount, minimum outputs, and position salt.
+     *
+     * @dev BONDROUTE EXECUTION:
+     *      - Callable only through a valid BondRoute bond.
+     *      - No fundings are required; stake is quoted from the current token0-normalized value of removed liquidity.
+     *      - Withdrawn tokens are sent directly to the BondRoute user.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
+     *      - `SlippageExceeded(uint256 amount_received, uint256 minimum_required)` if received token amounts are below user minimums.
+     *      - `UnsupportedFeeTier(uint24 fee)` if the target pool uses dynamic fees.
+     */
     function remove_liquidity( RemoveLiquidityParams calldata params )
     external
     {
@@ -54,6 +114,19 @@ abstract contract User is UniswapHook, BondRouteProtected {
         PoolManager.unlock( bytes.concat( abi.encode( context, params ), bytes1(uint8(Action.RemoveLiquidity)) ) );
     }
 
+    /**
+     * @notice Donate tokens to a Uniswap V4 pool through BondRoute.
+     * @param params Pool configuration.
+     *
+     * @dev BONDROUTE EXECUTION:
+     *      - Callable only through a valid BondRoute bond.
+     *      - Token0, token1, and donation amounts come from the two bond fundings, not from `params`.
+     *      - Stake is quoted as `LIQUIDITY_STAKE_PERCENTAGE` of total normalized value, denominated in token0.
+     *
+     * @dev ERROR CODES:
+     *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
+     *      - `UnsupportedFeeTier(uint24 fee)` if the target pool uses dynamic fees.
+     */
     function donate( DonateParams calldata params )
     external
     {
@@ -66,12 +139,21 @@ abstract contract User is UniswapHook, BondRouteProtected {
     // ━━━━  POSITION GETTERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
-     * @notice Read a user's LP position state directly from the PoolManager.
-     * @dev    Positions are owned by the hook under `keccak256(user, salt)`; this lets users (or any
-     *         aggregator) inspect their position without going through BondRoute. Safe to call on-chain.
+     * @notice Read a user's SafeSwap LP position state directly from the PoolManager.
+     * @param pool_id Uniswap V4 pool identifier.
+     * @param user SafeSwap user whose derived position salt should be queried.
+     * @param tick_lower Lower tick of the position.
+     * @param tick_upper Upper tick of the position.
+     * @param salt User-provided salt used when adding liquidity.
+     * @return liquidity Current position liquidity.
+     * @return fee_growth_inside_0_last_x128 Last recorded token0 fee growth inside the tick range.
+     * @return fee_growth_inside_1_last_x128 Last recorded token1 fee growth inside the tick range.
+     *
+     * @dev Positions are owned by the hook under `keccak256(user, salt)`. This lets users or aggregators inspect
+     *      positions directly from the PoolManager.
      */
     function get_position_info( PoolId pool_id, address user, int24 tick_lower, int24 tick_upper, bytes32 salt )
-    external view returns ( uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128 )
+    external  view  returns ( uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128 )
     {
         bytes32 effective_salt  =  SafeSwapCommon._position_salt( user, salt );
 

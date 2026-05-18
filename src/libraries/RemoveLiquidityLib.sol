@@ -121,12 +121,7 @@ library RemoveLiquidityLib {
 
     // ━━━━  EXECUTE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function execute(
-        BondContext memory context,
-        RemoveLiquidityParams memory params,
-        IPoolManager pool_manager,
-        address hook_address
-    ) internal
+    function execute( BondContext memory context, RemoveLiquidityParams memory params, IPoolManager pool_manager, address hook_address ) internal
     {
         PoolKey memory pool_key  =  PoolKey({
             currency0: Currency.wrap(address(params.token0)),

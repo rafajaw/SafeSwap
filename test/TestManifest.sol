@@ -103,7 +103,7 @@ interface IBondRouteIntegrationTests {
     function test_get_signing_info_remove_liquidity_returns_valid_type_string( ) external;
     function test_get_signing_info_donate_returns_valid_type_string( ) external;
     function test_get_signing_info_struct_hash_changes_with_params( ) external;
-    function test_get_signing_info_unknown_selector_returns_empty( ) external;
+    function test_get_signing_info_reverts_on_unknown_selector( ) external;
 
     // ─── Protected Function Access Control ─────────────────────────────────────────
     function test_swap_exact_input_reverts_if_not_bondroute( ) external;

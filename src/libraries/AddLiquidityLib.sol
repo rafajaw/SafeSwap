@@ -119,12 +119,7 @@ library AddLiquidityLib {
 
     // ━━━━  EXECUTE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function execute(
-        BondContext memory context,
-        AddLiquidityParams memory params,
-        IPoolManager pool_manager,
-        address hook_address
-    ) internal
+    function execute( BondContext memory context, AddLiquidityParams memory params, IPoolManager pool_manager, address hook_address ) internal
     {
         // *NOTE*  -  Fundings are [token0, token1] in order matching the pool's currency order.
         IERC20 token0            =  context.fundings[ 0 ].token;

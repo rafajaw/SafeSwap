@@ -100,12 +100,7 @@ library DonateLib {
 
     // ━━━━  EXECUTE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function execute(
-        BondContext memory context,
-        DonateParams memory params,
-        IPoolManager pool_manager,
-        address hook_address
-    ) internal
+    function execute( BondContext memory context, DonateParams memory params, IPoolManager pool_manager, address hook_address ) internal
     {
         uint256 amount0  =  context.fundings[ 0 ].amount;
         uint256 amount1  =  context.fundings[ 1 ].amount;
