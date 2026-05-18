@@ -70,7 +70,7 @@ contract ConstructorTest is SafeSwapTestBase {
         // The announcement happens during construction.
         // We verify by deploying a new hook and checking the event.
         vm.expectEmit( true, true, true, true, BONDROUTE_ADDRESS );
-        emit MockBondRoute.ProtocolAnnounced( "SafeSwap", "Trustless MEV-free Uniswap V4 Hook" );
+        emit MockBondRoute.ProtocolAnnounced( SAFESWAP_PROTOCOL_NAME, SAFESWAP_PROTOCOL_DESCRIPTION );
 
         deployCodeTo( "TestBase.t.sol:TestableSafeSwap", address(uint160(0x4AA0)) );
     }

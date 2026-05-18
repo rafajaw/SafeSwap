@@ -18,6 +18,18 @@ import { LiquidityAmounts } from "@UniswapV4Core/../test/utils/LiquidityAmounts.
 
 // ━━━━  PARAMETERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/**
+ * @notice Remove-liquidity parameters signed by the user.
+ * @param token0 Pool token0.
+ * @param token1 Pool token1.
+ * @param pool_info Target Uniswap V4 pool configuration.
+ * @param tick_lower Lower tick of the liquidity position.
+ * @param tick_upper Upper tick of the liquidity position.
+ * @param liquidity Liquidity amount to remove.
+ * @param amount0_min Minimum token0 amount the user must receive.
+ * @param amount1_min Minimum token1 amount the user must receive.
+ * @param salt User-provided salt used when the SafeSwap-owned Uniswap position was created.
+ */
 struct RemoveLiquidityParams {
     IERC20 token0;
     IERC20 token1;

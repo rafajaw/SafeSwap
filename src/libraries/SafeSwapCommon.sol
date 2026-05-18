@@ -13,6 +13,11 @@ import { FixedPoint96 } from "@UniswapV4Core/libraries/FixedPoint96.sol";
 
 // ━━━━  DATA STRUCTURES  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/**
+ * @notice Uniswap V4 pool configuration shared by all SafeSwap actions.
+ * @param fee Pool LP fee in Uniswap V4 units. Dynamic-fee pools are not supported.
+ * @param tick_spacing Pool tick spacing.
+ */
 struct PoolInfo {
     uint24 fee;
     int24 tick_spacing;

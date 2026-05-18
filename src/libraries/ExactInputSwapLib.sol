@@ -13,6 +13,14 @@ import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 
 // ━━━━  PARAMETERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/**
+ * @notice Exact-input swap parameters signed by the user.
+ * @param token_out Token the user receives.
+ * @param minimum_amount_out Minimum net output after SafeSwap protocol fee.
+ * @param pool_info Target Uniswap V4 pool configuration.
+ *
+ * @dev Input token and input amount come from the bond funding, not from this struct.
+ */
 struct ExactInputSwapParams {
     IERC20 token_out;
     uint256 minimum_amount_out;

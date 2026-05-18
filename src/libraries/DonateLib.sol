@@ -16,6 +16,12 @@ import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 
 // ━━━━  PARAMETERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/**
+ * @notice Donation parameters signed by the user.
+ * @param pool_info Target Uniswap V4 pool configuration.
+ *
+ * @dev Token0, token1, and donation amounts come from the two bond fundings, not from this struct.
+ */
 struct DonateParams {
     PoolInfo pool_info;
 }

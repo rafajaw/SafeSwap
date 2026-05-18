@@ -23,6 +23,17 @@ error OneSidedDepositMismatch( address expected_token, uint256 minimum_required 
 
 // ━━━━  PARAMETERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/**
+ * @notice Add-liquidity parameters signed by the user.
+ * @param pool_info Target Uniswap V4 pool configuration.
+ * @param tick_lower Lower tick of the liquidity position.
+ * @param tick_upper Upper tick of the liquidity position.
+ * @param amount0_min Minimum token0 amount that must be deposited.
+ * @param amount1_min Minimum token1 amount that must be deposited.
+ * @param salt User-provided salt for deriving the SafeSwap-owned Uniswap position.
+ *
+ * @dev Token0, token1, and desired deposit amounts come from the two bond fundings, not from this struct.
+ */
 struct AddLiquidityParams {
     PoolInfo pool_info;
     int24 tick_lower;
