@@ -94,8 +94,8 @@ library DonateLib {
 
         constraints.min_stake                       =  SafeSwapCommon.calculate_normalized_liquidity_stake( sqrtPriceX96, token0, amount0, amount1 );
         constraints.min_fundings                    =  preferred_fundings;
-        constraints.min_execution_delay_in_blocks   =  MIN_EXECUTION_DELAY_IN_BLOCKS;
-        constraints.max_execution_delay_in_seconds  =  MAX_EXECUTION_DELAY;
+        constraints.min_execution_delay_in_blocks   =  MIN_BOND_EXECUTION_DELAY_IN_BLOCKS;
+        constraints.max_execution_delay_in_seconds  =  MAX_BOND_EXECUTION_DELAY_IN_SECONDS;
     }
 
 

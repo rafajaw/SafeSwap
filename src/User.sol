@@ -31,6 +31,10 @@ abstract contract User is UniswapHook, BondRouteProtected {
      *      - Input token and input amount come from the bond fundings, not from `params`.
      *      - Stake is quoted as `SWAP_STAKE_PERCENTAGE` of the committed input amount.
      *
+     * @dev POOL COMPATIBILITY:
+     *      - Inherits Uniswap V4 PoolManager token compatibility; SafeSwap adds BondRoute gating, not custom token accounting.
+     *      - Dynamic-fee pools are not supported.
+     *
      * @dev ERROR CODES:
      *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
      *      - `SlippageExceeded(uint256 amount_received, uint256 minimum_required)` if net output is below `minimum_amount_out`.
@@ -53,6 +57,10 @@ abstract contract User is UniswapHook, BondRouteProtected {
      *      - Callable only through a valid BondRoute bond.
      *      - Input token and maximum input amount come from the bond fundings, not from `params`.
      *      - SafeSwap grosses up the pool output so the user receives `amount_out` after protocol fee.
+     *
+     * @dev POOL COMPATIBILITY:
+     *      - Inherits Uniswap V4 PoolManager token compatibility; SafeSwap adds BondRoute gating, not custom token accounting.
+     *      - Dynamic-fee pools are not supported.
      *
      * @dev ERROR CODES:
      *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
@@ -81,6 +89,10 @@ abstract contract User is UniswapHook, BondRouteProtected {
      *      Positions are owned by the hook contract under the user's address as the V4 salt, so each user has
      *      exactly one position per `(pool, tick_lower, tick_upper)`; subsequent adds to the same range merge in.
      *
+     * @dev POOL COMPATIBILITY:
+     *      - Inherits Uniswap V4 PoolManager token compatibility; SafeSwap adds BondRoute gating, not custom token accounting.
+     *      - Dynamic-fee pools are not supported.
+     *
      * @dev ERROR CODES:
      *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
      *      - `OneSidedDepositMismatch(address expected_token, uint256 minimum_required)` if a one-sided range consumes the wrong side.
@@ -104,6 +116,10 @@ abstract contract User is UniswapHook, BondRouteProtected {
      *      - No fundings are required; stake is quoted from the current token0-normalized value of removed liquidity.
      *      - Withdrawn tokens are sent directly to the BondRoute user.
      *
+     * @dev POOL COMPATIBILITY:
+     *      - Inherits Uniswap V4 PoolManager token compatibility; SafeSwap adds BondRoute gating, not custom token accounting.
+     *      - Dynamic-fee pools are not supported.
+     *
      * @dev ERROR CODES:
      *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
      *      - `SlippageExceeded(uint256 amount_received, uint256 minimum_required)` if received token amounts are below user minimums.
@@ -126,6 +142,10 @@ abstract contract User is UniswapHook, BondRouteProtected {
      *      - Callable only through a valid BondRoute bond.
      *      - Token0, token1, and donation amounts come from the two bond fundings, not from `params`.
      *      - Stake is quoted as `LIQUIDITY_STAKE_PERCENTAGE` of total normalized value, denominated in token0.
+     *
+     * @dev POOL COMPATIBILITY:
+     *      - Inherits Uniswap V4 PoolManager token compatibility; SafeSwap adds BondRoute gating, not custom token accounting.
+     *      - Dynamic-fee pools are not supported.
      *
      * @dev ERROR CODES:
      *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.

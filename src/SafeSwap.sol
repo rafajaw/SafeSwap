@@ -63,6 +63,24 @@ contract SafeSwap is Collector {
     }
 
     /**
+     * @notice Validate a BondRoute execution against SafeSwap constraints.
+     * @dev Extends BondRouteProtected validation with a seconds-based delay floor, orthogonal to block-depth delay.
+     */
+    function BondRoute_validate( bytes calldata call, BondContext memory context )
+    internal  view  override
+    {
+        super.BondRoute_validate( call, context );
+
+        if(  block.timestamp < context.creation_timestamp + MIN_BOND_EXECUTION_DELAY_IN_SECONDS  )
+        {
+            revert PossiblyBondFarming({
+                reason: EXECUTION_TOO_SOON,
+                additional_info: bytes32(MIN_BOND_EXECUTION_DELAY_IN_SECONDS)
+            });
+        }
+    }
+
+    /**
      * @notice Quote BondRoute constraints for a SafeSwap action.
      * @param call Encoded SafeSwap function call.
      * @param preferred_fundings Funding tokens and amounts the user intends to authorize.

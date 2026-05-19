@@ -58,7 +58,7 @@ Liquidity positions are owned by the hook contract under the V4 salt `bytes32(ui
 
 **M-3: On-chain constraint re-validation is structurally a tautology**
 
-`BondRouteProtected.BondRoute_validate` calls `BondRoute_quote_call` with the user's actual stake and fundings as the *preferred* values, then validates the returned constraints against the same context. Because SafeSwap's `quote_call` derives `min_stake` and `min_fundings` from those preferred values, the stake and funding checks always succeed for honest input. The only constraints independently enforced are the timing ones (`MIN_EXECUTION_DELAY_IN_BLOCKS`, `MAX_*_EXECUTION_DELAY`) against `block.number` / `block.timestamp`. Real security comes from BondRoute's commit–reveal matching the user-revealed call. Anyone auditing the validation should understand this.
+`BondRouteProtected.BondRoute_validate` calls `BondRoute_quote_call` with the user's actual stake and fundings as the *preferred* values, then validates the returned constraints against the same context. Because SafeSwap's `quote_call` derives `min_stake` and `min_fundings` from those preferred values, the stake and funding checks always succeed for honest input. The independently enforced constraints are timing constraints (`MIN_BOND_EXECUTION_DELAY_IN_BLOCKS`, `MIN_BOND_EXECUTION_DELAY_IN_SECONDS`, `MAX_BOND_EXECUTION_DELAY_IN_SECONDS`) against `block.number` / `block.timestamp`. Real security comes from BondRoute's commit-reveal matching the user-revealed call. Anyone auditing the validation should understand this.
 
 **M-4: Position salt couples LP custody to a stable user address**
 

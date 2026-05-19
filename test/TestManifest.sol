@@ -60,6 +60,9 @@ interface IBondRouteIntegrationTests {
     function test_get_protected_selectors_includes_donate( ) external;
     function test_get_protected_selectors_gas_below_50000( ) external;
 
+    // ─── BondRoute_validate( ) ────────────────────────────────────────────────────
+    function test_entry_point_reverts_before_minimum_seconds_delay( ) external;
+
     // ─── BondRoute_quote_call( ) - Exact Input Swap ────────────────────────────────
     function test_quote_call_exact_input_returns_correct_min_stake( ) external;
     function test_quote_call_exact_input_returns_correct_min_fundings( ) external;
@@ -170,8 +173,8 @@ interface IUnlockCallbackTests {
     function test_unlock_callback_reverts_on_invalid_action( ) external;
 
     // ─── Trailing Byte Encoding ────────────────────────────────────────────────────
-    function test_unlock_callback_reads_operation_type_from_last_byte( ) external;
-    function test_unlock_callback_decodes_payload_without_trailing_byte( ) external;
+    function test_unlock_callback_reads_operation_type_from_first_byte( ) external;
+    function test_unlock_callback_decodes_payload_after_leading_byte( ) external;
 }
 
 
@@ -316,14 +319,8 @@ interface IStakeCalculationTests {
     // ─── Swap Stake ─────────────────────────────────────────────────────────────────
     function test_swap_stake_token_is_input_token( ) external;
     function test_swap_stake_is_1_percent( ) external;
-    function test_swap_stake_rounds_down( ) external;
-    function test_swap_stake_zero_input( ) external;
-
-    // ─── Liquidity Stake ────────────────────────────────────────────────────────────
-    function test_liquidity_stake_is_2_percent( ) external;
-    function test_liquidity_stake_is_double_swap_stake( ) external;
-    function test_liquidity_stake_token_is_token0( ) external;
-    function test_liquidity_stake_large_value( ) external;
+    function test_swap_stake_bumps_dust_to_one_wei( ) external;
+    function test_swap_stake_zero_input_still_bumps_to_one_wei( ) external;
 }
 
 
@@ -423,6 +420,19 @@ interface IReentrantProtectedContextTests {
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MEMORY ZERO-INITIALIZATION TESTS
+// Implemented in: test/SafeSwap/MemoryZeroInit.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface IMemoryZeroInitTests {
+    function test_named_return_BondConstraints_is_zero_initialized_after_memory_garbage( ) external;
+    function test_new_uint256_array_is_zero_initialized_after_memory_garbage( ) external;
+    function test_new_TokenAmount_array_is_zero_initialized_after_memory_garbage( ) external;
+    function test_in_body_Range_memory_var_is_zero_initialized_after_memory_garbage( ) external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FUZZ TESTS
 // Implemented in: test/SafeSwap/Fuzz.t.sol
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -499,24 +509,25 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Total Tests Declared:       214
-// Implemented & Passing:      214 ✓
+// Implemented & Passing:      213 ✓
+// Manifest-only Benchmarks:    10 declared above, not currently in the test suite.
 //
 // Coverage by Section:
-// - Constructor:                7 tests  ✓
+// - Constructor:                6 tests  ✓
 // - Collector:                  5 tests  ✓
-// - BondRoute Integration:     40 tests  ✓
+// - BondRoute Integration:     41 tests  ✓
 // - Hook Callbacks:            21 tests  ✓
 // - Unlock Callback:            9 tests  ✓
 // - Swap Execution:            14 tests  ✓
-// - Liquidity Execution:       23 tests  ✓
+// - Liquidity Execution:       20 tests  ✓
 // - Donate Execution:           3 tests  ✓
 // - Protocol Fee:              13 tests  ✓
-// - Fee Withdrawal:            10 tests  ✓
-// - Stake Calculation:          8 tests  ✓
+// - Fee Withdrawal:            12 tests  ✓
+// - Stake Calculation:          4 tests  ✓
 // - Integration Tests:         12 tests  ✓
 // - Real Pool Integration:     33 tests  ✓
 // - Reentrant Context:          1 test    ✓
+// - Memory Zero Init:           4 tests  ✓
 // - Fuzz Tests:                 8 tests  ✓
 // - Invariant Tests:            7 tests  ✓
 // - Gas Benchmarks:            10 tests  (declared, not yet implemented)

@@ -99,6 +99,30 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
     }
 
 
+    // ━━━━  BondRoute_validate( )  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function test_entry_point_reverts_before_minimum_seconds_delay( ) external
+    {
+        ExactInputSwapParams memory params  =  _create_exact_input_params( 90 ether );
+        bytes memory call_data  =  _encode_exact_input_calldata( params );
+
+        BondContext memory context  =  _create_bond_context( user, 100 ether );
+        context.creation_block      =  block.number - MIN_BOND_EXECUTION_DELAY_IN_BLOCKS;
+        context.creation_timestamp  =  block.timestamp - MIN_BOND_EXECUTION_DELAY_IN_SECONDS + 1;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PossiblyBondFarming.selector,
+                EXECUTION_TOO_SOON,
+                bytes32(MIN_BOND_EXECUTION_DELAY_IN_SECONDS)
+            )
+        );
+
+        vm.prank( BONDROUTE_ADDRESS );
+        hook.BondRoute_entry_point( call_data, context );
+    }
+
+
     // ━━━━  BondRoute_quote_call( ) - Exact Input Swap  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function test_quote_call_exact_input_returns_correct_min_stake( ) external view

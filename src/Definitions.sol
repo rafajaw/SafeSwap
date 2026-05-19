@@ -12,7 +12,7 @@ bytes32 constant POOL_MANAGER_KEY       =  bytes32("uniswap_v4/pool_manager");
 bytes32 constant INITIAL_COLLECTOR_KEY  =  bytes32("safeswap/initial_collector");
 
 
-// ━━━━  SAFESWAP POLICY  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━━  SAFESWAP ECONOMICS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 uint256 constant SWAP_STAKE_PERCENTAGE              =   1;
 
@@ -20,12 +20,15 @@ uint256 constant SWAP_STAKE_PERCENTAGE              =   1;
 //            Example: 100 USDC + 100 USDT in a 1:1 pool is total value 200 → 1% = 2 USDC stake (assuming USDC is token0).
 uint256 constant LIQUIDITY_STAKE_PERCENTAGE         =   1;
 
-uint256 constant MIN_EXECUTION_DELAY_IN_BLOCKS      =   3;
-
-uint256 constant MAX_EXECUTION_DELAY                =   1 hours;
-
 uint256 constant PROTOCOL_FEE_DIVISOR               =   10_000_000; // E.g. 0.3% pool: LPs get full 0.3%, SafeSwap takes 0.03% from output.
 uint256 constant MIN_PROTOCOL_FEE_RATE              =   1000;       // 0.01% floor when pool LP fee < 0.10%.
+
+
+// ━━━━  BONDROUTE EXECUTION POLICY  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+uint256 constant MIN_BOND_EXECUTION_DELAY_IN_BLOCKS   =   3;
+uint256 constant MIN_BOND_EXECUTION_DELAY_IN_SECONDS  =   2 seconds;
+uint256 constant MAX_BOND_EXECUTION_DELAY_IN_SECONDS  =   1 hours;
 
 
 // ━━━━  STRINGS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
