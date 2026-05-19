@@ -3,7 +3,7 @@
 ## Status
 
 - **Build:** SafeSwap runtime = 23,286 bytes (1,290 B under the EIP-170 cap, with `optimizer_runs = 10_000`). Re-measure after each iteration.
-- **Tests:** 215/215 passing across 16 suites.
+- **Tests:** 211/211 passing across 17 suites.
 - **Scope:** `src/SafeSwap.sol`, `src/User.sol`, `src/Collector.sol`, `src/UniswapHook.sol`, `src/Definitions.sol`, `src/libraries/*`, `src/integrations/BondRouteProtected.sol`, `src/integrations/IChainConfig.sol`, plus the `test/SafeSwap/` suites.
 
 ---
@@ -40,6 +40,8 @@ Operational requirements that must be true at or before deployment. Not security
 - **Coverage gap (partial) — donate fuzz.** Two fuzz tests (`testFuzz_donate_executes_for_arbitrary_split`, `testFuzz_donate_executes_for_one_sided_split`) exercise arbitrary and one-sided splits. Donate invariants still not added.
 - **Coverage gap (partial) — constraint timing.** `BondRoute_quote_call` execution-delay assertions added for all five action types (add/remove liquidity and donate were previously untested). The `block.number == creation_block` boundary itself is enforced inside BondRoute, not here, so it stays untested at the SafeSwap layer.
 - **M-5 — Native-ETH settlement.** Fixed via `SafeSwapCommon.settle_input`: native inputs are pulled to the hook (which has `receive()`) and then forwarded as `pool_manager.settle{value: amount}()`, satisfying V4's "ETH must ride msg.value" contract. ERC20 path unchanged. End-to-end coverage in `test_real_pool_native_exact_input_swap_eth_to_erc20`, `..._erc20_to_eth`, and `test_real_pool_native_add_and_remove_liquidity`.
+- **M-4 (partial) — Position salt mechanism simplified.** `SafeSwapCommon._position_salt` removed; V4 owner-keyed positions now use `bytes32(uint160(user))` directly as the V4 salt. Eliminates the duplicate-named `salt` field in the EIP-712 wallet display and the salt-fragmentation footgun (random/forgotten salts splintering a user's liquidity). The AA-wallet beneficiary-identity concern remains as the rephrased M-4 below.
+- **Internal consistency — RemoveLiquidity API mirrors AddLiquidity.** `RemoveLiquidityParams` now carries `TokenAmount min_a` / `min_b` (address-tagged minimums) instead of positional `token0` / `token1` + `amount0_min` / `amount1_min` uint256s. The pool's two tokens are derived from the mins' addresses (sorted internally), eliminating the same wrong-order / positional-min footguns that AddLiquidity shed earlier. All four liquidity-touching libs (Add, Remove, Donate, swaps) now share one convention: callers pass data in any address order, the lib resolves by address.
 
 ### Medium
 
@@ -49,7 +51,7 @@ Operational requirements that must be true at or before deployment. Not security
 
 **M-2: LP custody depends on BondRoute remaining functional**
 
-Liquidity positions are owned by the hook contract under salts derived from `(user, user_supplied_salt)`. The only path to extract them is `remove_liquidity`, which requires a BondRoute bond. If BondRoute ever ceases to function — or if SafeSwap removes `remove_liquidity` from `BondRoute_get_protected_selectors` — LPs are stranded. This is the documented BondRoute integration property, not a bug. Surface it in user-facing docs and consider an off-chain getter so users can inspect their positions independently of BondRoute.
+Liquidity positions are owned by the hook contract under the V4 salt `bytes32(uint160(user))`. The only path to extract them is `remove_liquidity`, which requires a BondRoute bond. If BondRoute ever ceases to function — or if SafeSwap removes `remove_liquidity` from `BondRoute_get_protected_selectors` — LPs are stranded. This is the documented BondRoute integration property, not a bug. Surface it in user-facing docs and consider an off-chain getter so users can inspect their positions independently of BondRoute.
 
 **M-3: On-chain constraint re-validation is structurally a tautology**
 
@@ -57,7 +59,7 @@ Liquidity positions are owned by the hook contract under salts derived from `(us
 
 **M-4: Position salt couples LP custody to a stable user address**
 
-`SafeSwapCommon._position_salt(user, salt) = keccak256(user, salt)`. Account-abstraction wallets and relayers that delegate differently per bond must ensure `ctx.user` always reflects the intended beneficiary, otherwise positions are inaccessible from the user's wallet view. The canonical BondRoute is expected to deliver "the user who created the bond" semantics — confirm this matches the deployed contract.
+V4 positions are owned by the hook under the salt `bytes32(uint160(ctx.user))` — the bond submitter's address IS the position discriminator. Account-abstraction wallets and relayers that delegate differently per bond must ensure `ctx.user` always reflects the intended beneficiary; otherwise positions accrue under one address but the human controlling the funds queries from another and sees nothing. The canonical BondRoute is expected to deliver "the user who created the bond" semantics — confirm this matches the deployed contract.
 
 **M-5:** *Resolved — see Resolved section above. `SafeSwapCommon.settle_input` now routes native via the hook + `settle{value:}`.*
 
@@ -101,7 +103,7 @@ The fee replaces stochastic MEV exposure with a deterministic surcharge. Realist
 
 **D-2: BondRoute as a single point of failure**
 
-LP custody, swap execution, and donate flows all hinge on BondRoute. If the canonical BondRoute is paused or migrated, SafeSwap users have no fallback path. Surface this risk in user-facing docs. SafeSwap exposes `get_position_info(pool_id, user, tick_lower, tick_upper, salt)` so users (or any aggregator) can inspect LP positions on-chain without going through BondRoute.
+LP custody, swap execution, and donate flows all hinge on BondRoute. If the canonical BondRoute is paused or migrated, SafeSwap users have no fallback path. Surface this risk in user-facing docs. SafeSwap exposes `get_position_info(pool_id, user, tick_lower, tick_upper)` so users (or any aggregator) can inspect LP positions on-chain without going through BondRoute.
 
 **D-3: Fee-on-transfer and rebasing tokens are out of scope**
 
@@ -135,7 +137,7 @@ Hardcoded in `src/Definitions.sol` so the SafeSwap binary points at a single can
 - `unlockCallback` rejects non-PoolManager callers and dispatches all five actions; invalid action byte panics.
 - `Collector` two-step transfer (`transfer_collector` → `accept_collector`) and non-collector rejection both tested. Zero-address transfer is the documented cancel path.
 - Direct-pool attack vectors (`DirectSwapAttacker`, `DirectDonateAttacker`) confirmed rejected against a real V4 PoolManager.
-- `_position_salt` user-isolation proven: user A's position is untouchable by user B sharing the same `salt` parameter.
+- User-isolation proven: user A's position at any `(pool, tick_lower, tick_upper)` is untouchable by user B operating at the exact same range, because the V4 salt is the user address itself.
 - Live Uniswap V4 PoolManager is exercised via `ForceCompileV4.PoolManagerDeployer` for execution, fee math, and stake-quotation tests.
 - Liquidity-bond stake is slot0-normalized across both sides of the pair, denominated in token0. Dust-input `(1 wei, 1 ether)` and one-sided range-order configurations both yield non-zero stake.
 - Constructor rejects deployment at any address whose low 14 bits don't equal `0x0AA0`, catching mis-mined hooks before the first pool init.
