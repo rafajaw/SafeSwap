@@ -232,7 +232,7 @@ contract MockBondRoute {
     external returns ( uint256 updated_index, uint256 new_available_amount )
     {
         // Find the funding index for this token.
-        for(  uint i = 0  ;  i < context.fundings.length  ;  i = i + 1  )
+        for(  uint i = 0  ;  i < context.fundings.length  ;  i++  )
         {
             if(  address(context.fundings[ i ].token) == address(token)  )
             {

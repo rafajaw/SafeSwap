@@ -25,9 +25,9 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         bytes4[] memory selectors  =  hook.BondRoute_get_protected_selectors( );
         bool found  =  false;
 
-        for(  uint i = 0  ;  i < selectors.length  ;  i = i + 1  )
+        for(  uint i = 0  ;  i < selectors.length  ;  i++  )
         {
-            if(  selectors[ i ] == hook.swap_exact_input.selector  )  found  =  true;
+            if(  selectors[ i ] == hook.swap_exact_input.selector  )  {  found  =  true;  break;  }
         }
 
         assertTrue( found, "Protected selectors should include swap_exact_input." );
@@ -38,9 +38,9 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         bytes4[] memory selectors  =  hook.BondRoute_get_protected_selectors( );
         bool found  =  false;
 
-        for(  uint i = 0  ;  i < selectors.length  ;  i = i + 1  )
+        for(  uint i = 0  ;  i < selectors.length  ;  i++  )
         {
-            if(  selectors[ i ] == hook.swap_exact_output.selector  )  found  =  true;
+            if(  selectors[ i ] == hook.swap_exact_output.selector  )  {  found  =  true;  break;  }
         }
 
         assertTrue( found, "Protected selectors should include swap_exact_output." );
@@ -51,9 +51,9 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         bytes4[] memory selectors  =  hook.BondRoute_get_protected_selectors( );
         bool found  =  false;
 
-        for(  uint i = 0  ;  i < selectors.length  ;  i = i + 1  )
+        for(  uint i = 0  ;  i < selectors.length  ;  i++  )
         {
-            if(  selectors[ i ] == hook.add_liquidity.selector  )  found  =  true;
+            if(  selectors[ i ] == hook.add_liquidity.selector  )  {  found  =  true;  break;  }
         }
 
         assertTrue( found, "Protected selectors should include add_liquidity." );
@@ -64,9 +64,9 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         bytes4[] memory selectors  =  hook.BondRoute_get_protected_selectors( );
         bool found  =  false;
 
-        for(  uint i = 0  ;  i < selectors.length  ;  i = i + 1  )
+        for(  uint i = 0  ;  i < selectors.length  ;  i++  )
         {
-            if(  selectors[ i ] == hook.remove_liquidity.selector  )  found  =  true;
+            if(  selectors[ i ] == hook.remove_liquidity.selector  )  {  found  =  true;  break;  }
         }
 
         assertTrue( found, "Protected selectors should include remove_liquidity." );
@@ -77,9 +77,9 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         bytes4[] memory selectors  =  hook.BondRoute_get_protected_selectors( );
         bool found  =  false;
 
-        for(  uint i = 0  ;  i < selectors.length  ;  i = i + 1  )
+        for(  uint i = 0  ;  i < selectors.length  ;  i++  )
         {
-            if(  selectors[ i ] == hook.donate.selector  )  found  =  true;
+            if(  selectors[ i ] == hook.donate.selector  )  {  found  =  true;  break;  }
         }
 
         assertTrue( found, "Protected selectors should include donate." );
@@ -493,27 +493,7 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
 
         ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  hook.BondRoute_get_signing_info( call_data );
 
-        assertTrue( bytes(typed_string).length > 0, "Type string should not be empty." );
-        assertTrue( struct_hash != bytes32(0), "Struct hash should not be zero." );
-        assertTrue( token_amount_offset > 0, "Token amount offset should be positive." );
-
-        // Verify the type string starts correctly.
-        bytes memory prefix  =  bytes("ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,");
-        for(  uint i = 0  ;  i < prefix.length  ;  i = i + 1  )
-        {
-            assertEq( bytes(typed_string)[ i ], prefix[ i ], "Type string should start with correct prefix." );
-        }
-
-        // Verify TokenAmount appears at the specified offset.
-        bytes memory token_amount_type  =  bytes("TokenAmount(address token,uint256 amount)");
-        for(  uint i = 0  ;  i < token_amount_type.length  ;  i = i + 1  )
-        {
-            assertEq(
-                bytes(typed_string)[ token_amount_offset + i ],
-                token_amount_type[ i ],
-                "TokenAmount type should appear at specified offset."
-            );
-        }
+        _assert_valid_signing_info( typed_string, struct_hash, token_amount_offset );
     }
 
     function test_get_signing_info_exact_output_returns_valid_type_string( ) external view
@@ -523,9 +503,7 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
 
         ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  hook.BondRoute_get_signing_info( call_data );
 
-        assertTrue( bytes(typed_string).length > 0, "Type string should not be empty." );
-        assertTrue( struct_hash != bytes32(0), "Struct hash should not be zero." );
-        assertTrue( token_amount_offset > 0, "Token amount offset should be positive." );
+        _assert_valid_signing_info( typed_string, struct_hash, token_amount_offset );
     }
 
     function test_get_signing_info_add_liquidity_returns_valid_type_string( ) external view
@@ -535,9 +513,7 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
 
         ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  hook.BondRoute_get_signing_info( call_data );
 
-        assertTrue( bytes(typed_string).length > 0, "Type string should not be empty." );
-        assertTrue( struct_hash != bytes32(0), "Struct hash should not be zero." );
-        assertTrue( token_amount_offset > 0, "Token amount offset should be positive." );
+        _assert_valid_signing_info( typed_string, struct_hash, token_amount_offset );
     }
 
     function test_get_signing_info_remove_liquidity_returns_valid_type_string( ) external view
@@ -547,9 +523,7 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
 
         ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  hook.BondRoute_get_signing_info( call_data );
 
-        assertTrue( bytes(typed_string).length > 0, "Type string should not be empty." );
-        assertTrue( struct_hash != bytes32(0), "Struct hash should not be zero." );
-        assertTrue( token_amount_offset > 0, "Token amount offset should be positive." );
+        _assert_valid_signing_info( typed_string, struct_hash, token_amount_offset );
     }
 
     function test_get_signing_info_donate_returns_valid_type_string( ) external view
@@ -559,9 +533,43 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
 
         ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  hook.BondRoute_get_signing_info( call_data );
 
-        assertTrue( bytes(typed_string).length > 0, "Type string should not be empty." );
-        assertTrue( struct_hash != bytes32(0), "Struct hash should not be zero." );
-        assertTrue( token_amount_offset > 0, "Token amount offset should be positive." );
+        _assert_valid_signing_info( typed_string, struct_hash, token_amount_offset );
+    }
+
+    function _assert_valid_signing_info(
+        string memory typed_string,
+        bytes32 struct_hash,
+        uint256 token_amount_offset
+    ) private pure
+    {
+        bytes memory ts  =  bytes(typed_string);
+
+        assertTrue( ts.length > 0,                 "Type string should not be empty." );
+        assertTrue( struct_hash != bytes32(0),     "Struct hash should not be zero." );
+        assertTrue( token_amount_offset > 0,       "Token amount offset should be positive." );
+
+        // Verify the type string starts with the BondRoute envelope prefix.
+        bytes memory prefix  =  bytes("ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,");
+        assertTrue( ts.length >= prefix.length,    "Type string shorter than expected prefix." );
+        for(  uint i = 0  ;  i < prefix.length  ;  i++  )
+        {
+            assertEq( ts[ i ], prefix[ i ],        "Type string should start with correct prefix." );
+        }
+
+        // Verify TokenAmount appears at the reported offset.
+        bytes memory token_amount_type  =  bytes("TokenAmount(address token,uint256 amount)");
+        assertTrue(
+            ts.length >= token_amount_offset + token_amount_type.length,
+            "Type string shorter than offset + TokenAmount type."
+        );
+        for(  uint i = 0  ;  i < token_amount_type.length  ;  i++  )
+        {
+            assertEq(
+                ts[ token_amount_offset + i ],
+                token_amount_type[ i ],
+                "TokenAmount type should appear at specified offset."
+            );
+        }
     }
 
     function test_get_signing_info_reverts_on_unknown_selector( ) external

@@ -99,7 +99,7 @@ contract MemoryZeroInitTest is Test {
         uint256 length  =  arr.length;
         assertEq( length, 16, "new uint256[](16).length must be 16" );
 
-        for( uint256 i = 0  ;  i < length  ;  i  =  i + 1 )
+        for( uint256 i = 0  ;  i < length  ;  i++ )
         {
             assertEq( arr[ i ], 0, "new uint256[](16) element must be zero" );
         }
@@ -117,7 +117,7 @@ contract MemoryZeroInitTest is Test {
         uint256 length  =  arr.length;
         assertEq( length, 4, "new TokenAmount[](4).length must be 4" );
 
-        for( uint256 i = 0  ;  i < length  ;  i  =  i + 1 )
+        for( uint256 i = 0  ;  i < length  ;  i++ )
         {
             assertEq( address(arr[ i ].token),  address(0),  "new TokenAmount[](4) element token  must be zero" );
             assertEq( arr[ i ].amount,          0,           "new TokenAmount[](4) element amount must be zero" );

@@ -795,7 +795,7 @@ contract RealPoolIntegrationTest is Test {
     function test_real_pool_fee_accumulation_and_withdrawal( ) external
     {
         // Execute multiple swaps.
-        for(  uint i = 0  ;  i < 5  ;  i = i + 1  )
+        for(  uint i = 0  ;  i < 5  ;  i++  )
         {
             BondContext memory context  =  _create_one_funding_context( user, 100 ether );
             ExactInputSwapParams memory params  =  ExactInputSwapParams({

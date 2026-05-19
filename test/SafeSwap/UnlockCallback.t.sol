@@ -191,8 +191,7 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         bytes memory data  =  bytes.concat( bytes1(uint8(99)), abi.encode( context, params ) );
 
         vm.prank( address(pool_manager) );
-        // Enum conversion panics with error code 0x21.
-        vm.expectRevert( abi.encodeWithSelector( bytes4(0x4e487b71), uint256(0x21) ) );
+        vm.expectRevert( stdError.enumConversionError );
         hook.unlockCallback( data );
     }
 

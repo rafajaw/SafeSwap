@@ -115,14 +115,9 @@ contract FeeWithdrawalTest is SafeSwapTestBase {
     {
         vm.deal( user, 10 ether );
         vm.prank( user );
-        ( bool success, bytes memory data )  =  address(hook).call{ value: 10 ether }( "" );
-
-        assertFalse( success, "Hook must reject direct native transfers from arbitrary senders." );
-        assertEq(
-            _decode_revert_string( data ),
-            "Direct transfers not allowed",
-            "Revert message must match the BondRoute convention."
-        );
+        vm.expectRevert( bytes("Direct transfers not allowed") );
+        // forge-lint: disable-next-line(unchecked-call)
+        address(hook).call{ value: 10 ether }( "" );
     }
 
     function test_receive_accepts_native_from_pool_manager( ) external
@@ -156,16 +151,6 @@ contract FeeWithdrawalTest is SafeSwapTestBase {
             "Hook balance must reflect the received native amount."
         );
     }
-
-    function _decode_revert_string( bytes memory revert_data ) private pure returns ( string memory )
-    {
-        // Solidity revert(string) ABI-encodes as: 4-byte Error(string) selector + ABI-encoded string.
-        if(  revert_data.length < 68  )  return "";
-        bytes memory string_data  =  new bytes( revert_data.length - 4 );
-        for(  uint i = 0  ;  i < string_data.length  ;  i = i + 1  )  string_data[ i ]  =  revert_data[ i + 4 ];
-        return abi.decode( string_data, (string) );
-    }
-
 
     // ━━━━  Multi-Token Withdrawal  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

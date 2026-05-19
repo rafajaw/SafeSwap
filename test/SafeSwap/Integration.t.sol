@@ -312,7 +312,7 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 hook_fee_before  =  token1.balanceOf( address(hook) );
 
         // Execute multiple swaps to accumulate fees.
-        for(  uint i = 0  ;  i < 5  ;  i = i + 1  )
+        for(  uint i = 0  ;  i < 5  ;  i++  )
         {
             BondContext memory context  =  _create_bond_context( user, 100 ether );
             ExactInputSwapParams memory params  =  _create_exact_input_params( 90 ether );
