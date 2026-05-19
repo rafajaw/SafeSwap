@@ -18,7 +18,7 @@ error TransferFailed( address token, address recipient, uint256 amount );
 
 event CollectorTransferStarted( address indexed current_collector, address indexed pending_collector );
 event CollectorTransferred( address indexed previous_collector, address indexed new_collector );
-event FeesWithdrawn( IERC20 indexed token, address indexed recipient, uint256 amount );
+event FeesWithdrawn( address indexed recipient, IERC20 indexed token, uint256 amount );
 
 
 /**
@@ -107,7 +107,7 @@ abstract contract Collector is User {
      * @dev Keeps 1 wei of each token in the contract to avoid zero-to-nonzero storage/accounting costs on future fee collection.
      *
      * @dev EMITTED EVENTS:
-     *      - `FeesWithdrawn(token, recipient, amount)` when a nonzero withdrawal happens.
+     *      - `FeesWithdrawn(recipient, token, amount)` when a nonzero withdrawal happens.
      *
      * @dev ERROR CODES:
      *      - `Unauthorized(address caller, address expected)` if caller is not collector.
@@ -139,6 +139,6 @@ abstract contract Collector is User {
             if(  success == false  )  revert TransferFailed({ token: address(token), recipient: recipient, amount: withdraw_amount });
         }
 
-        emit FeesWithdrawn( token, recipient, withdraw_amount );
+        emit FeesWithdrawn( recipient, token, withdraw_amount );
     }
 }
