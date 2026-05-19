@@ -77,7 +77,7 @@ library DonateLib {
         if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )   revert UnsupportedFeeTier({ fee: params.pool_info.fee });
         if(  preferred_fundings.length != 2  )                          revert( DONATE_REQUIRES_TWO_FUNDINGS );
 
-        ( IERC20 token0, uint256 amount0, IERC20 token1, uint256 amount1 )  =  SafeSwapCommon.sort_funding_pair(
+        ( IERC20 token0, uint256 amount0, IERC20 token1, uint256 amount1 )  =  SafeSwapCommon.sort_token_amount_pair(
             preferred_fundings[ 0 ],
             preferred_fundings[ 1 ]
         );
@@ -103,7 +103,7 @@ library DonateLib {
 
     function execute( BondContext memory context, DonateParams memory params, IPoolManager pool_manager, address hook_address ) internal
     {
-        ( IERC20 token0, uint256 amount0, IERC20 token1, uint256 amount1 )  =  SafeSwapCommon.sort_funding_pair(
+        ( IERC20 token0, uint256 amount0, IERC20 token1, uint256 amount1 )  =  SafeSwapCommon.sort_token_amount_pair(
             context.fundings[ 0 ],
             context.fundings[ 1 ]
         );

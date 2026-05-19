@@ -637,14 +637,12 @@ abstract contract SafeSwapTestBase is Test {
     internal view returns ( RemoveLiquidityParams memory )
     {
         return RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: liquidity,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
     }
 

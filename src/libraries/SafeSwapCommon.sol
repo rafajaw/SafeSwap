@@ -97,20 +97,20 @@ library SafeSwapCommon {
     }
 
 
-    // ━━━━  FUNDING PAIR HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  TOKEN AMOUNT HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
-     * @notice Sort a two-token funding pair into Uniswap V4 pool currency order.
-     * @dev Reverts with `TOKENS_MUST_BE_DIFFERENT` if both fundings reference the same token.
+     * @notice Sort a two-element TokenAmount pair into Uniswap V4 pool currency order.
+     * @dev Reverts with `TOKENS_MUST_BE_DIFFERENT` if both entries reference the same token.
      */
-    function sort_funding_pair( TokenAmount memory funding_a, TokenAmount memory funding_b )
+    function sort_token_amount_pair( TokenAmount memory pair_a, TokenAmount memory pair_b )
     internal pure returns ( IERC20 token0, uint256 amount0, IERC20 token1, uint256 amount1 )
     {
-        if(  address(funding_a.token) == address(funding_b.token)  )  revert( TOKENS_MUST_BE_DIFFERENT );
+        if(  address(pair_a.token) == address(pair_b.token)  )  revert( TOKENS_MUST_BE_DIFFERENT );
 
-        ( token0, amount0, token1, amount1 )  =  address(funding_a.token) < address(funding_b.token)
-            ? ( funding_a.token, funding_a.amount, funding_b.token, funding_b.amount )
-            : ( funding_b.token, funding_b.amount, funding_a.token, funding_a.amount );
+        ( token0, amount0, token1, amount1 )  =  address(pair_a.token) < address(pair_b.token)
+            ? ( pair_a.token, pair_a.amount, pair_b.token, pair_b.amount )
+            : ( pair_b.token, pair_b.amount, pair_a.token, pair_a.amount );
     }
 
 

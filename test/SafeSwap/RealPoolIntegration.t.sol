@@ -499,14 +499,12 @@ contract RealPoolIntegrationTest is Test {
         // User B removes from their own position at the same range — must not touch user A's.
         BondContext memory remove_context_b  =  _create_zero_funding_context( other_user );
         RemoveLiquidityParams memory remove_params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             liquidity: 1,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         hook.harness_remove_liquidity( remove_context_b, remove_params );
 
@@ -554,14 +552,12 @@ contract RealPoolIntegrationTest is Test {
 
         BondContext memory remove_context  =  _create_zero_funding_context( user );
         RemoveLiquidityParams memory remove_params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             liquidity: position_liquidity,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         hook.harness_remove_liquidity( remove_context, remove_params );
 
@@ -589,14 +585,12 @@ contract RealPoolIntegrationTest is Test {
         // Try to remove with unrealistic slippage requirement.
         BondContext memory remove_context  =  _create_zero_funding_context( user );
         RemoveLiquidityParams memory remove_params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             liquidity: 1,  // Tiny removal.
-            amount0_min: 1000 ether,  // Impossibly high requirement.
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 1000 ether }),  // Impossibly high requirement.
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         vm.expectRevert( );
@@ -642,14 +636,12 @@ contract RealPoolIntegrationTest is Test {
 
         BondContext memory remove_context  =  _create_zero_funding_context( user );
         RemoveLiquidityParams memory remove_params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             liquidity: position_liquidity,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         hook.harness_remove_liquidity( remove_context, remove_params );
 
@@ -928,14 +920,12 @@ contract RealPoolIntegrationTest is Test {
     function test_real_pool_quote_remove_liquidity_stake_uses_position_amounts( ) external view
     {
         RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            token0:      IERC20(address(token0)),
-            token1:      IERC20(address(token1)),
             pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower:  -TICK_SPACING_60 * 10,
             tick_upper:  TICK_SPACING_60 * 10,
             liquidity:   100 ether,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         bytes memory call_data  =  abi.encodeWithSelector( hook.remove_liquidity.selector, params );
 
@@ -952,24 +942,20 @@ contract RealPoolIntegrationTest is Test {
     function test_real_pool_quote_remove_liquidity_stake_ignores_user_supplied_mins( ) external view
     {
         RemoveLiquidityParams memory params_zero_mins  =  RemoveLiquidityParams({
-            token0:      IERC20(address(token0)),
-            token1:      IERC20(address(token1)),
             pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower:  -TICK_SPACING_60 * 10,
             tick_upper:  TICK_SPACING_60 * 10,
             liquidity:   100 ether,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
         RemoveLiquidityParams memory params_high_mins  =  RemoveLiquidityParams({
-            token0:      IERC20(address(token0)),
-            token1:      IERC20(address(token1)),
             pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower:  -TICK_SPACING_60 * 10,
             tick_upper:  TICK_SPACING_60 * 10,
             liquidity:   100 ether,
-            amount0_min: 1_000_000 ether,
-            amount1_min: 1_000_000 ether
+            min_a: TokenAmount({ token: token0, amount: 1_000_000 ether }),
+            min_b: TokenAmount({ token: token1, amount: 1_000_000 ether })
         });
 
         TokenAmount[] memory no_fundings  =  new TokenAmount[]( 0 );
@@ -1281,14 +1267,12 @@ contract RealPoolIntegrationTest is Test {
         BondContext memory remove_context  =  _create_zero_funding_context( user );
         remove_context.stake  =  TokenAmount({ token: IERC20(address(0)), amount: 0 });
         RemoveLiquidityParams memory remove_params  =  RemoveLiquidityParams({
-            token0: IERC20(address(0)),
-            token1: IERC20(address(erc20_token)),
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: -TICK_SPACING_60 * 100,
             tick_upper:  TICK_SPACING_60 * 100,
             liquidity: liquidity_to_remove,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: IERC20(address(0)),           amount: 0 }),
+            min_b: TokenAmount({ token: IERC20(address(erc20_token)), amount: 0 })
         });
 
         uint256 user_eth_after_add    =  user.balance;

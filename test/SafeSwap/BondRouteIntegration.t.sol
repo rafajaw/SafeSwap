@@ -361,14 +361,12 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
     function test_quote_call_remove_liquidity_reverts_if_tokens_same( ) external
     {
         RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token0,
             pool_info: _default_pool_info( ),
             tick_lower: -600,
             tick_upper: 600,
             liquidity: 100 ether,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token0, amount: 0 })
         });
         bytes memory call_data  =  _encode_remove_liquidity_calldata( params );
 

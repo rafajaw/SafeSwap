@@ -334,14 +334,12 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
     {
         BondContext memory context  =  _create_bond_context( user, 0 );
         RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
-            amount0_min: 60 ether,  // Require at least 60 ether.
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 60 ether }),  // Require at least 60 ether.
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         // Returns only 50 ether for token0.
@@ -356,14 +354,12 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
     {
         BondContext memory context  =  _create_bond_context( user, 0 );
         RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
-            amount0_min: 0,
-            amount1_min: 60 ether  // Require at least 60 ether.
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 60 ether })  // Require at least 60 ether.
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
@@ -377,14 +373,12 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
     {
         BondContext memory context  =  _create_bond_context( user, 0 );
         RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
-            amount0_min: 50 ether,
-            amount1_min: 50 ether
+            min_a: TokenAmount({ token: token0, amount: 50 ether }),
+            min_b: TokenAmount({ token: token1, amount: 50 ether })
         });
 
         // Returns exactly the minimums.
@@ -415,14 +409,12 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         int24 tick_upper  =  1200;
 
         RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: _default_pool_info( ),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             liquidity: 100 ether,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
@@ -442,14 +434,12 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
     function test_remove_liquidity_different_users_produce_isolated_position_salts( ) external
     {
         RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
@@ -500,14 +490,12 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
 
         BondContext memory remove_context  =  _create_bond_context( user, 0 );
         RemoveLiquidityParams memory remove_params  =  RemoveLiquidityParams({
-            token0: token0,
-            token1: token1,
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
-            amount0_min: 0,
-            amount1_min: 0
+            min_a: TokenAmount({ token: token0, amount: 0 }),
+            min_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );

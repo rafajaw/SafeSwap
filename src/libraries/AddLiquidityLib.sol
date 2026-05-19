@@ -209,7 +209,7 @@ library AddLiquidityLib {
         TokenAmount memory min_b
     ) private pure returns ( IERC20 token0, uint256 amount0_desired, IERC20 token1, uint256 amount1_desired )
     {
-        ( token0, amount0_desired, token1, amount1_desired )  =  SafeSwapCommon.sort_funding_pair( funding_a, funding_b );
+        ( token0, amount0_desired, token1, amount1_desired )  =  SafeSwapCommon.sort_token_amount_pair( funding_a, funding_b );
 
         bool ordered_ab  =  address(min_a.token) == address(token0)  &&  address(min_b.token) == address(token1);
         bool ordered_ba  =  address(min_a.token) == address(token1)  &&  address(min_b.token) == address(token0);
