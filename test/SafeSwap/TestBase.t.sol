@@ -12,12 +12,10 @@ import "@SafeSwap/libraries/DonateLib.sol";
 import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
 import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_COLLECTOR_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
-import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta, toBalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
-import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { Constants } from "@UniswapV4Core/../test/utils/Constants.sol";
 
 
@@ -111,25 +109,6 @@ contract MockPoolManager {
 
     address public protocolFeeController;
 
-    struct PoolState {
-        uint160 sqrt_price_x96;
-        int24 tick;
-        uint24 protocol_fee;
-        uint24 lp_fee;
-        uint128 liquidity;
-        bool initialized;
-    }
-
-    mapping( PoolId => PoolState ) public pools;
-    mapping( Currency => int256 ) public currency_deltas;
-    mapping( Currency => uint256 ) public reserves;
-    mapping( address => mapping( uint256 => uint256 ) ) public balanceOf;
-    mapping( address => mapping( address => bool ) ) public isOperator;
-    mapping( address => mapping( address => mapping( uint256 => uint256 ) ) ) public allowance;
-
-    address public unlock_caller;
-    bool public is_unlocked;
-
     int128 public mock_swap_amount0;
     int128 public mock_swap_amount1;
     int128 public mock_liquidity_amount0;
@@ -142,20 +121,6 @@ contract MockPoolManager {
     event SwapExecuted( PoolId indexed pool_id, bool zero_for_one, int256 amount_specified );
     event LiquidityModified( PoolId indexed pool_id, int256 liquidity_delta );
     event UnlockCalled( address caller, bytes data );
-
-    function initialize_pool( PoolKey memory key, uint160 sqrt_price_x96 ) external returns ( int24 tick )
-    {
-        PoolId pool_id  =  key.toId( );
-        tick  =  TickMath.getTickAtSqrtPrice( sqrt_price_x96 );
-        pools[ pool_id ]  =  PoolState({
-            sqrt_price_x96: sqrt_price_x96,
-            tick: tick,
-            protocol_fee: 0,
-            lp_fee: key.fee,
-            liquidity: 0,
-            initialized: true
-        });
-    }
 
     function set_mock_swap_amounts( int128 amount0, int128 amount1 ) external
     {
@@ -177,15 +142,8 @@ contract MockPoolManager {
 
     function unlock( bytes calldata data ) external returns ( bytes memory )
     {
-        is_unlocked      =  true;
-        unlock_caller    =  msg.sender;
-
         emit UnlockCalled( msg.sender, data );
-
-        bytes memory result  =  IUnlockCallback(msg.sender).unlockCallback( data );
-
-        is_unlocked  =  false;
-        return result;
+        return IUnlockCallback(msg.sender).unlockCallback( data );
     }
 
     function swap( PoolKey memory key, IPoolManager.SwapParams memory params, bytes calldata )
@@ -211,10 +169,7 @@ contract MockPoolManager {
         return toBalanceDelta( mock_donate_amount0, mock_donate_amount1 );
     }
 
-    function sync( Currency currency ) external
-    {
-        // Record the currency for settlement.
-    }
+    function sync( Currency ) external { }
 
     function settle( ) external payable returns ( uint256 )
     {
@@ -242,21 +197,9 @@ contract MockPoolManager {
         return bytes32(uint256(Constants.SQRT_PRICE_1_1));
     }
 
-    function extsload( bytes32 start_slot, uint256 n_slots ) external view returns ( bytes memory )
-    {
-        bytes memory result  =  new bytes( n_slots * 32 );
-        return result;
-    }
-
     function extsload( bytes32[] calldata slots ) external view returns ( bytes32[] memory )
     {
         return new bytes32[]( slots.length );
-    }
-
-    function get_slot0( PoolId pool_id ) external view returns ( uint160, int24, uint24, uint24 )
-    {
-        PoolState memory state  =  pools[ pool_id ];
-        return ( state.sqrt_price_x96, state.tick, state.protocol_fee, state.lp_fee );
     }
 
     function supportsInterface( bytes4 interface_id ) external pure returns ( bool )
@@ -272,9 +215,7 @@ contract MockPoolManager {
 
 contract MockBondRoute {
     event ProtocolAnnounced( string name, string description );
-    event FundingTransferred( address to, address token, uint256 amount );
 
-    mapping( address => mapping( IERC20 => uint256 ) ) public user_fundings;
     bool public skip_actual_transfer;
 
     function announce_protocol( string calldata name, string calldata description ) external payable
@@ -312,16 +253,10 @@ contract MockBondRoute {
                     }
                 }
 
-                emit FundingTransferred( to, address(token), amount );
                 return ( i, available - amount );
             }
         }
         revert( "Token not in fundings" );
-    }
-
-    function set_user_funding( address user, IERC20 token, uint256 amount ) external
-    {
-        user_fundings[ user ][ token ]  =  amount;
     }
 
     receive( ) external payable { }
@@ -363,34 +298,10 @@ contract RejectingRecipient {
 
 // ━━━━  TESTABLE SAFESWAPHOOK  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/// @dev Wrapper that bypasses BondRoute for direct testing.
+/// @dev Wrapper that exposes internal SafeSwap hooks for direct testing without going through BondRoute.
 contract TestableSafeSwap is SafeSwap {
 
-    bool private _bypass_bondroute;
-    BondContext private _mock_context;
-
     constructor( ) SafeSwap( ) { }
-
-    function set_bypass_bondroute( bool bypass ) external
-    {
-        _bypass_bondroute  =  bypass;
-    }
-
-    function set_mock_context( BondContext memory context ) external
-    {
-        _mock_context  =  context;
-    }
-
-    function get_mock_context( ) external view returns ( BondContext memory )
-    {
-        return _mock_context;
-    }
-
-    function harness_set_hook_callback_allowed( bool is_allowed ) external
-    {
-        if(  is_allowed  )  _is_hook_callback_allowed  =  true;
-        else               _is_hook_callback_allowed  =  false;
-    }
 
     function harness_allow_hook_callback( ) external
     {
@@ -459,7 +370,6 @@ contract TestableSafeSwap is SafeSwap {
 // ━━━━  TEST BASE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 abstract contract SafeSwapTestBase is Test {
-    using PoolIdLibrary for PoolKey;
 
     // Contracts.
     TestableSafeSwap public hook;
@@ -535,16 +445,6 @@ abstract contract SafeSwapTestBase is Test {
         deployCodeTo( "TestBase.t.sol:TestableSafeSwap", HOOK_TARGET );
         hook  =  TestableSafeSwap(payable(HOOK_TARGET));
 
-        // Initialize pool in mock pool manager.
-        PoolKey memory pool_key  =  PoolKey({
-            currency0: Currency.wrap( address(token0) ),
-            currency1: Currency.wrap( address(token1) ),
-            fee: POOL_FEE_030,
-            tickSpacing: TICK_SPACING_60,
-            hooks: IHooks(address(hook))
-        });
-        pool_manager.initialize_pool( pool_key, SQRT_PRICE_1_1 );
-
         // Mint tokens to users.
         token0.mint( user, INITIAL_BALANCE );
         token1.mint( user, INITIAL_BALANCE );
@@ -566,9 +466,6 @@ abstract contract SafeSwapTestBase is Test {
         token0.approve( address(bond_route), type(uint256).max );
         token1.approve( address(bond_route), type(uint256).max );
         vm.stopPrank( );
-
-        // Fund pool manager with ETH.
-        vm.deal( address(pool_manager), 100 ether );
     }
 
     function _create_bond_context( address _user, uint256 amount ) internal view returns ( BondContext memory )
