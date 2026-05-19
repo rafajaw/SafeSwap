@@ -2,7 +2,7 @@
 
 ## Status
 
-- **Build:** SafeSwap runtime = 23,286 bytes (1,290 B under the EIP-170 cap, with `optimizer_runs = 10_000`). Re-measure after each iteration.
+- **Build:** SafeSwap runtime = 21,862 bytes (2,714 B under the EIP-170 cap, with `optimizer_runs = 10_000`). Re-measure after each iteration.
 - **Tests:** 212/212 passing across 17 suites.
 - **Scope:** `src/SafeSwap.sol`, `src/User.sol`, `src/Collector.sol`, `src/UniswapHook.sol`, `src/Definitions.sol`, `src/libraries/*`, `src/integrations/BondRouteProtected.sol`, `src/integrations/IChainConfig.sol`, plus the `test/SafeSwap/` suites.
 
@@ -18,7 +18,7 @@ Operational requirements that must be true at or before deployment. Not security
 
 3. **BondRoute is deployed at `0xb01d00000000440215e86e0A436f9b59FeB2F14a`** on the target chain. The canonical address is baked into `BondRouteProtected.sol`. If no code is present, the constructor's `BondRoute.announce_protocol(...)` reverts.
 
-4. **CREATE2 hook-address mining.** Uniswap V4 requires the hook address to encode permission flags in its low 14 bits (mask = `0x3FFF`). SafeSwap needs `BEFORE_SWAP (0x0080) | BEFORE_ADD_LIQUIDITY (0x0800) | BEFORE_REMOVE_LIQUIDITY (0x0200) | BEFORE_DONATE (0x0020) = 0x0AA0`. There is no deploy script in this repository; one must be added before mainnet. The constructor now enforces this at deploy time (`_is_valid_safeswap_hook_address`) and reverts with `"SafeSwap: Invalid hook address"` before any pool can be initialized — so a wrong-flags deployment fails fast rather than at first `PoolManager.initialize`. Mining target: low 3 hex digits = `AA0` **and** the 4th-from-low nibble ∈ {0,1,2,3} so bits 12/13 stay clear. Any standard V4 hook miner (`mask + flags`) handles this.
+4. **CREATE2 hook-address mining.** Uniswap V4 requires the hook address to encode permission flags in its low 14 bits (mask = `0x3FFF`). SafeSwap needs `BEFORE_SWAP (0x0080) | BEFORE_ADD_LIQUIDITY (0x0800) | BEFORE_REMOVE_LIQUIDITY (0x0200) | BEFORE_DONATE (0x0020) = 0x0AA0`. There is no deploy script in this repository; one must be added before mainnet. The constructor now enforces this at deploy time via V4's `Hooks.validateHookPermissions(IHooks, Permissions)` (declarative struct of named booleans, no magic mask), which reverts with `HookAddressNotValid(address)` before any pool can be initialized — so a wrong-flags deployment fails fast rather than at first `PoolManager.initialize`. Mining target: low 3 hex digits = `AA0` **and** the 4th-from-low nibble ∈ {0,1,2,3} so bits 12/13 stay clear. Any standard V4 hook miner (`mask + flags`) handles this.
 
 5. **`CONFIG_SIGNER` is the protocol-wide ChainConfig signer.** Hardcoded in `src/Definitions.sol` as a `// ***TODO***` placeholder; replace with the canonical SafeSwap signer key for the target chain before mainnet. The constructor is zero-arg and reads both PoolManager and initial collector from ChainConfig under this keyspace.
 
@@ -31,7 +31,7 @@ Operational requirements that must be true at or before deployment. Not security
 ### Resolved since initial review
 
 - **High (Independent #1) — Protected-context lifetime.** Hook callback allowance is now scoped to the exact PoolManager operation via a transient `_is_hook_callback_allowed` flag set right before each library `execute` and cleared inside `_consume_hook_callback_allowance`. Adversarial reentrancy regression covered in `test/SafeSwap/ReentrantProtectedContext.t.sol`.
-- **Medium (Independent #2) — Hook address flag enforcement.** Constructor now rejects any deployment whose low 14 bits aren't `0x0AA0` (`_is_valid_safeswap_hook_address`). Covered by `test_constructor_reverts_if_hook_address_has_wrong_flags`.
+- **Medium (Independent #2) — Hook address flag enforcement.** Constructor calls V4's `Hooks.validateHookPermissions(IHooks(address(this)), Permissions{...})` with a declarative struct of named booleans (no opaque `0x0AA0` mask). Reverts with `HookAddressNotValid(address)` if the deployed address doesn't match the declared flags. Covered by `test_constructor_reverts_if_hook_address_has_wrong_flags`.
 - **L-2 — Direct native transfers rejected.** `SafeSwap.receive()` now reverts with `"Direct transfers not allowed"` on any sender other than the PoolManager (protocol fees on native swaps) or BondRoute (native funding pulls). Replaces the previous "anyone can pre-fund, collector withdraws" tolerance with explicit allow-listing. Covered by `test_receive_rejects_direct_native_transfer_from_arbitrary_sender`, `test_receive_accepts_native_from_pool_manager`, `test_receive_accepts_native_from_bondroute`.
 - **L-4 — Dust-input stake.** `calculate_swap_stake` and `calculate_normalized_liquidity_stake` now bump a floored-to-zero result up to 1 wei. Closes the "free MEV protection on dust" gap for 0-decimal / low-decimal tokens (gaming ERC20s, fractional RWAs) where 1 wei = 1 unit = real value. Covered by `test_swap_stake_bumps_dust_to_one_wei` and `test_swap_stake_zero_input_still_bumps_to_one_wei`.
 - **L-8 — `OneSidedDepositMismatch`.** One-sided position mismatches now revert with `OneSidedDepositMismatch(address expected_token, uint256 minimum_required)` instead of misusing `SlippageExceeded`. Covered for both token0 and token1.

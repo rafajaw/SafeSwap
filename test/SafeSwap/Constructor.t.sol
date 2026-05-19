@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "./TestBase.t.sol";
+import { Hooks } from "@UniswapV4Core/libraries/Hooks.sol";
 
 contract NotPoolManager { }
 
@@ -52,7 +53,10 @@ contract ConstructorTest is SafeSwapTestBase {
 
     function test_constructor_reverts_if_hook_address_has_wrong_flags( ) external
     {
-        vm.expectRevert( bytes("SafeSwap: Invalid hook address") );
+        // V4's Hooks.validateHookPermissions reverts with HookAddressNotValid(address) when the deployment
+        // address bits don't match the declared Permissions struct. Use partial match because the address
+        // argument depends on the test contract's deployment nonce.
+        vm.expectPartialRevert( Hooks.HookAddressNotValid.selector );
         new TestableSafeSwap( );
     }
 

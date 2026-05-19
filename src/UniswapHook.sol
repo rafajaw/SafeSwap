@@ -12,6 +12,7 @@ import "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IProtocolFees } from "@UniswapV4Core/interfaces/IProtocolFees.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
+import { Hooks } from "@UniswapV4Core/libraries/Hooks.sol";
 import { IUnlockCallback } from "@UniswapV4Core/interfaces/callback/IUnlockCallback.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { BeforeSwapDelta, BeforeSwapDeltaLibrary } from "@UniswapV4Core/types/BeforeSwapDelta.sol";
@@ -36,8 +37,6 @@ error BondRouteRequired( address caller, address bondroute );
 // ━━━━  UNISWAP V4 CONFIG  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 bytes4 constant ERC6909_INTERFACE_ID  =  0x0f632fb3;
-uint160 constant HOOK_PERMISSION_MASK  =  uint160((1 << 14) - 1);
-uint160 constant EXPECTED_HOOK_FLAGS   =  0x0AA0;
 
 
 /**
@@ -59,7 +58,14 @@ abstract contract UniswapHook is IUnlockCallback {
      */
     constructor( )
     {
-        if(  _is_valid_safeswap_hook_address( address(this) ) == false  )  revert( "SafeSwap: Invalid hook address" );
+        // *NOTE*  -  Only declared-true flags are set; the other 10 fields stay zero-initialized → false.
+        Hooks.Permissions memory permissions;
+        permissions.beforeAddLiquidity     =  true;
+        permissions.beforeRemoveLiquidity  =  true;
+        permissions.beforeSwap             =  true;
+        permissions.beforeDonate           =  true;
+
+        Hooks.validateHookPermissions( IHooks(address(this)), permissions );
 
         address pool_manager  =  ChainConfig.read_address( CONFIG_SIGNER, POOL_MANAGER_KEY );
         if(  _is_valid_pool_manager( pool_manager ) == false  )  revert( "SafeSwap: Invalid pool_manager" );
@@ -92,12 +98,6 @@ abstract contract UniswapHook is IUnlockCallback {
 
         return true;
     }
-
-    function _is_valid_safeswap_hook_address( address hook_address ) internal pure returns ( bool )
-    {
-        return   (  uint160(hook_address) & HOOK_PERMISSION_MASK  ==  EXPECTED_HOOK_FLAGS  );
-    }
-
 
     // ━━━━  UNLOCK CALLBACK  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
