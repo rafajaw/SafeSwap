@@ -158,9 +158,12 @@ contract SafeSwap is Collector {
     }
 
     /**
-     * @notice Receive native token funding for PoolManager settlement.
-     * @dev Native token inputs are pulled from BondRoute into SafeSwap, then forwarded through `PoolManager.settle{ value: amount }()`.
+     * @notice Receive native token from PoolManager (protocol fees on native swaps) or BondRoute (native funding pulls).
+     * @dev Reverts on any other sender — SafeSwap has no donation surface.
      */
     receive( )
-    external  payable { }
+    external  payable
+    {
+        if(  msg.sender != address(PoolManager)  &&  msg.sender != BONDROUTE_ADDRESS  )  revert( "Direct transfers not allowed" );
+    }
 }

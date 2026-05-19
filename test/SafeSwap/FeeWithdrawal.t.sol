@@ -111,20 +111,59 @@ contract FeeWithdrawalTest is SafeSwapTestBase {
 
     // ━━━━  receive( )  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function test_receive_accepts_native_token( ) external
+    function test_receive_rejects_direct_native_transfer_from_arbitrary_sender( ) external
+    {
+        vm.deal( user, 10 ether );
+        vm.prank( user );
+        ( bool success, bytes memory data )  =  address(hook).call{ value: 10 ether }( "" );
+
+        assertFalse( success, "Hook must reject direct native transfers from arbitrary senders." );
+        assertEq(
+            _decode_revert_string( data ),
+            "Direct transfers not allowed",
+            "Revert message must match the BondRoute convention."
+        );
+    }
+
+    function test_receive_accepts_native_from_pool_manager( ) external
     {
         uint256 balance_before  =  address(hook).balance;
 
-        vm.deal( user, 10 ether );
-        vm.prank( user );
+        vm.deal( address(pool_manager), 10 ether );
+        vm.prank( address(pool_manager) );
         ( bool success, )  =  address(hook).call{ value: 10 ether }( "" );
 
-        assertTrue( success, "Hook should accept native token." );
+        assertTrue( success, "Hook must accept native from PoolManager (protocol fee path)." );
         assertEq(
             address(hook).balance,
             balance_before + 10 ether,
-            "Hook balance should increase."
+            "Hook balance must reflect the received native amount."
         );
+    }
+
+    function test_receive_accepts_native_from_bondroute( ) external
+    {
+        uint256 balance_before  =  address(hook).balance;
+
+        vm.deal( BONDROUTE_ADDRESS, 10 ether );
+        vm.prank( BONDROUTE_ADDRESS );
+        ( bool success, )  =  address(hook).call{ value: 10 ether }( "" );
+
+        assertTrue( success, "Hook must accept native from BondRoute (native funding pull)." );
+        assertEq(
+            address(hook).balance,
+            balance_before + 10 ether,
+            "Hook balance must reflect the received native amount."
+        );
+    }
+
+    function _decode_revert_string( bytes memory revert_data ) private pure returns ( string memory )
+    {
+        // Solidity revert(string) ABI-encodes as: 4-byte Error(string) selector + ABI-encoded string.
+        if(  revert_data.length < 68  )  return "";
+        bytes memory string_data  =  new bytes( revert_data.length - 4 );
+        for(  uint i = 0  ;  i < string_data.length  ;  i = i + 1  )  string_data[ i ]  =  revert_data[ i + 4 ];
+        return abi.decode( string_data, (string) );
     }
 
 

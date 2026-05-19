@@ -297,7 +297,9 @@ interface IFeeWithdrawalTests {
     function test_withdraw_fees_reverts_on_failed_erc20_transfer( ) external;
 
     // ─── receive( ) ────────────────────────────────────────────────────────────────
-    function test_receive_accepts_native_token( ) external;
+    function test_receive_rejects_direct_native_transfer_from_arbitrary_sender( ) external;
+    function test_receive_accepts_native_from_pool_manager( ) external;
+    function test_receive_accepts_native_from_bondroute( ) external;
 
     // ─── Multi-Token Withdrawal ────────────────────────────────────────────────────
     function test_withdraw_fees_multiple_tokens_sequentially( ) external;
