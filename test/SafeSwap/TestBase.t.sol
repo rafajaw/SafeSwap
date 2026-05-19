@@ -16,7 +16,11 @@ import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta, toBalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
-import { Constants } from "@UniswapV4Core/../test/utils/Constants.sol";
+
+
+// ━━━━  SHARED CONSTANTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+uint160 constant SQRT_PRICE_1_1  =  79228162514264337593543950336;  // = 2^96; Q96 encoding of price 1.0.
 
 
 // ━━━━  MOCK ERC20  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -194,7 +198,7 @@ contract MockPoolManager {
     {
         // V4 slot0 packs sqrtPriceX96 in the low 160 bits;
         // returning a 1:1 price keeps stake math from div-by-zero.
-        return bytes32(uint256(Constants.SQRT_PRICE_1_1));
+        return bytes32(uint256(SQRT_PRICE_1_1));
     }
 
     function extsload( bytes32[] calldata slots ) external view returns ( bytes32[] memory )
@@ -396,7 +400,6 @@ abstract contract SafeSwapTestBase is Test {
     uint24 constant POOL_FEE_100       =  10000;   // 1.00%.
     int24 constant TICK_SPACING_60     =  60;
     int24 constant TICK_SPACING_10     =  10;
-    uint160 constant SQRT_PRICE_1_1    =  Constants.SQRT_PRICE_1_1;
     uint256 constant INITIAL_BALANCE   =  1_000_000 ether;
 
     address constant HOOK_TARGET          =  address(uint160(0x0AA0));

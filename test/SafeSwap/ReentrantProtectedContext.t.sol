@@ -12,7 +12,6 @@ import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
-import { Constants } from "@UniswapV4Core/../test/utils/Constants.sol";
 
 import { MockBondRoute, MockChainConfig, MockERC20 } from "./TestBase.t.sol";
 
@@ -192,7 +191,7 @@ contract ReentrantProtectedContextTest is Test {
 
     uint24 constant POOL_FEE_030       =  3000;
     int24 constant TICK_SPACING_60     =  60;
-    uint160 constant SQRT_PRICE_1_1    =  Constants.SQRT_PRICE_1_1;
+    uint160 constant SQRT_PRICE_1_1    =  79228162514264337593543950336;  // = 2^96; Q96 encoding of price 1.0.
     uint256 constant INITIAL_BALANCE   =  1_000_000 ether;
     uint256 constant SEED_AMOUNT       =  10_000 ether;
 

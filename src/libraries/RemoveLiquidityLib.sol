@@ -13,7 +13,7 @@ import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
-import { LiquidityAmounts } from "@UniswapV4Core/../test/utils/LiquidityAmounts.sol";
+import { SqrtPriceMath } from "@UniswapV4Core/libraries/SqrtPriceMath.sol";
 
 
 // ━━━━  PARAMETERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -113,7 +113,7 @@ library RemoveLiquidityLib {
         uint160 sqrtPriceA  =  TickMath.getSqrtPriceAtTick( params.tick_lower );
         uint160 sqrtPriceB  =  TickMath.getSqrtPriceAtTick( params.tick_upper );
 
-        ( uint256 amount0_released, uint256 amount1_released )  =  LiquidityAmounts.getAmountsForLiquidity(
+        ( uint256 amount0_released, uint256 amount1_released )  =  _get_amounts_for_liquidity(
             sqrtPriceX96,
             sqrtPriceA,
             sqrtPriceB,
@@ -163,5 +163,35 @@ library RemoveLiquidityLib {
 
         pool_manager.take( Currency.wrap( address(token0) ), context.user, amount0 );
         pool_manager.take( Currency.wrap( address(token1) ), context.user, amount1 );
+    }
+
+
+    // ━━━━  INTERNAL HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function _get_amounts_for_liquidity(
+        uint160 sqrtPriceX96,
+        uint160 sqrtPriceAX96,
+        uint160 sqrtPriceBX96,
+        uint128 liquidity
+    ) internal pure returns ( uint256 amount0, uint256 amount1 )
+    {
+        if(  sqrtPriceAX96 > sqrtPriceBX96  )
+        {
+            ( sqrtPriceAX96, sqrtPriceBX96 )  =  ( sqrtPriceBX96, sqrtPriceAX96 );
+        }
+
+        if(  sqrtPriceX96 <= sqrtPriceAX96  )
+        {
+            amount0  =  SqrtPriceMath.getAmount0Delta( sqrtPriceAX96, sqrtPriceBX96, liquidity, false );
+        }
+        else if(  sqrtPriceX96 < sqrtPriceBX96  )
+        {
+            amount0  =  SqrtPriceMath.getAmount0Delta( sqrtPriceX96, sqrtPriceBX96, liquidity, false );
+            amount1  =  SqrtPriceMath.getAmount1Delta( sqrtPriceAX96, sqrtPriceX96, liquidity, false );
+        }
+        else
+        {
+            amount1  =  SqrtPriceMath.getAmount1Delta( sqrtPriceAX96, sqrtPriceBX96, liquidity, false );
+        }
     }
 }

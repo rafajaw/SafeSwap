@@ -12,7 +12,7 @@ import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
-import { LiquidityAmounts } from "@UniswapV4Core/../test/utils/LiquidityAmounts.sol";
+import { LiquidityAmounts } from "@SafeSwap/vendor/LiquidityAmounts.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 
 

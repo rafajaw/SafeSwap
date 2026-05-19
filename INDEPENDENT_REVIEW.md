@@ -14,6 +14,7 @@ The findings below are preserved as the original snapshot. Current resolution st
 - **#4 Medium — Stake economics calibration:** ⚠️ Partially addressed. Dust inputs now bump stake to 1 wei (closes the "free MEV protection" / 0-decimal-token gap). Empirical calibration by pool depth / fee tier remains an operational pre-deploy task.
 - **#5 Low/Medium — Exact-output gross-up rounds down:** ✅ Decision documented. Kept truncating division (rounding dust ≤ 1 wei per swap ceded to the user); ceil-div costs more gas than the dust is worth.
 - **#6 Low — `transfer_collector(address(0))`:** ✅ Resolved. Documented via NatSpec as the intentional cancel path; no separate cancel function by design.
+- **Code quality — V4 test utility imports:** ✅ Resolved. Add-liquidity math vendors the MIT V4 periphery `LiquidityAmounts` library, remove-liquidity stake projection uses MIT V4 core `SqrtPriceMath`, and SafeSwap tests use local constants instead of importing V4 `test/utils`.
 - **Verification — `forge test`:** Now 212/212 passing across 17 suites (was 202 at review time).
 
 Additional changes since this review:
