@@ -163,7 +163,9 @@ library AddLiquidityLib {
         ( BalanceDelta delta, )  =  pool_manager.modifyLiquidity( pool_key, mod_params, "" );
 
         // *NOTE*  -  When adding liquidity (liquidityDelta > 0), deltas are negative (we provide tokens to pool)
-        // or zero if tick range is entirely above/below current tick (one-sided position).
+        // or zero if tick range is entirely above/below current tick (one-sided position). Positive is impossible
+        // by V4 invariant; the asymmetric branches below rely on this — a positive delta would catastrophic-revert
+        // during V4's lock unwind on unsettled balance.
         int128 amount0  =  delta.amount0( );
         int128 amount1  =  delta.amount1( );
 

@@ -137,7 +137,13 @@ library SafeSwapCommon {
 
     function calculate_swap_stake( TokenAmount memory funding ) internal pure returns ( TokenAmount memory )
     {
-        return TokenAmount({ token: funding.token, amount: funding.amount * SWAP_STAKE_PERCENTAGE / 100 });
+        uint256 stake_amount  =  funding.amount * SWAP_STAKE_PERCENTAGE / 100;
+
+        // *SECURITY*  -  Bump dust to 1 wei. For 0-decimal / low-decimal tokens where 1 wei = 1 unit = real value
+        //                (gaming ERC20s, fractional RWAs), this turns a free speculative bond into a meaningful stake.
+        if(  stake_amount == 0  )  stake_amount  =  1;
+
+        return TokenAmount({ token: funding.token, amount: stake_amount });
     }
 
     // *SECURITY*  -  Stake must reflect the total committed value across BOTH sides of a liquidity bond. Measuring
@@ -162,7 +168,13 @@ library SafeSwapCommon {
 
         uint256 total_in_token0  =  amount0 + amount1_in_token0_units;
 
-        return TokenAmount({ token: token0, amount: total_in_token0 * LIQUIDITY_STAKE_PERCENTAGE / 100 });
+        uint256 stake_amount  =  total_in_token0 * LIQUIDITY_STAKE_PERCENTAGE / 100;
+
+        // *SECURITY*  -  Bump dust to 1 wei. For 0-decimal / low-decimal tokens where 1 wei = 1 unit = real value
+        //                (gaming ERC20s, fractional RWAs), this turns a free speculative bond into a meaningful stake.
+        if(  stake_amount == 0  )  stake_amount  =  1;
+
+        return TokenAmount({ token: token0, amount: stake_amount });
     }
 
     // ━━━━  PROTOCOL FEE CALCULATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

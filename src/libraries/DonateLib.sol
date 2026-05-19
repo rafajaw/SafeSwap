@@ -118,6 +118,8 @@ library DonateLib {
 
         BalanceDelta delta  =  pool_manager.donate( pool_key, amount0, amount1, "" );
 
+        // *NOTE*  -  Donate deltas are NEVER positive — V4 only takes from us on donate. Asymmetric branches are intentional;
+        //            a positive delta would be a V4 invariant violation and the lock unwind would revert on unsettled balance.
         int128 delta0  =  delta.amount0( );
         int128 delta1  =  delta.amount1( );
 

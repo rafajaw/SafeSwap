@@ -4,6 +4,23 @@ Date: 2026-05-17
 
 Scope: manual review of the SafeSwap repository excluding `REVIEW.md`. Focus areas were pre-deployment security, protocol economics, business readiness, auditability, and code quality.
 
+## Status as of 2026-05-19
+
+The findings below are preserved as the original snapshot. Current resolution status — see `REVIEW.md` for the canonical state:
+
+- **#1 High — Protected-context lifetime:** ✅ Resolved. Hook callback allowance is now per-operation via a transient `_is_hook_callback_allowed` flag (set right before each library `execute`, consumed inside the hook callback). Adversarial-token reentrancy regression in `test/SafeSwap/ReentrantProtectedContext.t.sol`.
+- **#2 Medium — V4 hook address flags:** ✅ Resolved. Constructor `_is_valid_safeswap_hook_address` rejects any deployment whose low 14 bits ≠ `0x0AA0`. Covered by `test_constructor_reverts_if_hook_address_has_wrong_flags`.
+- **#3 Medium — ChainConfig signer trust:** ⚠️ Still applies. Operational; addressed via the deployment runbook in `REVIEW.md`.
+- **#4 Medium — Stake economics calibration:** ⚠️ Partially addressed. Dust inputs now bump stake to 1 wei (closes the "free MEV protection" / 0-decimal-token gap). Empirical calibration by pool depth / fee tier remains an operational pre-deploy task.
+- **#5 Low/Medium — Exact-output gross-up rounds down:** ✅ Decision documented. Kept truncating division (rounding dust ≤ 1 wei per swap ceded to the user); ceil-div costs more gas than the dust is worth.
+- **#6 Low — `transfer_collector(address(0))`:** ✅ Resolved. Documented via NatSpec as the intentional cancel path; no separate cancel function by design.
+- **Verification — `forge test`:** Now 212/212 passing across 17 suites (was 202 at review time).
+
+Additional changes since this review:
+- `SafeSwap.receive()` rejects direct native transfers from anyone other than the PoolManager or BondRoute (replaces the prior "anyone can pre-fund" tolerance).
+- `Collector.get_collector()` exposes the active collector for off-chain inspection.
+- `UniswapHook._is_valid_pool_manager` now carries explicit NatSpec clarifying that ChainConfig signer is the authoritative source — the shape check defends only against trivial misconfiguration.
+
 ## Executive Summary
 
 SafeSwap has a compact architecture, a clear BondRoute-gated execution model, and a healthy Foundry test suite. `forge test` passes 202 tests, and `forge build` succeeds. The main pre-deployment blocker I found is not a failing test but a callback-context design risk: the hook-wide protected flag remains enabled across settlement and token transfer paths. If a malicious or callback-capable token can reenter while the PoolManager is unlocked, direct PoolManager operations may pass SafeSwap's hook checks without coming through BondRoute.

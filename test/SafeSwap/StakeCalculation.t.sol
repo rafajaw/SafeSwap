@@ -30,25 +30,27 @@ contract StakeCalculationTest is SafeSwapTestBase {
         );
     }
 
-    function test_swap_stake_rounds_down( ) external view
+    function test_swap_stake_bumps_dust_to_one_wei( ) external view
     {
         TokenAmount memory stake  =  hook.harness_calculate_swap_stake( TokenAmount({ token: token0, amount: 99 }) );
 
         assertEq(
             stake.amount,
-            0,
-            "Swap stake should round down for small amounts."
+            1,
+            "Sub-100-wei swaps bump to 1 wei so 0-decimal / low-decimal tokens still attach real stake."
         );
     }
 
-    function test_swap_stake_zero_input( ) external view
+    function test_swap_stake_zero_input_still_bumps_to_one_wei( ) external view
     {
         TokenAmount memory stake  =  hook.harness_calculate_swap_stake( TokenAmount({ token: token0, amount: 0 }) );
 
+        // The bump applies unconditionally to dust; a 0-amount bond is malformed and BondRoute refunds it anyway,
+        // so the stake value here is never enforced.
         assertEq(
             stake.amount,
-            0,
-            "Swap stake should be 0 when input is 0."
+            1,
+            "Zero-input swap bumps to 1 wei like any other dust input (degenerate path, never executes)."
         );
     }
 }

@@ -79,6 +79,8 @@ contract SafeSwap is Collector {
     function BondRoute_quote_call( bytes calldata call, IERC20, TokenAmount[] memory preferred_fundings )
     public  view  override  returns ( BondConstraints memory constraints )
     {
+        // *GAS SAVING*  -  No length guard on `call`: malformed inputs revert naturally on slice/decode. An upfront
+        //                  check would cost gas on every honest call to clarify an already-impossible BondRoute path.
         bytes4 selector  =  bytes4(call);
 
         if(  selector == this.swap_exact_input.selector  )

@@ -67,6 +67,11 @@ abstract contract UniswapHook is IUnlockCallback {
         PoolManager  =  IPoolManager(pool_manager);
     }
 
+    /**
+     * @dev Authoritative source of the PoolManager address is the ChainConfig signer; this shape check defends
+     *      against trivial misconfiguration (EOA, empty bytecode, accidental address swap), not against a
+     *      malicious signer publishing a look-alike contract.
+     */
     function _is_valid_pool_manager( address pool_manager ) internal view returns ( bool )
     {
         if(  pool_manager.code.length == 0  )  return false;

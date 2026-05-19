@@ -15,7 +15,10 @@ bytes32 constant INITIAL_COLLECTOR_KEY  =  bytes32("safeswap/initial_collector")
 // ━━━━  SAFESWAP POLICY  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 uint256 constant SWAP_STAKE_PERCENTAGE              =   1;
-uint256 constant LIQUIDITY_STAKE_PERCENTAGE         =   1;          // Applied to total normalized value, denominated in token0.
+
+// *NOTE*  -  Applied to the TOTAL value across both legs of the bond, normalized to token0 at slot0. Posted in token0 only.
+//            Example: 100 USDC + 100 USDT in a 1:1 pool is total value 200 → 1% = 2 USDC stake (assuming USDC is token0).
+uint256 constant LIQUIDITY_STAKE_PERCENTAGE         =   1;
 
 uint256 constant MIN_EXECUTION_DELAY_IN_BLOCKS      =   3;
 

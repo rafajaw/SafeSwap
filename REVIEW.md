@@ -3,7 +3,7 @@
 ## Status
 
 - **Build:** SafeSwap runtime = 23,286 bytes (1,290 B under the EIP-170 cap, with `optimizer_runs = 10_000`). Re-measure after each iteration.
-- **Tests:** 211/211 passing across 17 suites.
+- **Tests:** 212/212 passing across 17 suites.
 - **Scope:** `src/SafeSwap.sol`, `src/User.sol`, `src/Collector.sol`, `src/UniswapHook.sol`, `src/Definitions.sol`, `src/libraries/*`, `src/integrations/BondRouteProtected.sol`, `src/integrations/IChainConfig.sol`, plus the `test/SafeSwap/` suites.
 
 ---
@@ -32,6 +32,8 @@ Operational requirements that must be true at or before deployment. Not security
 
 - **High (Independent #1) — Protected-context lifetime.** Hook callback allowance is now scoped to the exact PoolManager operation via a transient `_is_hook_callback_allowed` flag set right before each library `execute` and cleared inside `_consume_hook_callback_allowance`. Adversarial reentrancy regression covered in `test/SafeSwap/ReentrantProtectedContext.t.sol`.
 - **Medium (Independent #2) — Hook address flag enforcement.** Constructor now rejects any deployment whose low 14 bits aren't `0x0AA0` (`_is_valid_safeswap_hook_address`). Covered by `test_constructor_reverts_if_hook_address_has_wrong_flags`.
+- **L-2 — Direct native transfers rejected.** `SafeSwap.receive()` now reverts with `"Direct transfers not allowed"` on any sender other than the PoolManager (protocol fees on native swaps) or BondRoute (native funding pulls). Replaces the previous "anyone can pre-fund, collector withdraws" tolerance with explicit allow-listing. Covered by `test_receive_rejects_direct_native_transfer_from_arbitrary_sender`, `test_receive_accepts_native_from_pool_manager`, `test_receive_accepts_native_from_bondroute`.
+- **L-4 — Dust-input stake.** `calculate_swap_stake` and `calculate_normalized_liquidity_stake` now bump a floored-to-zero result up to 1 wei. Closes the "free MEV protection on dust" gap for 0-decimal / low-decimal tokens (gaming ERC20s, fractional RWAs) where 1 wei = 1 unit = real value. Covered by `test_swap_stake_bumps_dust_to_one_wei` and `test_swap_stake_zero_input_still_bumps_to_one_wei`.
 - **L-8 — `OneSidedDepositMismatch`.** One-sided position mismatches now revert with `OneSidedDepositMismatch(address expected_token, uint256 minimum_required)` instead of misusing `SlippageExceeded`. Covered for both token0 and token1.
 - **L-6 — `transfer_collector(address(0))` cancel semantics.** Documented via NatSpec; this is the intentional cancel path, no separate cancel function exists by design.
 - **Independent #5 — exact-output gross-up rounding.** Kept truncating division (rounding dust ≤ 1 wei per swap ceded to the user); ceil-div costs more gas than the dust is worth. Decision documented inline in `ExactOutputSwapLib`.
@@ -67,11 +69,11 @@ V4 positions are owned by the hook under the salt `bytes32(uint160(ctx.user))` �
 
 **L-1:** `Collector.withdraw_fees` is collector-only and reads balance before transfer. A re-entrant recipient on the second call sees `balance <= 1` and returns zero. Safe by ordering without an explicit guard.
 
-**L-2:** `receive()` accepts ETH from anyone. Anyone can pre-fund the hook with ETH; the collector withdraws it. No harm.
+**L-2:** *Resolved — see Resolved section above.*
 
 **L-3:** `withdraw_fees` keeps 1 wei dust to avoid the 0→nonzero SSTORE penalty on the next fee collection. Intentional.
 
-**L-4:** Swap stake rounds down (`amount * 1 / 100`). Tiny-amount swaps get effectively free MEV protection. Acceptable.
+**L-4:** *Resolved — see Resolved section above.*
 
 **L-5:** SafeSwap emits no operation-level events for swap / liquidity / donate. Indexers must derive these from Uniswap V4 `PoolManager` events. Consider one summary event per protected op.
 
@@ -148,17 +150,17 @@ Hardcoded in `src/Definitions.sol` so the SafeSwap binary points at a single can
 ## Pre-deployment checklist
 
 1. [ ] **Replace the `CONFIG_SIGNER` placeholder in `src/Definitions.sol`** with the canonical SafeSwap signer for the target chain. The `// ***TODO***  -  Fix before deployment!` marker must be gone before a deploy commit is tagged.
-3. [ ] Verify ChainConfig contract is deployed at `0x5Afec0de00EB1c5323C7faA110f67499F744467b` on the target chain.
-4. [ ] Write the `uniswap_v4/pool_manager` ChainConfig entry under the `CONFIG_SIGNER` keyspace, pointing at the canonical Uniswap V4 PoolManager for the target chain.
-5. [ ] Write the `safeswap/initial_collector` ChainConfig entry under the `CONFIG_SIGNER` keyspace, pointing at the initial fee collector.
+2. [ ] Verify ChainConfig contract is deployed at `0x5Afec0de00EB1c5323C7faA110f67499F744467b` on the target chain.
+3. [ ] Write the `uniswap_v4/pool_manager` ChainConfig entry under the `CONFIG_SIGNER` keyspace, pointing at the canonical Uniswap V4 PoolManager for the target chain.
+4. [ ] Write the `safeswap/initial_collector` ChainConfig entry under the `CONFIG_SIGNER` keyspace, pointing at the initial fee collector.
 5. [ ] Verify BondRoute is deployed at `0xb01d00000000440215e86e0A436f9b59FeB2F14a` on the target chain.
 6. [ ] Add a CREATE2 deploy script that mines a hook address satisfying `address & 0x3FFF == 0x0AA0`. The constructor will revert otherwise — smoke-test it.
-8. [ ] Pin `foundry.toml` `optimizer_runs` to the largest value that keeps SafeSwap runtime under 24,576 bytes, then commit.
-9. [ ] Document M-2 / D-2 (LP custody depends on BondRoute) and D-3 (no FoT/rebasing support) in user-facing docs.
-10. [ ] Run `forge test -vvv` on the exact deployment commit; archive the output.
-11. [ ] External security audit, with attention to: BondRoute integration semantics, normalized-stake math, and the M-5 native-ETH question.
-12. [ ] Mainnet-fork simulation: end-to-end swap / add / remove against forked V4 + the real BondRoute deployment — especially the native-ETH path.
-13. [ ] Verify hook source on Etherscan / Sourcify immediately after deploy.
+7. [ ] Pin `foundry.toml` `optimizer_runs` to the largest value that keeps SafeSwap runtime under 24,576 bytes, then commit.
+8. [ ] Document M-2 / D-2 (LP custody depends on BondRoute) and D-3 (no FoT/rebasing support) in user-facing docs.
+9. [ ] Run `forge test -vvv` on the exact deployment commit; archive the output.
+10. [ ] External security audit, with attention to: BondRoute integration semantics, normalized-stake math, native-ETH end-to-end against the real BondRoute escrow, and the dust-stake bump for low-decimal tokens.
+11. [ ] Mainnet-fork simulation: end-to-end swap / add / remove against forked V4 + the real BondRoute deployment — especially the native-ETH path.
+12. [ ] Verify hook source on Etherscan / Sourcify immediately after deploy.
 
 ---
 
