@@ -21,7 +21,6 @@ pragma solidity ^0.8.30;
 
 interface IConstructorTests {
     // ─── Deployment ────────────────────────────────────────────────────────────────
-    function test_constructor_sets_pool_manager_from_chain_config( ) external;
     function test_constructor_sets_collector_correctly( ) external;
     function test_constructor_reverts_if_pool_manager_not_set( ) external;
     function test_constructor_reverts_if_chain_config_points_to_non_pool_manager( ) external;

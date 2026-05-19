@@ -47,7 +47,7 @@ uint160 constant EXPECTED_HOOK_FLAGS   =  0x0AA0;
 abstract contract UniswapHook is IUnlockCallback {
     using FundingsLib for BondContext;
 
-    IPoolManager public immutable PoolManager;
+    IPoolManager internal immutable PoolManager;
 
     bool transient _is_hook_callback_allowed;
 

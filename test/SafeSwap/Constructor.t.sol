@@ -7,15 +7,6 @@ contract NotPoolManager { }
 
 
 contract ConstructorTest is SafeSwapTestBase {
-    function test_constructor_sets_pool_manager_from_chain_config( ) external view
-    {
-        assertEq(
-            address(hook.PoolManager( )),
-            address(pool_manager),
-            "Constructor should set PoolManager from ChainConfig."
-        );
-    }
-
     function test_constructor_sets_collector_correctly( ) external view
     {
         assertEq(
