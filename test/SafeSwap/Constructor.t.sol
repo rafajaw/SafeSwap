@@ -10,7 +10,7 @@ contract ConstructorTest is SafeSwapTestBase {
     function test_constructor_sets_collector_correctly( ) external view
     {
         assertEq(
-            hook.collector( ),
+            hook.get_collector( ),
             collector,
             "Constructor should set collector from ChainConfig."
         );

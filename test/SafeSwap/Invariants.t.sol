@@ -196,13 +196,13 @@ contract InvariantsTest is SafeSwapTestBase {
         hook.transfer_collector( new_collector );
 
         // Collector can initiate transfer (2-step process).
-        address current_collector  =  hook.collector( );
+        address current_collector  =  hook.get_collector( );
         vm.prank( current_collector );
         hook.transfer_collector( new_collector );
 
         // Collector unchanged until accepted.
         assertEq(
-            hook.collector( ),
+            hook.get_collector( ),
             current_collector,
             "Collector should not change until accepted."
         );
@@ -212,7 +212,7 @@ contract InvariantsTest is SafeSwapTestBase {
         hook.accept_collector( );
 
         assertEq(
-            hook.collector( ),
+            hook.get_collector( ),
             new_collector,
             "Collector should transfer after accept."
         );

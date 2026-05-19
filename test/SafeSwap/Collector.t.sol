@@ -6,12 +6,12 @@ import "./TestBase.t.sol";
 
 contract CollectorTest is SafeSwapTestBase {
 
-    function test_collector_returns_initial_collector( ) external view
+    function test_get_collector_returns_initial_collector( ) external view
     {
         assertEq(
-            hook.collector( ),
+            hook.get_collector( ),
             collector,
-            "collector() should return the initial collector set in constructor."
+            "get_collector should return the initial collector set in constructor."
         );
     }
 
@@ -23,16 +23,14 @@ contract CollectorTest is SafeSwapTestBase {
         hook.transfer_collector( new_collector );
 
         assertEq(
-            hook.pending_collector( ),
-            new_collector,
-            "pending_collector should be set after transfer_collector."
-        );
-
-        assertEq(
-            hook.collector( ),
+            hook.get_collector( ),
             collector,
             "collector should not change until accepted."
         );
+
+        // Pending was set: the nominee can complete the transfer without revert.
+        vm.prank( new_collector );
+        hook.accept_collector( );
     }
 
     function test_accept_collector_completes_transfer( ) external
@@ -46,16 +44,15 @@ contract CollectorTest is SafeSwapTestBase {
         hook.accept_collector( );
 
         assertEq(
-            hook.collector( ),
+            hook.get_collector( ),
             new_collector,
             "collector should be updated after accept_collector."
         );
 
-        assertEq(
-            hook.pending_collector( ),
-            address(0),
-            "pending_collector should be cleared after accept."
-        );
+        // Pending was cleared: a second accept reverts with the expected zero pending address.
+        vm.prank( new_collector );
+        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, new_collector, address(0) ) );
+        hook.accept_collector( );
     }
 
     function test_transfer_collector_reverts_for_non_collector( ) external

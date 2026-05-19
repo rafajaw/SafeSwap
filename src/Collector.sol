@@ -16,7 +16,7 @@ error TransferFailed( address token, address recipient, uint256 amount );
 
 // ━━━━  EVENTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-event CollectorTransferStarted( address indexed current_collector, address indexed pending_collector );
+event CollectorTransferInitiated( address indexed current_collector, address indexed pending_collector );
 event CollectorTransferred( address indexed previous_collector, address indexed new_collector );
 event FeesWithdrawn( address indexed recipient, IERC20 indexed token, uint256 amount );
 
@@ -28,8 +28,8 @@ event FeesWithdrawn( address indexed recipient, IERC20 indexed token, uint256 am
 abstract contract Collector is User {
     using SafeERC20 for OZ_IERC20;
 
-    address public collector;
-    address public pending_collector;
+    address internal _collector;
+    address internal _pending_collector;
 
     /**
      * @notice Initialize the collector from ChainConfig.
@@ -42,9 +42,21 @@ abstract contract Collector is User {
 
         if(  initial_collector == address(0)  )  revert( "SafeSwap: Invalid initial_collector" );
 
-        collector  =  initial_collector;
+        _collector  =  initial_collector;
 
         emit CollectorTransferred( address(0), initial_collector );
+    }
+
+
+    // ━━━━  COLLECTOR GETTER  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /**
+     * @notice Read the current fee collector address.
+     */
+    function get_collector( )
+    external  view  returns ( address )
+    {
+        return _collector;
     }
 
 
@@ -60,7 +72,7 @@ abstract contract Collector is User {
      *         function exists by design.
      *
      * @dev EMITTED EVENTS:
-     *      - `CollectorTransferStarted(current_collector, pending_collector)` on success.
+     *      - `CollectorTransferInitiated(current_collector, pending_collector)` on success.
      *
      * @dev ERROR CODES:
      *      - `Unauthorized(address caller, address expected)` if caller is not current collector.
@@ -68,10 +80,10 @@ abstract contract Collector is User {
     function transfer_collector( address new_collector )
     external
     {
-        if(  msg.sender != collector  )  revert Unauthorized({ caller: msg.sender, expected: collector });
+        if(  msg.sender != _collector  )  revert Unauthorized({ caller: msg.sender, expected: _collector });
 
-        pending_collector  =  new_collector;
-        emit CollectorTransferStarted( collector, new_collector );
+        _pending_collector  =  new_collector;
+        emit CollectorTransferInitiated( _collector, new_collector );
     }
 
     /**
@@ -86,13 +98,13 @@ abstract contract Collector is User {
     function accept_collector( )
     external
     {
-        if(  msg.sender != pending_collector  )  revert Unauthorized({ caller: msg.sender, expected: pending_collector });
+        if(  msg.sender != _pending_collector  )  revert Unauthorized({ caller: msg.sender, expected: _pending_collector });
 
-        address previous    =   collector;
-        collector           =   pending_collector;
-        pending_collector   =   address(0);
+        address previous     =   _collector;
+        _collector           =   _pending_collector;
+        _pending_collector   =   address(0);
 
-        emit CollectorTransferred( previous, collector );
+        emit CollectorTransferred( previous, _collector );
     }
 
 
@@ -117,7 +129,7 @@ abstract contract Collector is User {
     function withdraw_fees( IERC20 token, address recipient )
     external  returns ( uint256 withdraw_amount )
     {
-        if(  msg.sender != collector  )  revert Unauthorized({ caller: msg.sender, expected: collector });
+        if(  msg.sender != _collector  )  revert Unauthorized({ caller: msg.sender, expected: _collector });
         if(  recipient == address(0)  )  revert Invalid({ field: "recipient", value: 0 });
 
         bool is_native  =  address(token) == address(NATIVE_TOKEN);

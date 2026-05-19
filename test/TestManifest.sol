@@ -37,7 +37,7 @@ interface IConstructorTests {
 
 interface ICollectorTests {
     // ─── Role Transfer ─────────────────────────────────────────────────────────────
-    function test_collector_returns_initial_collector( ) external;
+    function test_get_collector_returns_initial_collector( ) external;
     function test_transfer_collector_sets_pending( ) external;
     function test_transfer_collector_reverts_for_non_collector( ) external;
     function test_accept_collector_completes_transfer( ) external;
