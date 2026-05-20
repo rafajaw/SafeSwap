@@ -83,6 +83,7 @@ abstract contract Collector is User {
         if(  msg.sender != _collector  )  revert Unauthorized({ caller: msg.sender, expected: _collector });
 
         _pending_collector  =  new_collector;
+
         emit CollectorTransferInitiated( _collector, new_collector );
     }
 
