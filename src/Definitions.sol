@@ -26,9 +26,9 @@ uint256 constant MIN_PROTOCOL_FEE_RATE              =   1000;       // 0.01% flo
 
 // ━━━━  BONDROUTE EXECUTION POLICY  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-uint256 constant MIN_BOND_EXECUTION_DELAY_IN_BLOCKS   =   3;
-uint256 constant MIN_BOND_EXECUTION_DELAY_IN_SECONDS  =   2 seconds;
-uint256 constant MAX_BOND_EXECUTION_DELAY_IN_SECONDS  =   1 hours;
+uint256 constant MIN_BOND_EXECUTION_DELAY_IN_BLOCKS   =   3;            // 3-block head-start against reorg and frontrunning bots.
+uint256 constant MIN_BOND_EXECUTION_DELAY_IN_SECONDS  =   2 seconds;    // Relevant on chains where 3 blocks pass faster than mempool propagation.
+uint256 constant MAX_BOND_EXECUTION_DELAY_IN_SECONDS  =   1 hours;      // Caps opportunistic execution.
 
 
 // ━━━━  STRINGS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

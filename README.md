@@ -26,18 +26,20 @@ No off-chain relayers. No trusted sequencers. No special permissions.
 ## Architecture
 
 ```
-BondRouteProtected, UniswapHook -> User -> Collector -> SafeSwap
+BondRouteProtected, UniswapHook -> User -> BondRouteIntegration -> SafeSwap
+Collector -> SafeSwap
 ```
 
 | Contract | Role |
 |---|---|
-| `SafeSwap.sol` | Entry point - BondRoute interface overrides |
+| `SafeSwap.sol` | Final deployed composition + native receive guard |
+| `BondRouteIntegration.sol` | BondRoute selectors, quote, validation, and signing-info dispatch |
 | `User.sol` | User-facing functions (swap, liquidity) + off-chain getters |
 | `Collector.sol` | Fee withdrawal + role transfer |
 | `UniswapHook.sol` | PoolManager integration, V4 callbacks, protected context |
 | `BondRouteProtected.sol` | Commit-reveal bond mechanism (inherited from BondRoute) |
 
-Libraries: `ExactInputSwapLib`, `ExactOutputSwapLib`, `AddLiquidityLib`, `RemoveLiquidityLib`, `SafeSwapCommon`
+Libraries: `ExactInputSwapLib`, `ExactOutputSwapLib`, `AddLiquidityLib`, `RemoveLiquidityLib`, `DonateLib`, `SafeSwapCommon`
 
 ## Operations
 
@@ -47,6 +49,7 @@ Libraries: `ExactInputSwapLib`, `ExactOutputSwapLib`, `AddLiquidityLib`, `Remove
 | `swap_exact_output` | Swap up to the funded amount to receive exactly `amount_out` |
 | `add_liquidity` | Provide liquidity to a pool within a tick range |
 | `remove_liquidity` | Withdraw liquidity from a position |
+| `donate` | Donate tokens to a pool's in-range liquidity providers |
 | `withdraw_fees` | Collector withdraws accumulated protocol fees |
 
 ## Protocol fee
@@ -85,7 +88,7 @@ forge build
 forge test
 ```
 
-202 tests across 15 suites: unit, integration, fuzz, invariant, and real pool tests against the actual Uniswap V4 PoolManager.
+228 tests across 18 suites: unit, integration, fuzz, invariant, canonical BondRoute, and real pool tests against the actual Uniswap V4 PoolManager.
 
 ## License
 

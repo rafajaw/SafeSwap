@@ -9,7 +9,7 @@ import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
-import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
+import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
 import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_COLLECTOR_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -402,7 +402,7 @@ abstract contract SafeSwapTestBase is Test {
     int24 constant TICK_SPACING_10     =  10;
     uint256 constant INITIAL_BALANCE   =  1_000_000 ether;
 
-    address constant HOOK_TARGET          =  address(uint160(0x0AA0));
+    address constant HOOK_TARGET          =  address(uint160(0x10AA0));
 
     function setUp( ) public virtual
     {

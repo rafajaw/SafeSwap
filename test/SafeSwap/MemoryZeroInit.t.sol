@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
-import "@SafeSwap/integrations/BondRouteProtected.sol";
+import "@BondRouteProtected/BondRouteProtected.sol";
 
 
 /**
@@ -65,6 +65,7 @@ contract MemoryZeroInitTest is Test {
         uint256 execution_range_min     =  constraints.valid_execution_timestamp_range.min;
         uint256 execution_range_max     =  constraints.valid_execution_timestamp_range.max;
         uint256 min_blocks_delay        =  constraints.min_execution_delay_in_blocks;
+        uint256 min_seconds_delay       =  constraints.min_execution_delay_in_seconds;
         uint256 max_seconds_delay       =  constraints.max_execution_delay_in_seconds;
         address stake_token             =  address(constraints.min_stake.token);
         uint256 stake_amount            =  constraints.min_stake.amount;
@@ -75,6 +76,7 @@ contract MemoryZeroInitTest is Test {
         assertEq( execution_range_min,   0,           "valid_execution_timestamp_range.min must be zero" );
         assertEq( execution_range_max,   0,           "valid_execution_timestamp_range.max must be zero" );
         assertEq( min_blocks_delay,      0,           "min_execution_delay_in_blocks       must be zero" );
+        assertEq( min_seconds_delay,     0,           "min_execution_delay_in_seconds      must be zero" );
         assertEq( max_seconds_delay,     0,           "max_execution_delay_in_seconds      must be zero" );
         assertEq( stake_token,           address(0),  "min_stake.token                     must be zero" );
         assertEq( stake_amount,          0,           "min_stake.amount                    must be zero" );

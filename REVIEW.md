@@ -2,9 +2,9 @@
 
 ## Status
 
-- **Build:** SafeSwap runtime = 21,862 bytes (2,714 B under the EIP-170 cap, with `optimizer_runs = 10_000`). Re-measure after each iteration.
-- **Tests:** 212/212 passing across 17 suites.
-- **Scope:** `src/SafeSwap.sol`, `src/User.sol`, `src/Collector.sol`, `src/UniswapHook.sol`, `src/Definitions.sol`, `src/libraries/*`, `src/integrations/BondRouteProtected.sol`, `src/integrations/IChainConfig.sol`, plus the `test/SafeSwap/` suites.
+- **Build:** SafeSwap runtime = 21,897 bytes (2,679 B under the EIP-170 cap, with `optimizer_runs = 10_000`). Re-measure after each iteration.
+- **Tests:** 228/228 passing across 18 suites.
+- **Scope:** `src/SafeSwap.sol`, `src/BondRouteIntegration.sol`, `src/User.sol`, `src/Collector.sol`, `src/UniswapHook.sol`, `src/Definitions.sol`, `src/libraries/*`, `lib/BondRoute/src/integrations/BondRouteProtected.sol`, `lib/ChainConfig/src/integrations/IChainConfig.sol`, plus the `test/SafeSwap/` suites.
 
 ---
 
@@ -40,7 +40,7 @@ Operational requirements that must be true at or before deployment. Not security
 - **Independent #6 — same as L-6 above.**
 - **Coverage gap — CREATE2 hook-flags smoke test.** `test_constructor_reverts_if_hook_address_has_wrong_flags` confirms a wrong-bit address is rejected.
 - **Coverage gap (partial) — donate fuzz.** Two fuzz tests (`testFuzz_donate_executes_for_arbitrary_split`, `testFuzz_donate_executes_for_one_sided_split`) exercise arbitrary and one-sided splits. Donate invariants still not added.
-- **Coverage gap (partial) — constraint timing.** `BondRoute_quote_call` execution-delay assertions added for all five action types (add/remove liquidity and donate were previously untested). The `block.number == creation_block` boundary itself is enforced inside BondRoute, not here, so it stays untested at the SafeSwap layer.
+- **Coverage gap — canonical BondRoute timing.** `test/SafeSwap/CanonicalBondRouteIntegration.t.sol` deploys the canonical BondRoute implementation at SafeSwap's baked-in address and covers same-block rejection, the configured 2-second elapsed-time floor (set via `min_execution_delay_in_seconds` in `BondConstraints`, enforced by BondRoute core), and retry after the floor.
 - **M-5 — Native-ETH settlement.** Fixed via `SafeSwapCommon.settle_input`: native inputs are pulled to the hook (which has `receive()`) and then forwarded as `pool_manager.settle{value: amount}()`, satisfying V4's "ETH must ride msg.value" contract. ERC20 path unchanged. End-to-end coverage in `test_real_pool_native_exact_input_swap_eth_to_erc20`, `..._erc20_to_eth`, and `test_real_pool_native_add_and_remove_liquidity`.
 - **M-4 (partial) — Position salt mechanism simplified.** `SafeSwapCommon._position_salt` removed; V4 owner-keyed positions now use `bytes32(uint160(user))` directly as the V4 salt. Eliminates the duplicate-named `salt` field in the EIP-712 wallet display and the salt-fragmentation footgun (random/forgotten salts splintering a user's liquidity). The AA-wallet beneficiary-identity concern remains as the rephrased M-4 below.
 - **Internal consistency — RemoveLiquidity API mirrors AddLiquidity.** `RemoveLiquidityParams` now carries `TokenAmount min_a` / `min_b` (address-tagged minimums) instead of positional `token0` / `token1` + `amount0_min` / `amount1_min` uint256s. The pool's two tokens are derived from the mins' addresses (sorted internally), eliminating the same wrong-order / positional-min footguns that AddLiquidity shed earlier. All four liquidity-touching libs (Add, Remove, Donate, swaps) now share one convention: callers pass data in any address order, the lib resolves by address.
@@ -121,14 +121,13 @@ Hardcoded in `src/Definitions.sol` so the SafeSwap binary points at a single can
 ## Coverage gaps still open
 
 - **Donate invariants** — fuzz tests are in place; a handler-driven invariant for donate (e.g., total donated equals sum of fundings) is still missing.
-- **`creation_block == block.number` boundary** — enforced by BondRoute, not SafeSwap. Best covered via a mainnet-fork or canonical-BondRoute integration test, not a unit test in this repo.
-- **Unknown selector graceful settle** — `revert UnknownSelector(selector)` is asserted on-chain, but no test confirms BondRoute treats this as "graceful settle, refund stake" rather than `PossiblyBondFarming`. Cross-system test.
 - **Native-ETH e2e under a realistic BondRoute** — present tests confirm SafeSwap's settle path works end-to-end against real V4, but `MockBondRoute` forwards native from its own balance instead of escrowing the user's ETH. A mainnet-fork test against the canonical BondRoute would confirm the user-escrow side.
 
 ## Coverage gaps resolved
 
 - **Donate fuzz** — `testFuzz_donate_executes_for_arbitrary_split` and `testFuzz_donate_executes_for_one_sided_split`.
 - **Constraint-delay values** — `test_quote_call_*_returns_correct_execution_delays` now covers all five action types.
+- **Canonical BondRoute execution** — local canonical suite covers sentineled `0xCAFFE0` commitment hashes, rejection for wrong chain/stake token/stake amount, exact-input swap execution, ERC20 and native funding, two-ERC20 add-liquidity funding, mixed ETH+ERC20 add-liquidity funding, same-block rejection, the configured 2-second elapsed-time floor (enforced by BondRoute core via `min_execution_delay_in_seconds`), retry after an early `PossiblyBondFarming` revert, and unknown selector settlement as `INVALID_BOND`.
 - **CREATE2 hook-flags smoke test** — `test_constructor_reverts_if_hook_address_has_wrong_flags`.
 - **Native-ETH end-to-end execution** — three real-pool tests confirm ETH→ERC20 swap, ERC20→ETH swap, and ETH-side add/remove liquidity all settle correctly.
 

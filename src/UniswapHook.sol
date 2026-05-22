@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "@SafeSwap/integrations/BondRouteProtected.sol";
+import "@BondRouteProtected/BondRouteProtected.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import "@SafeSwap/libraries/ExactInputSwapLib.sol";
 import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
@@ -16,7 +16,7 @@ import { Hooks } from "@UniswapV4Core/libraries/Hooks.sol";
 import { IUnlockCallback } from "@UniswapV4Core/interfaces/callback/IUnlockCallback.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { BeforeSwapDelta, BeforeSwapDeltaLibrary } from "@UniswapV4Core/types/BeforeSwapDelta.sol";
-import { ChainConfig } from "@SafeSwap/integrations/IChainConfig.sol";
+import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
 import { IERC165 } from "@OpenZeppelin/utils/introspection/IERC165.sol";
 
 interface IExtsloadSparse {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "@SafeSwap/integrations/BondRouteProtected.sol";
+import "@BondRouteProtected/BondRouteProtected.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
@@ -123,6 +123,7 @@ library RemoveLiquidityLib {
         constraints.min_stake                       =  SafeSwapCommon.calculate_normalized_liquidity_stake( sqrtPriceX96, token0, amount0_released, amount1_released );
         constraints.min_fundings                    =  new TokenAmount[](0);
         constraints.min_execution_delay_in_blocks   =  MIN_BOND_EXECUTION_DELAY_IN_BLOCKS;
+        constraints.min_execution_delay_in_seconds  =  MIN_BOND_EXECUTION_DELAY_IN_SECONDS;
         constraints.max_execution_delay_in_seconds  =  MAX_BOND_EXECUTION_DELAY_IN_SECONDS;
     }
 

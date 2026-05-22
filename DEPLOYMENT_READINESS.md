@@ -6,19 +6,18 @@ Scope: clean pass over all project-root markdown files, `foundry.toml`, the Safe
 
 ## Current Status
 
-SafeSwap is close on code-level mechanics, but it is not ready to enter a real setup/deploy phase until the deterministic deployment artifacts, config signer, real BondRoute integration tests, and launch assumptions below are closed.
+SafeSwap is close on code-level mechanics, but it is not ready to enter a real setup/deploy phase until the deterministic deployment artifacts, config signer, deployed-address/fork BondRoute tests, and launch assumptions below are closed.
 
 Verification performed in this pass:
 
 - `forge build --force`: passed.
-- `forge test`: passed, 213 tests across 17 suites.
+- `forge test`: passed, 228 tests across 18 suites.
 - Runtime size from `forge inspect src/SafeSwap.sol:SafeSwap deployedBytecode`: ~21,897 bytes, about 2,679 bytes below the 24,576 byte EIP-170 limit.
 - `slither .`: completed analysis but exited non-zero with dependency/style noise. Direct SafeSwap items were already-known or intentional: collector zero-address cancel semantics, hook allowance reentrancy shape, ignored return values, timestamp windows, and `Hooks.Permissions` memory zero-initialization style.
 
 Repository documentation note:
 
-- `README.md` still says 202 tests across 15 suites. Current status is 213 tests across 17 suites.
-- `REVIEW.md` still reports runtime as 21,862 bytes. Current measured runtime is ~21,897 bytes after the BondRoute seconds-delay validation.
+- `README.md`, `REVIEW.md`, and `INDEPENDENT_REVIEW.md` have been updated to the 228-test / 18-suite status.
 
 ## Deployment Model
 
@@ -82,17 +81,28 @@ There is no deploy script yet. The deploy phase needs:
 - Deployment artifact with bytecode hash, runtime hash, deployed address, salt, deployer, compiler version, optimizer settings, `via_ir`, remappings, dependency commits, and target-chain ChainConfig values.
 - Immediate Etherscan/Sourcify verification procedure.
 
-### 4. Run Canonical BondRoute Integration Tests
+### 4. Extend Canonical BondRoute Integration Tests
 
-The local tests use `MockBondRoute`. They are good for SafeSwap mechanics but not sufficient for the real BondRoute execution path.
+The suite now includes `test/SafeSwap/CanonicalBondRouteIntegration.t.sol`, which deploys the canonical BondRoute implementation at SafeSwap's baked-in BondRoute address. This closes the first real integration layer for ERC20 execution:
+
+- exact-input execution through canonical BondRoute;
+- sentineled `0xCAFFE0` commitment hash layout and rejection for wrong chain/stake token/stake amount;
+- ERC20 and native funding pull/accounting with stake returned after successful execution;
+- two-ERC20 add-liquidity funding;
+- mixed ETH+ERC20 add-liquidity funding;
+- BondRoute same-block execution rejection;
+- the configured 2-second elapsed-time floor (set via `min_execution_delay_in_seconds` in each action's `BondConstraints`, enforced by BondRoute core);
+- retry after an early `PossiblyBondFarming` revert;
+- unknown selector settlement as `INVALID_BOND`.
+
+That is not the same as fork-testing the already-deployed singleton on a target chain.
 
 Before setup/deploy:
 
-- Mainnet-fork or target-chain-fork test against canonical BondRoute.
-- Native ETH exact-input and liquidity flows where BondRoute escrows user ETH, not a mock balance.
-- Unknown selector graceful-settle test: confirm SafeSwap `UnknownSelector(selector)` is treated as a normal failed execution/refund, not `PossiblyBondFarming`.
-- Boundary test for BondRoute's `creation_block == block.number` rule.
-- Retry behavior for `PossiblyBondFarming` paths inside the real BondRoute execution window.
+- Mainnet-fork or target-chain-fork test against the deployed canonical BondRoute address.
+- Liquidity and donate execution through canonical BondRoute.
+- Real V4 PoolManager fork flow for native ETH exact-input and liquidity execution against the deployed BondRoute singleton.
+- Deployed-bytecode parity check between the forked BondRoute singleton and the vendored test dependency.
 
 ### 5. Decide LP Custody Story
 
@@ -115,7 +125,7 @@ Current constants:
 - Swap stake: 1% of input.
 - Liquidity/donate stake: 1% of token0-normalized value.
 - Minimum bond execution delay: 3 blocks.
-- Minimum bond execution delay: 2 seconds, enforced by SafeSwap's `BondRoute_validate()` override.
+- Minimum bond execution delay: 2 seconds, configured via `min_execution_delay_in_seconds` in each action's `BondConstraints` and enforced by BondRoute core's `_validate_timing` (which adds a +1 timestamp-boundary correction so the 2-second floor binds as real elapsed time, not just as a `block.timestamp` delta).
 - Maximum bond execution delay: 1 hour.
 
 The block/time split is the right model:
@@ -145,7 +155,7 @@ Initial recommendation:
 - Do not claim that 3 blocks gives the same protection on BNB, Arbitrum, Base, or OP Mainnet.
 - Use the 2-second elapsed-time floor instead of inflating `min_delay_in_blocks` just to simulate time.
 - The 2-second floor materially improves BNB and Arbitrum copy-after-reveal resistance while preserving the block-depth model for reorg risk.
-- Add canonical BondRoute integration tests proving SafeSwap preserves this execution-window semantic against the real BondRoute deployment.
+- Keep the local canonical BondRoute timing tests, and add fork coverage against the deployed singleton on each launch chain.
 - Shorten the maximum execution window for swaps if UX allows. A 1-hour window is reasonable for liquidity operations, but swaps are more sensitive to stale market state.
 
 Before launch:
@@ -284,7 +294,7 @@ Enter setup/deploy only when all are true:
 - [ ] ChainConfig entries are written and archived.
 - [ ] CREATE2 deploy script mines and checks `0x0AA0` flags.
 - [ ] Deployment artifact template exists and includes bytecode hash, runtime hash, salt, compiler settings, dependency commits, ChainConfig values, PoolManager, BondRoute, collector, and hook address.
-- [ ] Canonical BondRoute fork tests pass, including native ETH escrow.
+- [ ] Canonical BondRoute fork/deployed-address tests pass, including native ETH escrow.
 - [ ] Stake economics document exists for the initial pool list.
 - [ ] Initial supported pool/token list exists.
 - [ ] Public docs are updated for test count, runtime size, fees, V4 token/pool compatibility, LP custody, deterministic deployment, and BondRoute execution path.
@@ -293,15 +303,14 @@ Enter setup/deploy only when all are true:
 
 ## Suggested Order of Work
 
-1. Update docs that are already stale: test count, runtime size, and V4 test utility resolution.
-2. Write deterministic deployment artifact template and ChainConfig signer runbook.
-3. Implement CREATE2 deploy/mining script for SafeSwap hook flags.
-4. Build canonical BondRoute fork tests.
-5. Produce stake economics and supported-pool policy.
-6. Run Slither with a project-specific triage note.
-7. Package audit materials.
-8. Begin target-chain setup and deployment dry runs.
+1. Write deterministic deployment artifact template and ChainConfig signer runbook.
+2. Implement CREATE2 deploy/mining script for SafeSwap hook flags.
+3. Extend canonical BondRoute coverage to fork/deployed-address tests, native ETH escrow, liquidity, and donate.
+4. Produce stake economics and supported-pool policy.
+5. Run Slither with a project-specific triage note.
+6. Package audit materials.
+7. Begin target-chain setup and deployment dry runs.
 
 ## Bottom Line
 
-The core SafeSwap implementation is in good shape for an audit candidate. The main remaining risk is launch discipline: deterministic deployment artifacts, correct config signing, canonical PoolManager selection, real BondRoute integration behavior, realistic stake economics, and a clear LP-custody story. Treat those as deployment blockers, not paperwork.
+The core SafeSwap implementation is in good shape for an audit candidate. The main remaining risk is launch discipline: deterministic deployment artifacts, correct config signing, canonical PoolManager selection, deployed BondRoute/native-escrow behavior, realistic stake economics, and a clear LP-custody story. Treat those as deployment blockers, not paperwork.

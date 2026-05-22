@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "@SafeSwap/User.sol";
 import "@SafeSwap/Definitions.sol";
-import { ChainConfig } from "@SafeSwap/integrations/IChainConfig.sol";
+import "@BondRouteProtected/BondRouteProtected.sol";
+import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
 import { SafeERC20 } from "@OpenZeppelin/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 as OZ_IERC20 } from "@OpenZeppelin/token/ERC20/IERC20.sol";
 
@@ -25,7 +25,7 @@ event FeesWithdrawn( address indexed recipient, IERC20 indexed token, uint256 am
  * @title Collector
  * @notice Fee withdrawal and collector role transfer.
  */
-abstract contract Collector is User {
+abstract contract Collector {
     using SafeERC20 for OZ_IERC20;
 
     address internal _collector;
@@ -36,7 +36,6 @@ abstract contract Collector is User {
      * @dev Reverts with a string error if `INITIAL_COLLECTOR_KEY` is unset or resolves to the zero address.
      */
     constructor( )
-    User( )
     {
         address initial_collector  =  ChainConfig.read_address( CONFIG_SIGNER, INITIAL_COLLECTOR_KEY );
 

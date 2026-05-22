@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import "forge-std/Test.sol";
 import "@SafeSwap/SafeSwap.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
-import { CHAINCONFIG_ADDRESS } from "@SafeSwap/integrations/IChainConfig.sol";
+import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
 import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_COLLECTOR_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";

@@ -1,13 +1,12 @@
 
 # Project guidelines
 
-First read all *.md files at project root and then foundry.toml and then read all solidity files in the following order. Read top-down: start at the deployed contract (SafeSwap), walk up its inheritance chain (Collector → User → UniswapHook + BondRouteProtected), then read the action libraries that the chain dispatches into:
+First read all *.md files at project root and then foundry.toml and then read all solidity files in the following order. Read top-down: start at the deployed contract (SafeSwap), walk up its inheritance graph (BondRouteIntegration → User → UniswapHook + BondRouteProtected, and orthogonal Collector), then read the action libraries that the chain dispatches into:
 src/SafeSwap.sol
+src/BondRouteIntegration.sol
 src/Collector.sol
 src/User.sol
 src/UniswapHook.sol
-src/integrations/BondRouteProtected.sol
-src/integrations/IChainConfig.sol
 src/libraries/SafeSwapCommon.sol
 src/libraries/ExactInputSwapLib.sol
 src/libraries/ExactOutputSwapLib.sol

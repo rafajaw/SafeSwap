@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "@SafeSwap/UniswapHook.sol";
-import "@SafeSwap/integrations/BondRouteProtected.sol";
+import "@BondRouteProtected/BondRouteProtected.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolId } from "@UniswapV4Core/types/PoolId.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";

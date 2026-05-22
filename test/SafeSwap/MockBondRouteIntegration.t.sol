@@ -5,7 +5,7 @@ import "./TestBase.t.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 
 
-contract BondRouteIntegrationTest is SafeSwapTestBase {
+contract MockBondRouteIntegrationTest is SafeSwapTestBase {
 
     // ━━━━  BondRoute_get_protected_selectors( )  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -113,8 +113,8 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
         vm.expectRevert(
             abi.encodeWithSelector(
                 PossiblyBondFarming.selector,
-                EXECUTION_TOO_SOON,
-                bytes32(MIN_BOND_EXECUTION_DELAY_IN_SECONDS)
+                EXECUTION_TOO_SOON_SECONDS,
+                bytes32(MIN_BOND_EXECUTION_DELAY_IN_SECONDS + 1)
             )
         );
 
@@ -461,7 +461,17 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
 
         TokenAmount[] memory preferred_fundings  =  new TokenAmount[]( 0 );
 
-        vm.expectRevert( abi.encodeWithSelector( UnknownSelector.selector, bytes4(0xdeadbeef) ) );
+        vm.expectRevert( UnsupportedCall.selector );
+        hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
+    }
+
+    function test_quote_call_reverts_on_short_call( ) external
+    {
+        bytes memory call_data  =  hex"deadbe";
+
+        TokenAmount[] memory preferred_fundings  =  new TokenAmount[]( 0 );
+
+        vm.expectRevert( UnsupportedCall.selector );
         hook.BondRoute_quote_call( call_data, token0, preferred_fundings );
     }
 
@@ -600,7 +610,15 @@ contract BondRouteIntegrationTest is SafeSwapTestBase {
     {
         bytes memory call_data  =  abi.encodeWithSelector( bytes4(0xdeadbeef) );
 
-        vm.expectRevert( abi.encodeWithSelector( UnknownSelector.selector, bytes4(0xdeadbeef) ) );
+        vm.expectRevert( UnsupportedCall.selector );
+        hook.BondRoute_get_signing_info( call_data );
+    }
+
+    function test_get_signing_info_reverts_on_short_call( ) external
+    {
+        bytes memory call_data  =  hex"deadbe";
+
+        vm.expectRevert( UnsupportedCall.selector );
         hook.BondRoute_get_signing_info( call_data );
     }
 

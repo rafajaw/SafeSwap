@@ -15,12 +15,13 @@ The findings below are preserved as the original snapshot. Current resolution st
 - **#5 Low/Medium — Exact-output gross-up rounds down:** ✅ Decision documented. Kept truncating division (rounding dust ≤ 1 wei per swap ceded to the user); ceil-div costs more gas than the dust is worth.
 - **#6 Low — `transfer_collector(address(0))`:** ✅ Resolved. Documented via NatSpec as the intentional cancel path; no separate cancel function by design.
 - **Code quality — V4 test utility imports:** ✅ Resolved. Add-liquidity math vendors the MIT V4 periphery `LiquidityAmounts` library, remove-liquidity stake projection uses MIT V4 core `SqrtPriceMath`, and SafeSwap tests use local constants instead of importing V4 `test/utils`.
-- **Verification — `forge test`:** Now 212/212 passing across 17 suites (was 202 at review time).
+- **Verification — `forge test`:** Now 228/228 passing across 18 suites (was 202 at review time).
 
 Additional changes since this review:
 - `SafeSwap.receive()` rejects direct native transfers from anyone other than the PoolManager or BondRoute (replaces the prior "anyone can pre-fund" tolerance).
 - `Collector.get_collector()` exposes the active collector for off-chain inspection.
 - `UniswapHook._is_valid_pool_manager` now carries explicit NatSpec clarifying that ChainConfig signer is the authoritative source — the shape check defends only against trivial misconfiguration.
+- BondRoute submodule bumped to upstream `2ed7e93`, which adds `min_execution_delay_in_seconds` to `BondConstraints` and enforces it inside core's `_validate_timing` with a +1 timestamp-boundary correction. SafeSwap's prior `BondRoute_validate()` override has been removed; the 2-second elapsed-time floor is now configured by each action library and enforced by BondRoute core. The upstream `+1` correction means the configured 2-second floor now binds as real wall-clock elapsed time, not just as a `block.timestamp` delta, which closes a worst-case boundary case the old override permitted.
 
 ## Executive Summary
 

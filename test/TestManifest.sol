@@ -46,11 +46,11 @@ interface ICollectorTests {
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// BONDROUTE INTEGRATION
-// Implemented in: test/SafeSwap/BondRouteIntegration.t.sol
+// MOCK BONDROUTE INTEGRATION
+// Implemented in: test/SafeSwap/MockBondRouteIntegration.t.sol
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-interface IBondRouteIntegrationTests {
+interface IMockBondRouteIntegrationTests {
     // ─── BondRoute_get_protected_selectors( ) ──────────────────────────────────────
     function test_get_protected_selectors_returns_five_selectors( ) external;
     function test_get_protected_selectors_includes_swap_exact_input( ) external;
@@ -94,6 +94,7 @@ interface IBondRouteIntegrationTests {
 
     // ─── BondRoute_quote_call( ) - Unknown Selector ────────────────────────────────
     function test_quote_call_reverts_on_unknown_selector( ) external;
+    function test_quote_call_reverts_on_short_call( ) external;
 
     // ─── BondRoute_quote_call( ) - Dynamic-Fee Pool Rejection ──────────────────────
     function test_quote_call_rejects_dynamic_fee_on_every_selector( ) external;
@@ -106,6 +107,7 @@ interface IBondRouteIntegrationTests {
     function test_get_signing_info_donate_returns_valid_type_string( ) external;
     function test_get_signing_info_struct_hash_changes_with_params( ) external;
     function test_get_signing_info_reverts_on_unknown_selector( ) external;
+    function test_get_signing_info_reverts_on_short_call( ) external;
 
     // ─── Protected Function Access Control ─────────────────────────────────────────
     function test_swap_exact_input_reverts_if_not_bondroute( ) external;
@@ -113,6 +115,28 @@ interface IBondRouteIntegrationTests {
     function test_add_liquidity_reverts_if_not_bondroute( ) external;
     function test_remove_liquidity_reverts_if_not_bondroute( ) external;
     function test_donate_reverts_if_not_bondroute( ) external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CANONICAL BONDROUTE INTEGRATION
+// Implemented in: test/SafeSwap/CanonicalBondRouteIntegration.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface ICanonicalBondRouteIntegrationTests {
+    function test_canonical_bondroute_commitment_hash_has_caffe_prefix_and_sentinel_layout( ) external;
+    function test_canonical_bondroute_create_bond_reverts_for_wrong_stake_amount( ) external;
+    function test_canonical_bondroute_create_bond_reverts_for_wrong_stake_token( ) external;
+    function test_canonical_bondroute_create_bond_reverts_for_wrong_chain( ) external;
+    function test_canonical_bondroute_executes_exact_input_swap( ) external;
+    function test_canonical_bondroute_exact_input_swap_pulls_erc20_funding_from_user( ) external;
+    function test_canonical_bondroute_exact_input_swap_uses_native_funding_from_msg_value( ) external;
+    function test_canonical_bondroute_add_liquidity_pulls_two_erc20_fundings_from_user( ) external;
+    function test_canonical_bondroute_add_liquidity_uses_native_and_erc20_fundings( ) external;
+    function test_canonical_bondroute_reverts_same_block_execution( ) external;
+    function test_canonical_bondroute_reverts_before_safeswap_seconds_delay( ) external;
+    function test_canonical_bondroute_retries_after_safeswap_seconds_delay( ) external;
+    function test_canonical_bondroute_settles_unknown_selector_as_invalid_bond( ) external;
 }
 
 
@@ -509,13 +533,14 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Implemented & Passing:      213 ✓
+// Implemented & Passing:      226 ✓
 // Manifest-only Benchmarks:    10 declared above, not currently in the test suite.
 //
 // Coverage by Section:
 // - Constructor:                6 tests  ✓
 // - Collector:                  5 tests  ✓
-// - BondRoute Integration:     41 tests  ✓
+// - Mock BondRoute:            43 tests  ✓
+// - Canonical BondRoute:       13 tests  ✓
 // - Hook Callbacks:            21 tests  ✓
 // - Unlock Callback:            9 tests  ✓
 // - Swap Execution:            14 tests  ✓

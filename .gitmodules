@@ -7,3 +7,9 @@
 [submodule "lib/openzeppelin-contracts"]
 	path = lib/openzeppelin-contracts
 	url = https://github.com/openzeppelin/openzeppelin-contracts
+[submodule "lib/BondRoute"]
+	path = lib/BondRoute
+	url = https://github.com/rafajaw/BondRoute
+[submodule "lib/ChainConfig"]
+	path = lib/ChainConfig
+	url = https://github.com/rafajaw/ChainConfig
