@@ -73,31 +73,6 @@ abstract contract UniswapHook is IUnlockCallback {
         PoolManager  =  IPoolManager(pool_manager);
     }
 
-    /**
-     * @dev Authoritative source of the PoolManager address is the ChainConfig signer; this shape check defends
-     *      against trivial misconfiguration (EOA, empty bytecode, accidental address swap), not against a
-     *      malicious signer publishing a look-alike contract.
-     */
-    function _is_valid_pool_manager( address pool_manager ) internal view returns ( bool )
-    {
-        if(  pool_manager.code.length == 0  )  return false;
-
-        ( bool ok_controller, bytes memory controller_data )  =  pool_manager.staticcall( abi.encodeCall( IProtocolFees.protocolFeeController, () ) );
-        if(  ok_controller == false || controller_data.length != 32  )  return false;
-
-        bytes32[] memory slots  =  new bytes32[](0);
-        ( bool ok_extsload, bytes memory extsload_data )  =  pool_manager.staticcall( abi.encodeCall( IExtsloadSparse.extsload, (slots) ) );
-        // Empty dynamic array return ABI is 64 bytes: first word offset, second word length.
-        if(  ok_extsload == false || extsload_data.length != 64  )  return false;
-
-        bytes32[] memory loaded_slots  =  abi.decode( extsload_data, (bytes32[]) );
-        if(  loaded_slots.length != 0  )  return false;
-
-        ( bool ok_erc6909, bytes memory erc6909_data )  =  pool_manager.staticcall( abi.encodeCall( IERC165.supportsInterface, (ERC6909_INTERFACE_ID) ) );
-        if(  ok_erc6909 == false || erc6909_data.length != 32 || abi.decode( erc6909_data, (bool) ) == false  )  return false;
-
-        return true;
-    }
 
     // ━━━━  UNLOCK CALLBACK  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -115,7 +90,7 @@ abstract contract UniswapHook is IUnlockCallback {
      *      - `Unauthorized(address caller, address expected)` if caller is not PoolManager.
      */
     function unlockCallback( bytes calldata data )
-    external  override  returns ( bytes memory )
+    external  override returns ( bytes memory )
     {
         if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
 
@@ -158,20 +133,6 @@ abstract contract UniswapHook is IUnlockCallback {
 
     // ━━━━  HOOK CALLBACKS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _consume_hook_callback_allowance( ) private
-    {
-        if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
-        if(  _is_hook_callback_allowed == false  )  revert BondRouteRequired({ caller: msg.sender, bondroute: address(BondRoute) });
-
-        _is_hook_callback_allowed  =  false;  // *SECURITY*  -  Defense against a malicious token re-entering the uniswap's pool_manager directly.
-    }
-
-    modifier consumeHookAllowance( )
-    {
-        _consume_hook_callback_allowance( );
-        _;
-    }
-
     /**
      * @notice Authorize a BondRoute-protected Uniswap V4 swap callback.
      * @return Hook selector, zero before-swap delta, and zero LP fee override.
@@ -181,8 +142,10 @@ abstract contract UniswapHook is IUnlockCallback {
      *      - `BondRouteRequired(address caller, address bondroute)` if no SafeSwap action allowed this callback.
      */
     function beforeSwap( address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata )
-    external  consumeHookAllowance  returns ( bytes4, BeforeSwapDelta, uint24 )
+    external  returns ( bytes4, BeforeSwapDelta, uint24 )
     {
+        _consume_hook_callback_allowance( );
+
         return ( IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0 );
     }
 
@@ -195,8 +158,10 @@ abstract contract UniswapHook is IUnlockCallback {
      *      - `BondRouteRequired(address caller, address bondroute)` if no SafeSwap action allowed this callback.
      */
     function beforeAddLiquidity( address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata )
-    external  consumeHookAllowance  returns ( bytes4 )
+    external  returns ( bytes4 )
     {
+        _consume_hook_callback_allowance( );
+
         return IHooks.beforeAddLiquidity.selector;
     }
 
@@ -209,8 +174,10 @@ abstract contract UniswapHook is IUnlockCallback {
      *      - `BondRouteRequired(address caller, address bondroute)` if no SafeSwap action allowed this callback.
      */
     function beforeRemoveLiquidity( address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata )
-    external  consumeHookAllowance  returns ( bytes4 )
+    external  returns ( bytes4 )
     {
+        _consume_hook_callback_allowance( );
+
         return IHooks.beforeRemoveLiquidity.selector;
     }
 
@@ -223,8 +190,47 @@ abstract contract UniswapHook is IUnlockCallback {
      *      - `BondRouteRequired(address caller, address bondroute)` if no SafeSwap action allowed this callback.
      */
     function beforeDonate( address, PoolKey calldata, uint256, uint256, bytes calldata )
-    external  consumeHookAllowance  returns ( bytes4 )
+    external  returns ( bytes4 )
     {
+        _consume_hook_callback_allowance( );
+
         return IHooks.beforeDonate.selector;
+    }
+
+
+    // ━━━━  INTERNAL HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /**
+     * @dev Authoritative source of the PoolManager address is the ChainConfig signer; this shape check defends
+     *      against trivial misconfiguration (EOA, empty bytecode, accidental address swap), not against a
+     *      malicious signer publishing a look-alike contract.
+     */
+    function _is_valid_pool_manager( address pool_manager ) internal view returns ( bool )
+    {
+        if(  pool_manager.code.length == 0  )  return false;
+
+        ( bool ok_controller, bytes memory controller_data )  =  pool_manager.staticcall( abi.encodeCall( IProtocolFees.protocolFeeController, () ) );
+        if(  ok_controller == false || controller_data.length != 32  )  return false;
+
+        bytes32[] memory slots  =  new bytes32[](0);
+        ( bool ok_extsload, bytes memory extsload_data )  =  pool_manager.staticcall( abi.encodeCall( IExtsloadSparse.extsload, (slots) ) );
+        // Empty dynamic array return ABI is 64 bytes: first word offset, second word length.
+        if(  ok_extsload == false || extsload_data.length != 64  )  return false;
+
+        bytes32[] memory loaded_slots  =  abi.decode( extsload_data, (bytes32[]) );
+        if(  loaded_slots.length != 0  )  return false;
+
+        ( bool ok_erc6909, bytes memory erc6909_data )  =  pool_manager.staticcall( abi.encodeCall( IERC165.supportsInterface, (ERC6909_INTERFACE_ID) ) );
+        if(  ok_erc6909 == false || erc6909_data.length != 32 || abi.decode( erc6909_data, (bool) ) == false  )  return false;
+
+        return true;
+    }
+
+    function _consume_hook_callback_allowance( ) private
+    {
+        if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
+        if(  _is_hook_callback_allowed == false  )  revert BondRouteRequired({ caller: msg.sender, bondroute: address(BondRoute) });
+
+        _is_hook_callback_allowed  =  false;  // *SECURITY*  -  Defense against a malicious token re-entering the uniswap's pool_manager directly.
     }
 }

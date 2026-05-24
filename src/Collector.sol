@@ -53,7 +53,7 @@ abstract contract Collector {
      * @notice Read the current fee collector address.
      */
     function get_collector( )
-    external  view  returns ( address )
+    external  view returns ( address )
     {
         return _collector;
     }

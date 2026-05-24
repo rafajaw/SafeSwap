@@ -4,10 +4,11 @@ pragma solidity ^0.8.30;
 import "@SafeSwap/UniswapHook.sol";
 import "@BondRouteProtected/BondRouteProtected.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
-import { PoolId } from "@UniswapV4Core/types/PoolId.sol";
+import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 
 using StateLibrary for IPoolManager;
+using PoolIdLibrary for PoolKey;
 
 
 /**
@@ -164,6 +165,29 @@ abstract contract User is UniswapHook, BondRouteProtected {
     // ━━━━  POSITION GETTERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
+     * @notice Compute the Uniswap V4 pool id for a SafeSwap pool.
+     * @param token_a First pool token.
+     * @param token_b Second pool token.
+     * @param pool_info Pool fee and tick spacing.
+     * @return pool_id Uniswap V4 pool identifier for this hook.
+     *
+     * @dev Standard V4 pool id with `hooks = address(this)`.
+     */
+    function __OFF_CHAIN__get_pool_id( IERC20 token_a, IERC20 token_b, PoolInfo calldata pool_info )
+    external  view returns ( PoolId pool_id )
+    {
+        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key(
+            token_a,
+            token_b,
+            pool_info.fee,
+            pool_info.tick_spacing,
+            address(this)
+        );
+
+        pool_id  =  pool_key.toId( );
+    }
+
+    /**
      * @notice Read a user's SafeSwap LP position state directly from the PoolManager.
      * @param pool_id Uniswap V4 pool identifier.
      * @param user SafeSwap user whose position should be queried.
@@ -173,11 +197,10 @@ abstract contract User is UniswapHook, BondRouteProtected {
      * @return fee_growth_inside_0_last_x128 Last recorded token0 fee growth inside the tick range.
      * @return fee_growth_inside_1_last_x128 Last recorded token1 fee growth inside the tick range.
      *
-     * @dev Positions are owned by the hook with the user's address as the V4 salt. This lets users or aggregators
-     *      inspect positions directly from the PoolManager.
+     * @dev On-chain integrators: call `PoolManager.getPositionInfo` with `owner = address(this)`, `salt = bytes32(uint256(uint160(user)))`.
      */
-    function get_position_info( PoolId pool_id, address user, int24 tick_lower, int24 tick_upper )
-    external  view  returns ( uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128 )
+    function __OFF_CHAIN__get_position_info( PoolId pool_id, address user, int24 tick_lower, int24 tick_upper )
+    external  view returns ( uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128 )
     {
         ( liquidity, fee_growth_inside_0_last_x128, fee_growth_inside_1_last_x128 )  =  PoolManager.getPositionInfo(
             pool_id,

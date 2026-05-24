@@ -34,7 +34,7 @@ uint256 constant MAX_BOND_EXECUTION_DELAY_IN_SECONDS  =   1 hours;      // Caps 
 // ━━━━  STRINGS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 string constant SAFESWAP_PROTOCOL_NAME                  =  "SafeSwap";
-string constant SAFESWAP_PROTOCOL_DESCRIPTION           =  "MEV-protected Uniswap pools";
+string constant SAFESWAP_PROTOCOL_DESCRIPTION           =  "Trustless MEV-protected Uniswap pools";
 
 string constant SWAPS_REQUIRE_EXACTLY_ONE_FUNDING       =  "Swaps require exactly 1 funding";
 string constant ADD_LIQUIDITY_REQUIRES_TWO_FUNDINGS     =  "Add liquidity requires exactly 2 fundings";

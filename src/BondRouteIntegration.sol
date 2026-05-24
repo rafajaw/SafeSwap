@@ -21,7 +21,7 @@ abstract contract BondRouteIntegration is User {
      * @return selectors Protected function selectors exposed by this contract.
      */
     function BondRoute_get_protected_selectors( )
-    public  pure  override  returns ( bytes4[] memory selectors )
+    public  pure override returns ( bytes4[] memory selectors )
     {
         selectors       =  new bytes4[]( 5 );
         selectors[ 0 ]  =  this.swap_exact_input.selector;
@@ -45,8 +45,8 @@ abstract contract BondRouteIntegration is User {
      *      - `Error(string)` if the funding count is invalid or token pair is invalid.
      *      - `UnsupportedFeeTier(uint24 fee)` if the target pool uses dynamic fees.
      */
-    function BondRoute_quote_call( bytes calldata call, IERC20, TokenAmount[] memory preferred_fundings )
-    public  view  override  returns ( BondConstraints memory constraints )
+    function BondRoute_quote_call( bytes calldata call, IERC20 preferred_stake_token, TokenAmount[] memory preferred_fundings )
+    public  view override returns ( BondConstraints memory constraints )
     {
         if(  call.length < 4  )  revert UnsupportedCall( );
 
@@ -93,7 +93,7 @@ abstract contract BondRouteIntegration is User {
      * @dev Unsupported calls revert so wallets do not present unsupported SafeSwap actions for signing.
      */
     function BondRoute_get_signing_info( bytes calldata call )
-    external  pure  override  returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
+    external  pure override returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
         if(  call.length < 4  )  revert UnsupportedCall( );
 

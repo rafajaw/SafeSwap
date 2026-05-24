@@ -5,6 +5,7 @@ import "./TestBase.t.sol";
 
 
 contract SwapExecutionTest is SafeSwapTestBase {
+    using PoolIdLibrary for PoolKey;
 
     function setUp( ) public override
     {
@@ -375,6 +376,24 @@ contract SwapExecutionTest is SafeSwapTestBase {
             address(key.hooks),
             address(hook),
             "Pool key should set this contract as the hook."
+        );
+    }
+
+    function test_off_chain_get_pool_id_matches_pool_key_id_for_both_token_orders( ) external view
+    {
+        PoolInfo memory pool_info  =  PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 });
+        PoolKey memory key         =  hook.harness_build_pool_key( token0, token1, POOL_FEE_030, TICK_SPACING_60 );
+
+        assertEq(
+            PoolId.unwrap(hook.__OFF_CHAIN__get_pool_id( token0, token1, pool_info )),
+            PoolId.unwrap(key.toId( )),
+            "Pool id should match the canonical PoolKey id."
+        );
+
+        assertEq(
+            PoolId.unwrap(hook.__OFF_CHAIN__get_pool_id( token1, token0, pool_info )),
+            PoolId.unwrap(key.toId( )),
+            "Pool id should be independent of token argument order."
         );
     }
 }
