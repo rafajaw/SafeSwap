@@ -3,3 +3,6 @@ out/
 lib/
 lcov.info
 .gas-snapshot
+.vscode/
+.codex/
+.agents/

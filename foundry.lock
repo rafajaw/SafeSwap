@@ -1,4 +1,10 @@
 {
+  "lib/BondRoute": {
+    "rev": "2ed7e93dcb69371baa66b7f5548edb838cbaf75d"
+  },
+  "lib/ChainConfig": {
+    "rev": "cfe664e89880f7af847ae9a027b38d7c6fa87626"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.12.0",
