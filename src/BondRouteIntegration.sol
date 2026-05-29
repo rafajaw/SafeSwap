@@ -65,17 +65,17 @@ abstract contract BondRouteIntegration is User {
         else if(  selector == this.add_liquidity.selector  )
         {
             AddLiquidityParams memory params  =  abi.decode( call[ 4: ], (AddLiquidityParams) );
-            return AddLiquidityLib.get_constraints( params, preferred_fundings, PoolManager, address(this) );
+            return AddLiquidityLib.get_constraints( params, preferred_stake_token, preferred_fundings, PoolManager, address(this) );
         }
         else if(  selector == this.remove_liquidity.selector  )
         {
             RemoveLiquidityParams memory params  =  abi.decode( call[ 4: ], (RemoveLiquidityParams) );
-            return RemoveLiquidityLib.get_constraints( params, preferred_fundings, PoolManager, address(this) );
+            return RemoveLiquidityLib.get_constraints( params, preferred_stake_token, preferred_fundings, PoolManager, address(this) );
         }
         else if(  selector == this.donate.selector  )
         {
             DonateParams memory params  =  abi.decode( call[ 4: ], (DonateParams) );
-            return DonateLib.get_constraints( params, preferred_fundings, PoolManager, address(this) );
+            return DonateLib.get_constraints( params, preferred_stake_token, preferred_fundings, PoolManager, address(this) );
         }
         else
         {

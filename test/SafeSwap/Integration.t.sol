@@ -103,7 +103,7 @@ contract IntegrationTest is SafeSwapTestBase {
     {
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
             token_out: NATIVE_TOKEN,
-            minimum_amount_out: 90 ether,
+            minimum_output_amount: 90 ether,
             pool_info: _default_pool_info( )
         });
 

@@ -16,14 +16,14 @@ import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 /**
  * @notice Exact-output swap parameters signed by the user.
  * @param token_out Token the user receives.
- * @param amount_out Exact net output sent to the user after SafeSwap protocol fee.
+ * @param exact_output_amount Exact net output sent to the user after SafeSwap protocol fee.
  * @param pool_info Target Uniswap V4 pool configuration.
  *
  * @dev Input token and maximum input amount come from the bond funding, not from this struct.
  */
 struct ExactOutputSwapParams {
     IERC20 token_out;
-    uint256 amount_out;
+    uint256 exact_output_amount;
     PoolInfo pool_info;
 }
 
@@ -41,16 +41,16 @@ library ExactOutputSwapLib {
 
     string constant EIP712_TYPE_STRING  =
         "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,ExactOutputSwap call)"
-        "ExactOutputSwap(address token_out,uint256 amount_out,PoolInfo pool_info)"
+        "ExactOutputSwap(address token_out,uint256 exact_output_amount,PoolInfo pool_info)"
         "PoolInfo(uint24 fee,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)";
 
     bytes32 constant EIP712_TYPEHASH  =  keccak256(
-        "ExactOutputSwap(address token_out,uint256 amount_out,PoolInfo pool_info)"
+        "ExactOutputSwap(address token_out,uint256 exact_output_amount,PoolInfo pool_info)"
         "PoolInfo(uint24 fee,int24 tick_spacing)"
     );
 
-    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  217;
+    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  226;
 
     function get_signing_info( ExactOutputSwapParams memory params )
     internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
@@ -60,7 +60,7 @@ library ExactOutputSwapLib {
         struct_hash  =  keccak256( abi.encode(
             EIP712_TYPEHASH,
             address(params.token_out),
-            params.amount_out,
+            params.exact_output_amount,
             SafeSwapCommon.hash_pool_info( params.pool_info )
         ));
 
@@ -113,7 +113,7 @@ library ExactOutputSwapLib {
         //     grossed_up_pool_output  =  target_user_output * DIVISOR / ( DIVISOR - effective_fee_rate )
         //
 
-        uint256 target_user_output      =  params.amount_out;
+        uint256 target_user_output      =  params.exact_output_amount;
         uint256 effective_fee_rate      =  params.pool_info.fee < MIN_PROTOCOL_FEE_RATE
                                             ? MIN_PROTOCOL_FEE_RATE
                                             : params.pool_info.fee;

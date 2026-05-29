@@ -16,14 +16,14 @@ import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 /**
  * @notice Exact-input swap parameters signed by the user.
  * @param token_out Token the user receives.
- * @param minimum_amount_out Minimum net output after SafeSwap protocol fee.
+ * @param minimum_output_amount Minimum net output after SafeSwap protocol fee.
  * @param pool_info Target Uniswap V4 pool configuration.
  *
  * @dev Input token and input amount come from the bond funding, not from this struct.
  */
 struct ExactInputSwapParams {
     IERC20 token_out;
-    uint256 minimum_amount_out;
+    uint256 minimum_output_amount;
     PoolInfo pool_info;
 }
 
@@ -41,16 +41,16 @@ library ExactInputSwapLib {
 
     string constant EIP712_TYPE_STRING  =
         "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,ExactInputSwap call)"
-        "ExactInputSwap(address token_out,uint256 minimum_amount_out,PoolInfo pool_info)"
+        "ExactInputSwap(address token_out,uint256 minimum_output_amount,PoolInfo pool_info)"
         "PoolInfo(uint24 fee,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)";
 
     bytes32 constant EIP712_TYPEHASH  =  keccak256(
-        "ExactInputSwap(address token_out,uint256 minimum_amount_out,PoolInfo pool_info)"
+        "ExactInputSwap(address token_out,uint256 minimum_output_amount,PoolInfo pool_info)"
         "PoolInfo(uint24 fee,int24 tick_spacing)"
     );
 
-    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  223;
+    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  226;
 
     function get_signing_info( ExactInputSwapParams memory params )
     internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
@@ -60,7 +60,7 @@ library ExactInputSwapLib {
         struct_hash  =  keccak256( abi.encode(
             EIP712_TYPEHASH,
             address(params.token_out),
-            params.minimum_amount_out,
+            params.minimum_output_amount,
             SafeSwapCommon.hash_pool_info( params.pool_info )
         ));
 
@@ -118,7 +118,10 @@ library ExactInputSwapLib {
         // Split the pool output into the user's share and the protocol's share, then enforce slippage on the user's net receipt.
         ( uint256 protocol_fee, uint256 user_output )  =  SafeSwapCommon.calculate_protocol_fee( pool_output, params.pool_info.fee );
 
-        if(  user_output < params.minimum_amount_out  )  revert SlippageExceeded({ amount_received: user_output, minimum_required: params.minimum_amount_out });
+        if(  user_output < params.minimum_output_amount  )
+        {
+            revert SlippageExceeded({ amount_received: user_output, minimum_required: params.minimum_output_amount });
+        }
 
         SafeSwapCommon.settle_and_take(
             pool_manager,

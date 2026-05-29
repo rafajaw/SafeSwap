@@ -24,10 +24,10 @@ import { SqrtPriceMath } from "@UniswapV4Core/libraries/SqrtPriceMath.sol";
  * @param tick_lower Lower tick of the liquidity position.
  * @param tick_upper Upper tick of the liquidity position.
  * @param liquidity Liquidity amount to remove.
- * @param min_a Minimum amount to receive for one of the two pool tokens (token field identifies which).
- * @param min_b Minimum amount to receive for the other pool token (token field identifies which).
+ * @param minimum_received_a Minimum amount that must be received for one of the two pool tokens (token field identifies which).
+ * @param minimum_received_b Minimum amount that must be received for the other pool token (token field identifies which).
  *
- * @dev MIN ORDER: `min_a` and `min_b` are matched to the pool's currency0/currency1 by token address at execute time,
+ * @dev MINIMUM-RECEIVED ORDER: `minimum_received_a` and `minimum_received_b` are matched to the pool's currency0/currency1 by token address at execute time,
  *      so they can be supplied in any order. Their `token` fields also identify the pool — no separate token0/token1 needed.
  */
 struct RemoveLiquidityParams {
@@ -35,8 +35,8 @@ struct RemoveLiquidityParams {
     int24 tick_lower;
     int24 tick_upper;
     uint128 liquidity;
-    TokenAmount min_a;
-    TokenAmount min_b;
+    TokenAmount minimum_received_a;
+    TokenAmount minimum_received_b;
 }
 
 
@@ -53,17 +53,17 @@ library RemoveLiquidityLib {
 
     string constant EIP712_TYPE_STRING  =
         "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,RemoveLiquidity call)"
-        "RemoveLiquidity(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,TokenAmount min_a,TokenAmount min_b)"
+        "RemoveLiquidity(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,TokenAmount minimum_received_a,TokenAmount minimum_received_b)"
         "PoolInfo(uint24 fee,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)";
 
     bytes32 constant EIP712_TYPEHASH  =  keccak256(
-        "RemoveLiquidity(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,TokenAmount min_a,TokenAmount min_b)"
+        "RemoveLiquidity(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,TokenAmount minimum_received_a,TokenAmount minimum_received_b)"
         "PoolInfo(uint24 fee,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)"
     );
 
-    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  268;
+    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  294;
 
     function get_signing_info( RemoveLiquidityParams memory params )
     internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
@@ -76,8 +76,8 @@ library RemoveLiquidityLib {
             params.tick_lower,
             params.tick_upper,
             params.liquidity,
-            SafeSwapCommon.hash_token_amount( params.min_a ),
-            SafeSwapCommon.hash_token_amount( params.min_b )
+            SafeSwapCommon.hash_token_amount( params.minimum_received_a ),
+            SafeSwapCommon.hash_token_amount( params.minimum_received_b )
         ));
 
         token_amount_offset  =  EIP712_TOKEN_AMOUNT_OFFSET;
@@ -88,6 +88,7 @@ library RemoveLiquidityLib {
 
     function get_constraints(
         RemoveLiquidityParams memory params,
+        IERC20 preferred_stake_token,
         TokenAmount[] memory preferred_fundings,
         IPoolManager pool_manager,
         address hook_address
@@ -96,7 +97,7 @@ library RemoveLiquidityLib {
         if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )   revert UnsupportedFeeTier({ fee: params.pool_info.fee });
         if(  preferred_fundings.length != 0  )                          revert( REMOVE_LIQUIDITY_REQUIRES_NO_FUNDINGS );
 
-        ( IERC20 token0, , IERC20 token1, )  =  SafeSwapCommon.sort_token_amount_pair( params.min_a, params.min_b );
+        ( IERC20 token0, , IERC20 token1, )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_received_a, params.minimum_received_b );
 
         PoolKey memory pool_key  =  PoolKey({
             currency0: Currency.wrap( address(token0) ),
@@ -120,7 +121,14 @@ library RemoveLiquidityLib {
             params.liquidity
         );
 
-        constraints.min_stake                       =  SafeSwapCommon.calculate_normalized_liquidity_stake( sqrtPriceX96, token0, amount0_released, amount1_released );
+        constraints.min_stake                       =  SafeSwapCommon.calculate_normalized_liquidity_stake(
+            sqrtPriceX96,
+            token0,
+            token1,
+            amount0_released,
+            amount1_released,
+            preferred_stake_token
+        );
         constraints.min_fundings                    =  new TokenAmount[](0);
         constraints.min_execution_delay_in_blocks   =  MIN_BOND_EXECUTION_DELAY_IN_BLOCKS;
         constraints.min_execution_delay_in_seconds  =  MIN_BOND_EXECUTION_DELAY_IN_SECONDS;
@@ -132,9 +140,9 @@ library RemoveLiquidityLib {
 
     function execute( BondContext memory context, RemoveLiquidityParams memory params, IPoolManager pool_manager, address hook_address ) internal
     {
-        ( IERC20 token0, uint256 amount0_min, IERC20 token1, uint256 amount1_min )  =  SafeSwapCommon.sort_token_amount_pair(
-            params.min_a,
-            params.min_b
+        ( IERC20 token0, uint256 amount0_minimum_received, IERC20 token1, uint256 amount1_minimum_received )  =  SafeSwapCommon.sort_token_amount_pair(
+            params.minimum_received_a,
+            params.minimum_received_b
         );
 
         PoolKey memory pool_key  =  PoolKey({
@@ -159,8 +167,8 @@ library RemoveLiquidityLib {
         uint256 amount0  =  uint256(uint128(delta.amount0( )));
         uint256 amount1  =  uint256(uint128(delta.amount1( )));
 
-        if(  amount0 < amount0_min  )  revert SlippageExceeded({ amount_received: amount0, minimum_required: amount0_min });
-        if(  amount1 < amount1_min  )  revert SlippageExceeded({ amount_received: amount1, minimum_required: amount1_min });
+        if(  amount0 < amount0_minimum_received  )  revert SlippageExceeded({ amount_received: amount0, minimum_required: amount0_minimum_received });
+        if(  amount1 < amount1_minimum_received  )  revert SlippageExceeded({ amount_received: amount1, minimum_required: amount1_minimum_received });
 
         pool_manager.take( Currency.wrap( address(token0) ), context.user, amount0 );
         pool_manager.take( Currency.wrap( address(token1) ), context.user, amount1 );

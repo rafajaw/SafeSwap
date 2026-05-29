@@ -69,6 +69,7 @@ library DonateLib {
 
     function get_constraints(
         DonateParams memory params,
+        IERC20 preferred_stake_token,
         TokenAmount[] memory preferred_fundings,
         IPoolManager pool_manager,
         address hook_address
@@ -92,7 +93,14 @@ library DonateLib {
 
         ( uint160 sqrtPriceX96, , , )  =  StateLibrary.getSlot0( pool_manager, pool_key.toId( ) );
 
-        constraints.min_stake                       =  SafeSwapCommon.calculate_normalized_liquidity_stake( sqrtPriceX96, token0, amount0, amount1 );
+        constraints.min_stake                       =  SafeSwapCommon.calculate_normalized_liquidity_stake(
+            sqrtPriceX96,
+            token0,
+            token1,
+            amount0,
+            amount1,
+            preferred_stake_token
+        );
         constraints.min_fundings                    =  preferred_fundings;
         constraints.min_execution_delay_in_blocks   =  MIN_BOND_EXECUTION_DELAY_IN_BLOCKS;
         constraints.min_execution_delay_in_seconds  =  MIN_BOND_EXECUTION_DELAY_IN_SECONDS;

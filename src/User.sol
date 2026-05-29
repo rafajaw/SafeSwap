@@ -38,7 +38,7 @@ abstract contract User is UniswapHook, BondRouteProtected {
      *
      * @dev ERROR CODES:
      *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
-     *      - `SlippageExceeded(uint256 amount_received, uint256 minimum_required)` if net output is below `minimum_amount_out`.
+     *      - `SlippageExceeded(uint256 amount_received, uint256 minimum_required)` if net output is below `minimum_output_amount`.
      *      - `UnsupportedFeeTier(uint24 fee)` if the target pool uses dynamic fees.
      */
     function swap_exact_input( ExactInputSwapParams calldata params )

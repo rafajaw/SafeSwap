@@ -6,3 +6,5 @@ lcov.info
 .vscode/
 .codex/
 .agents/
+node_modules/
+sdk/dist/

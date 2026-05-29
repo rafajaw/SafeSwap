@@ -99,8 +99,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            min_a: TokenAmount({ token: token0, amount: 60 ether }),  // Require at least 60 ether.
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_added_a: TokenAmount({ token: token0, amount: 60 ether }),  // Require at least 60 ether.
+            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         // Mock returns only 50 ether for token0, less than min.
@@ -118,8 +118,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 60 ether })  // Require at least 60 ether.
+            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_added_b: TokenAmount({ token: token1, amount: 60 ether })  // Require at least 60 ether.
         });
 
         // Mock returns only 50 ether for token1, less than min.
@@ -137,8 +137,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            min_a: TokenAmount({ token: token0, amount: 50 ether }),
-            min_b: TokenAmount({ token: token1, amount: 50 ether })
+            minimum_added_a: TokenAmount({ token: token0, amount: 50 ether }),
+            minimum_added_b: TokenAmount({ token: token1, amount: 50 ether })
         });
 
         // Mock returns exactly the minimums.
@@ -169,8 +169,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 50 ether })  // User expects token1 deposit.
+            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_added_b: TokenAmount({ token: token1, amount: 50 ether })  // User expects token1 deposit.
         });
 
         // Pool decides only token0 is needed (e.g., price moved out of range above).
@@ -188,8 +188,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            min_a: TokenAmount({ token: token0, amount: 50 ether }),  // User expects token0 deposit.
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_added_a: TokenAmount({ token: token0, amount: 50 ether }),  // User expects token0 deposit.
+            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         // Pool decides only token1 is needed.
@@ -207,8 +207,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 100,  // Wide range below current price.
             tick_upper: -TICK_SPACING_60 * 50,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         // Single-sided: only token0 is deposited, token1 delta is 0.
@@ -242,8 +242,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: tick_lower,
             tick_upper: tick_upper,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
@@ -267,8 +267,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
@@ -338,8 +338,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
-            min_a: TokenAmount({ token: token0, amount: 60 ether }),  // Require at least 60 ether.
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_received_a: TokenAmount({ token: token0, amount: 60 ether }),  // Require at least 60 ether.
+            minimum_received_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         // Returns only 50 ether for token0.
@@ -358,8 +358,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 60 ether })  // Require at least 60 ether.
+            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_received_b: TokenAmount({ token: token1, amount: 60 ether })  // Require at least 60 ether.
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
@@ -377,8 +377,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
-            min_a: TokenAmount({ token: token0, amount: 50 ether }),
-            min_b: TokenAmount({ token: token1, amount: 50 ether })
+            minimum_received_a: TokenAmount({ token: token0, amount: 50 ether }),
+            minimum_received_b: TokenAmount({ token: token1, amount: 50 ether })
         });
 
         // Returns exactly the minimums.
@@ -413,8 +413,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: tick_lower,
             tick_upper: tick_upper,
             liquidity: 100 ether,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_received_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
@@ -438,8 +438,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_received_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
@@ -477,8 +477,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             pool_info: _default_pool_info( ),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
@@ -494,8 +494,8 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: 100 ether,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_received_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );

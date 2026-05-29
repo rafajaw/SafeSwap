@@ -56,7 +56,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         vm.prank( address(pool_manager) );
         hook.harness_execute_exact_input_swap( context, params );
 
-        // amount_out = 95 ether, protocol fee = 95 * 3000 / 10_000_000 = 0.0285 ether.
+        // Pool output = 95 ether, protocol fee = 95 * 3000 / 10_000_000 = 0.0285 ether.
         // User receives 95 - 0.0285 = 94.9715 ether.
         assertEq(
             token1.balanceOf( user ) - balance_before,
@@ -85,7 +85,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         // token0 < token1, so token0 -> token1 is zeroForOne = true.
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
             token_out: token1,
-            minimum_amount_out: 90 ether,
+            minimum_output_amount: 90 ether,
             pool_info: _default_pool_info( )
         });
 
@@ -127,7 +127,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
 
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
             token_out: token0,
-            minimum_amount_out: 90 ether,
+            minimum_output_amount: 90 ether,
             pool_info: _default_pool_info( )
         });
 
@@ -231,7 +231,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
         BondContext memory context  =  _create_bond_context( user, 95 ether );
         ExactOutputSwapParams memory params  =  ExactOutputSwapParams({
             token_out: token1,
-            amount_out: 90 ether,
+            exact_output_amount: 90 ether,
             pool_info: _default_pool_info( )
         });
 
@@ -284,7 +284,7 @@ contract SwapExecutionTest is SafeSwapTestBase {
 
         ExactOutputSwapParams memory params  =  ExactOutputSwapParams({
             token_out: token0,
-            amount_out: 90 ether,
+            exact_output_amount: 90 ether,
             pool_info: _default_pool_info( )
         });
 

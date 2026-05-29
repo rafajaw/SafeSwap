@@ -148,33 +148,56 @@ library SafeSwapCommon {
 
     // *SECURITY*  -  Stake must reflect the total committed value across BOTH sides of a liquidity bond. Measuring
     //                only one side opens a dust attack: (amount0 = 1 wei, amount1 = 1e18) would yield zero stake while
-    //                committing real value. We normalize amount1 into token0 units at the pool's current price (slot0)
-    //                so both legs can be summed in the same frame of reference, then stake a percentage of the total.
+    //                committing real value. By default we normalize amount1 into token0 units at the pool's current
+    //                price (slot0). If the user signals token1 as the preferred stake token, we normalize amount0 into
+    //                token1 instead. Any other preference is ignored and falls back to token0.
     //                Caveat: on very thin pools an attacker can shift slot0 cheaply, so the per-bond stake reflects
     //                a manipulated price. This is bounded by SafeSwap's own 1% swap stake on the manipulation swap.
-    function calculate_normalized_liquidity_stake( uint160 sqrtPriceX96, IERC20 token0, uint256 amount0, uint256 amount1 )
+    function calculate_normalized_liquidity_stake(
+        uint160 sqrtPriceX96,
+        IERC20 token0,
+        IERC20 token1,
+        uint256 amount0,
+        uint256 amount1,
+        IERC20 preferred_stake_token
+    )
     internal pure returns ( TokenAmount memory )
     {
-        // Convert amount1 into token0 units at current pool price.
-        // Price (token1 per token0)  =  sqrtPriceX96^2 / 2^192
-        // So  amount0_equivalent     =  amount1 * 2^192 / sqrtPriceX96^2
-        // Performed as two mulDiv steps to avoid uint256 overflow on sqrtPriceX96^2 at high prices.
-        uint256 amount1_in_token0_units  =  0;
-        if(  amount1 > 0  )
-        {
-            uint256 intermediate     =  FullMath.mulDiv( amount1, FixedPoint96.Q96, sqrtPriceX96 );
-            amount1_in_token0_units  =  FullMath.mulDiv( intermediate, FixedPoint96.Q96, sqrtPriceX96 );
-        }
+        bool is_token1_preferred  =  address(preferred_stake_token) == address(token1);
+        IERC20 stake_token        =  is_token1_preferred  ?  token1  :  token0;
+        uint256 normalized_total  =  is_token1_preferred
+            ?  amount1 + _convert_token0_to_token1_units( sqrtPriceX96, amount0 )
+            :  amount0 + _convert_token1_to_token0_units( sqrtPriceX96, amount1 );
 
-        uint256 total_in_token0  =  amount0 + amount1_in_token0_units;
-
-        uint256 stake_amount  =  total_in_token0 * LIQUIDITY_STAKE_PERCENTAGE / 100;
+        uint256 stake_amount  =  normalized_total * LIQUIDITY_STAKE_PERCENTAGE / 100;
 
         // *SECURITY*  -  Bump dust to 1 wei. For 0-decimal / low-decimal tokens where 1 wei = 1 unit = real value
         //                (gaming ERC20s, fractional RWAs), this turns a free speculative bond into a meaningful stake.
         if(  stake_amount == 0  )  stake_amount  =  1;
 
-        return TokenAmount({ token: token0, amount: stake_amount });
+        return TokenAmount({ token: stake_token, amount: stake_amount });
+    }
+
+    function _convert_token1_to_token0_units( uint160 sqrtPriceX96, uint256 amount1 ) private pure returns ( uint256 amount1_in_token0_units )
+    {
+        if(  amount1 == 0  )  return 0;
+
+        // Price (token1 per token0)  =  sqrtPriceX96^2 / 2^192.
+        // So amount1 in token0 units =  amount1 * 2^192 / sqrtPriceX96^2.
+        // Performed as two mulDiv steps to avoid uint256 overflow on sqrtPriceX96^2 at high prices.
+        uint256 intermediate      =  FullMath.mulDiv( amount1, FixedPoint96.Q96, sqrtPriceX96 );
+        amount1_in_token0_units   =  FullMath.mulDiv( intermediate, FixedPoint96.Q96, sqrtPriceX96 );
+    }
+
+    function _convert_token0_to_token1_units( uint160 sqrtPriceX96, uint256 amount0 ) private pure returns ( uint256 amount0_in_token1_units )
+    {
+        if(  amount0 == 0  )  return 0;
+
+        // Price (token1 per token0)  =  sqrtPriceX96^2 / 2^192.
+        // So amount0 in token1 units =  amount0 * sqrtPriceX96^2 / 2^192.
+        // Performed as two mulDiv steps to avoid uint256 overflow on sqrtPriceX96^2 at high prices.
+        uint256 intermediate      =  FullMath.mulDiv( amount0, sqrtPriceX96, FixedPoint96.Q96 );
+        amount0_in_token1_units   =  FullMath.mulDiv( intermediate, sqrtPriceX96, FixedPoint96.Q96 );
     }
 
     // ━━━━  PROTOCOL FEE CALCULATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

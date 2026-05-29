@@ -17,7 +17,7 @@ contract FuzzTest is SafeSwapTestBase {
     {
         // Bound inputs to reasonable ranges.
         amount_out  =  bound( amount_out, 1, type(uint128).max );
-        pool_fee    =  uint24( bound( pool_fee, 1, 1_000_000 ) );  // Max 100% fee.
+        pool_fee    =  uint24(bound( pool_fee, 1, 1_000_000 ));  // Max 100% fee.
 
         uint256 effective_fee_rate  =  pool_fee < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee;
         uint256 protocol_fee  =  amount_out * effective_fee_rate / SAFESWAP_PROTOCOL_FEE_DIVISOR;
@@ -33,7 +33,7 @@ contract FuzzTest is SafeSwapTestBase {
     {
         // Bound inputs.
         amount_out  =  bound( amount_out, SAFESWAP_PROTOCOL_FEE_DIVISOR, type(uint128).max );  // Large enough for meaningful fee.
-        pool_fee    =  uint24( bound( pool_fee, 1, 500 ) );  // Below floor threshold.
+        pool_fee    =  uint24(bound( pool_fee, 1, 500 ));  // Below floor threshold.
 
         uint256 effective_fee_rate  =  pool_fee < SAFESWAP_MIN_PROTOCOL_FEE_RATE  ?  SAFESWAP_MIN_PROTOCOL_FEE_RATE  :  pool_fee;
         uint256 protocol_fee  =  amount_out * effective_fee_rate / SAFESWAP_PROTOCOL_FEE_DIVISOR;
@@ -54,7 +54,7 @@ contract FuzzTest is SafeSwapTestBase {
         // Use amounts divisible by divisor to avoid rounding issues.
         amount_out  =  bound( amount_out, SAFESWAP_PROTOCOL_FEE_DIVISOR, type(uint64).max );
         amount_out  =  amount_out - ( amount_out % SAFESWAP_PROTOCOL_FEE_DIVISOR );
-        pool_fee    =  uint24( bound( pool_fee, SAFESWAP_MIN_PROTOCOL_FEE_RATE, 50_000 ) );
+        pool_fee    =  uint24(bound( pool_fee, SAFESWAP_MIN_PROTOCOL_FEE_RATE, 50_000 ));
 
         uint256 protocol_fee  =  amount_out * pool_fee / SAFESWAP_PROTOCOL_FEE_DIVISOR;
 
@@ -107,7 +107,7 @@ contract FuzzTest is SafeSwapTestBase {
         BondContext memory context  =  _create_bond_context( user, amount_in );
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
             token_out: token1,
-            minimum_amount_out: min_out,
+            minimum_output_amount: min_out,
             pool_info: _default_pool_info( )
         });
 
@@ -123,23 +123,23 @@ contract FuzzTest is SafeSwapTestBase {
         hook.harness_execute_exact_input_swap( context, params );
     }
 
-    function testFuzz_exact_output_respects_maximum_input( uint256 amount_out, uint256 max_in ) external
+    function testFuzz_exact_output_respects_maximum_input( uint256 exact_output_amount, uint256 max_in ) external
     {
         // Bound inputs to fit in int128.
         uint256 max_int128  =  uint256(uint128(type(int128).max));
-        amount_out  =  bound( amount_out, 1 ether, max_int128 / 2 );
+        exact_output_amount  =  bound( exact_output_amount, 1 ether, max_int128 / 2 );
         max_in      =  bound( max_in, 1 ether, max_int128 - 1 );  // Leave room for +1.
 
         BondContext memory context  =  _create_bond_context( user, max_in );
         ExactOutputSwapParams memory params  =  ExactOutputSwapParams({
             token_out: token1,
-            amount_out: amount_out,
+            exact_output_amount: exact_output_amount,
             pool_info: _default_pool_info( )
         });
 
         // Mock requires more than maximum - should revert.
         int128 mock_input  =  -int128(uint128(max_in + 1));
-        pool_manager.set_mock_swap_amounts( mock_input, int128(uint128(amount_out)) );
+        pool_manager.set_mock_swap_amounts( mock_input, int128(uint128(exact_output_amount)) );
 
         vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, max_in + 1, max_in ) );

@@ -306,7 +306,7 @@ contract ReentrantProtectedContextTest is Test {
 
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
             token_out: malicious_token,
-            minimum_amount_out: 0,
+            minimum_output_amount: 0,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
         BondContext memory context  =  _create_swap_context( user, 1 ether );
@@ -325,8 +325,8 @@ contract ReentrantProtectedContextTest is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: FULL_RANGE_LOWER,
             tick_upper: FULL_RANGE_UPPER,
-            min_a: TokenAmount({ token: IERC20(Currency.unwrap( key.currency0 )), amount: 0 }),
-            min_b: TokenAmount({ token: IERC20(Currency.unwrap( key.currency1 )), amount: 0 })
+            minimum_added_a: TokenAmount({ token: IERC20(Currency.unwrap( key.currency0 )), amount: 0 }),
+            minimum_added_b: TokenAmount({ token: IERC20(Currency.unwrap( key.currency1 )), amount: 0 })
         });
 
         hook.harness_add_liquidity( _create_liquidity_context( key, lp, SEED_AMOUNT, SEED_AMOUNT ), params );

@@ -368,6 +368,19 @@ contract TestableSafeSwap is SafeSwap {
     {
         return SafeSwapCommon.calculate_swap_stake( funding );
     }
+
+    function harness_calculate_normalized_liquidity_stake(
+        uint160 sqrtPriceX96,
+        IERC20 token0,
+        IERC20 token1,
+        IERC20 preferred_stake_token,
+        uint256 amount0,
+        uint256 amount1
+    )
+    external pure returns ( TokenAmount memory )
+    {
+        return SafeSwapCommon.calculate_normalized_liquidity_stake( sqrtPriceX96, token0, token1, amount0, amount1, preferred_stake_token );
+    }
 }
 
 
@@ -506,17 +519,17 @@ abstract contract SafeSwapTestBase is Test {
     {
         return ExactInputSwapParams({
             token_out: token1,
-            minimum_amount_out: min_out,
+            minimum_output_amount: min_out,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
     }
 
-    function _create_exact_output_params( uint256 amount_out )
+    function _create_exact_output_params( uint256 exact_output_amount )
     internal view returns ( ExactOutputSwapParams memory )
     {
         return ExactOutputSwapParams({
             token_out: token1,
-            amount_out: amount_out,
+            exact_output_amount: exact_output_amount,
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
         });
     }
@@ -528,8 +541,8 @@ abstract contract SafeSwapTestBase is Test {
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
     }
 
@@ -541,8 +554,8 @@ abstract contract SafeSwapTestBase is Test {
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
             liquidity: liquidity,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token1, amount: 0 })
+            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_received_b: TokenAmount({ token: token1, amount: 0 })
         });
     }
 

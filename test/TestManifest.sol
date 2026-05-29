@@ -227,6 +227,7 @@ interface ISwapExecutionTests {
     // ─── Pool Key Building ─────────────────────────────────────────────────────────
     function test_build_pool_key_orders_currencies_correctly( ) external;
     function test_build_pool_key_sets_hook_address( ) external;
+    function test_off_chain_get_pool_id_matches_pool_key_id_for_both_token_orders( ) external;
 }
 
 
@@ -345,6 +346,11 @@ interface IStakeCalculationTests {
     function test_swap_stake_is_1_percent( ) external;
     function test_swap_stake_bumps_dust_to_one_wei( ) external;
     function test_swap_stake_zero_input_still_bumps_to_one_wei( ) external;
+
+    // ─── Liquidity Stake ───────────────────────────────────────────────────────────
+    function test_liquidity_stake_defaults_to_token0( ) external;
+    function test_liquidity_stake_honors_token1_preference( ) external;
+    function test_liquidity_stake_ignores_unknown_preference_and_defaults_to_token0( ) external;
 }
 
 
@@ -425,11 +431,14 @@ interface IRealPoolIntegrationTests {
     function test_real_pool_quote_add_liquidity_dust_input_still_yields_real_stake( ) external;
     function test_real_pool_quote_add_liquidity_one_sided_above_yields_real_stake( ) external;
     function test_real_pool_quote_add_liquidity_returns_two_fundings_and_delays( ) external;
+    function test_real_pool_quote_add_liquidity_honors_token1_stake_preference( ) external;
     function test_real_pool_quote_remove_liquidity_stake_uses_position_amounts( ) external;
     function test_real_pool_quote_remove_liquidity_stake_ignores_user_supplied_mins( ) external;
+    function test_real_pool_quote_remove_liquidity_honors_token1_stake_preference( ) external;
     function test_real_pool_quote_donate_stake_normalizes_both_sides( ) external;
     function test_real_pool_quote_donate_dust_input_still_yields_real_stake( ) external;
     function test_real_pool_quote_donate_one_sided_yields_real_stake( ) external;
+    function test_real_pool_quote_donate_honors_token1_stake_preference( ) external;
 }
 
 
@@ -533,7 +542,7 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Implemented & Passing:      226 ✓
+// Implemented & Passing:      235 ✓
 // Manifest-only Benchmarks:    10 declared above, not currently in the test suite.
 //
 // Coverage by Section:
@@ -543,14 +552,14 @@ interface IGasBenchmarkTests {
 // - Canonical BondRoute:       13 tests  ✓
 // - Hook Callbacks:            21 tests  ✓
 // - Unlock Callback:            9 tests  ✓
-// - Swap Execution:            14 tests  ✓
+// - Swap Execution:            15 tests  ✓
 // - Liquidity Execution:       20 tests  ✓
 // - Donate Execution:           3 tests  ✓
 // - Protocol Fee:              13 tests  ✓
 // - Fee Withdrawal:            12 tests  ✓
-// - Stake Calculation:          4 tests  ✓
+// - Stake Calculation:          7 tests  ✓
 // - Integration Tests:         12 tests  ✓
-// - Real Pool Integration:     33 tests  ✓
+// - Real Pool Integration:     36 tests  ✓
 // - Reentrant Context:          1 test    ✓
 // - Memory Zero Init:           4 tests  ✓
 // - Fuzz Tests:                 8 tests  ✓

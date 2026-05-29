@@ -190,7 +190,7 @@ contract MockBondRouteIntegrationTest is SafeSwapTestBase {
     {
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
             token_out: token0,
-            minimum_amount_out: 90 ether,
+            minimum_output_amount: 90 ether,
             pool_info: _default_pool_info( )
         });
         bytes memory call_data  =  _encode_exact_input_calldata( params );
@@ -297,7 +297,7 @@ contract MockBondRouteIntegrationTest is SafeSwapTestBase {
     {
         ExactOutputSwapParams memory params  =  ExactOutputSwapParams({
             token_out: token0,
-            amount_out: 90 ether,
+            exact_output_amount: 90 ether,
             pool_info: _default_pool_info( )
         });
         bytes memory call_data  =  _encode_exact_output_calldata( params );
@@ -389,8 +389,8 @@ contract MockBondRouteIntegrationTest is SafeSwapTestBase {
             tick_lower: -600,
             tick_upper: 600,
             liquidity: 100 ether,
-            min_a: TokenAmount({ token: token0, amount: 0 }),
-            min_b: TokenAmount({ token: token0, amount: 0 })
+            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_received_b: TokenAmount({ token: token0, amount: 0 })
         });
         bytes memory call_data  =  _encode_remove_liquidity_calldata( params );
 
@@ -626,13 +626,13 @@ contract MockBondRouteIntegrationTest is SafeSwapTestBase {
     {
         ExactInputSwapParams memory params1  =  ExactInputSwapParams({
             token_out: token1,
-            minimum_amount_out: 90 ether,
+            minimum_output_amount: 90 ether,
             pool_info: _default_pool_info( )
         });
 
         ExactInputSwapParams memory params2  =  ExactInputSwapParams({
             token_out: token1,
-            minimum_amount_out: 100 ether,  // Different amount.
+            minimum_output_amount: 100 ether,  // Different amount.
             pool_info: _default_pool_info( )
         });
 

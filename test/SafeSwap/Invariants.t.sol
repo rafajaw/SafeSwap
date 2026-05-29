@@ -52,7 +52,7 @@ contract SafeSwapHandler is Test {
 
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
             token_out: IERC20(address(token1)),
-            minimum_amount_out: 0,  // No slippage check for invariant testing.
+            minimum_output_amount: 0,  // No slippage check for invariant testing.
             pool_info: PoolInfo({ fee: 3000, tick_spacing: 60 })
         });
 
