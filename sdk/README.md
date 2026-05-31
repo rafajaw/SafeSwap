@@ -30,17 +30,24 @@ const safeswap = await SafeSwap.init({
     bondroute_address: "0x...",
 });
 
-const bond = await safeswap.swap_exact_input({
+const operation = await safeswap.prepare_swap_exact_input({
     input: { token: USDC, exact_amount: 1000_000_000n },
     output: { token: WETH, minimum_amount: 390_000_000_000_000_000n },
     pool_info: { fee: 3000, tick_spacing: 60 },
 });
 
-await bond.dispatch();
+await operation.render_description();
+operation.execution_data.fundings;
+operation.execution_data.stake;
+operation.constraints;
+await operation.get_missing_balances();
+await operation.get_missing_approvals();
+
+await operation.dispatch();
 ```
 
 `SafeSwap` delegates bond lifecycle, persistence, recovery, approvals, balance checks, gas bumping, and settlement handling to the embedded BondRoute SDK.
-After `dispatch()` resolves, switch on `bond.status`.
+After `dispatch()` resolves, switch on `operation.status`.
 
 ## Address Overrides
 
@@ -52,39 +59,70 @@ SAFESWAP_ADDRESS
 
 Pass `safeswap_address` or `bondroute_address` to `SafeSwap.init()` only when targeting non-canonical deployments.
 
-## Reverts
+## Bond Lifecycle
 
-The SDK exports `SAFESWAP_ABI` and `decode_safeswap_revert()` for protocol revert handling:
+Preparing an operation returns a dispatchable SafeSwap operation backed by a BondRoute `Bond`. Inspect it before dispatch to render confirmation UI or handle missing wallet state:
 
 ```typescript
-import { decode_safeswap_revert } from "@safeswap/sdk";
+const operation = await safeswap.prepare_swap_exact_input({ ... });
 
-if( bond.status === "protocol_reverted" )
+const description = await operation.render_description();
+const fundings = operation.execution_data.fundings;
+const stake = operation.execution_data.stake;
+const constraints = operation.constraints;
+const missing_balances = await operation.get_missing_balances();
+const missing_approvals = await operation.get_missing_approvals();
+const native_create_value = operation.get_native_value_for_create();
+const native_execute_value = operation.get_native_value_for_execute();
+
+await operation.dispatch();
+```
+
+For custom flows, drive the lifecycle manually:
+
+```typescript
+await operation.approve_if_needed();
+await operation.create();
+await operation.wait_until_executable();
+await operation.execute();
+```
+
+Use `watch_bond()` or `operation.get_status()` to update UI while the operation is creating, waiting, executing, or settled.
+
+## Reverts
+
+The SDK exports `SAFESWAP_ABI`, `parse_safeswap_revert()`, and `explain_safeswap_revert()` for protocol revert handling:
+
+```typescript
+import { parse_safeswap_revert, explain_safeswap_revert } from "@safeswap/sdk";
+
+if( operation.status === "protocol_reverted" )
 {
-    const decoded = decode_safeswap_revert( bond.revert_output );
+    const parsed = parse_safeswap_revert( operation.revert_output );
+    const message = explain_safeswap_revert( operation.revert_output );
 }
 ```
 
 ## Operations
 
-All operations return a prepared `Bond`; call `bond.dispatch()` to create, wait, and execute.
+All operations return a prepared operation; call `operation.dispatch()` to create, wait, and execute.
 
 ```typescript
-await safeswap.swap_exact_input({ ... });
-await safeswap.swap_exact_output({ ... });
-await safeswap.add_liquidity({ ... });
-await safeswap.remove_liquidity({ ... });
-await safeswap.donate({ ... });
+await safeswap.prepare_swap_exact_input({ ... });
+await safeswap.prepare_swap_exact_output({ ... });
+await safeswap.prepare_add_liquidity({ ... });
+await safeswap.prepare_remove_liquidity({ ... });
+await safeswap.prepare_donate({ ... });
 ```
 
 ```typescript
-await safeswap.swap_exact_output({
+await safeswap.prepare_swap_exact_output({
     input: { token: USDC, maximum_amount: 1100_000_000n },
     output: { token: WETH, exact_amount: 400_000_000_000_000_000n },
     pool_info: { fee: 3000, tick_spacing: 60 },
 });
 
-await safeswap.add_liquidity({
+await safeswap.prepare_add_liquidity({
     a: { token: USDC, amount: 1000_000_000n, minimum_added: 990_000_000n },
     b: { token: WETH, amount: 400_000_000_000_000_000n, minimum_added: 396_000_000_000_000_000n },
     pool_info: { fee: 3000, tick_spacing: 60 },
@@ -92,7 +130,7 @@ await safeswap.add_liquidity({
     tick_upper: 887220,
 });
 
-await safeswap.remove_liquidity({
+await safeswap.prepare_remove_liquidity({
     a: { token: USDC, minimum_received: 990_000_000n },
     b: { token: WETH, minimum_received: 396_000_000_000_000_000n },
     pool_info: { fee: 3000, tick_spacing: 60 },
@@ -101,7 +139,7 @@ await safeswap.remove_liquidity({
     liquidity: 500_000_000_000_000n,
 });
 
-await safeswap.donate({
+await safeswap.prepare_donate({
     a: { token: USDC, amount: 100_000_000n },
     b: { token: WETH, amount: 40_000_000_000_000_000n },
     pool_info: { fee: 3000, tick_spacing: 60 },
@@ -110,7 +148,7 @@ await safeswap.donate({
 
 ## Stake Token Selection
 
-`add_liquidity`, `remove_liquidity`, and `donate` accept `preferred_stake_token`.
+`prepare_add_liquidity`, `prepare_remove_liquidity`, and `prepare_donate` accept `preferred_stake_token`.
 
 If you pass `preferred_stake_token`, the SDK requires it to be one of the two pool tokens and uses it exactly.
 

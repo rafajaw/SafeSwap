@@ -14,7 +14,7 @@
 //   1. Copy this file into your project (or install once published as @safeswap/sdk)
 //   2. Install peer deps: `npm install viem @bondroute/sdk`
 //   3. Initialize once: `const safeswap = await SafeSwap.init({ on_pending_bond: ..., ... })`
-//   4. Prepare + dispatch: `const bond = await safeswap.swap_exact_input({ ... })`
+//   4. Prepare + dispatch: `const operation = await safeswap.prepare_swap_exact_input({ ... })`
 //
 // No external dependencies beyond viem and @bondroute/sdk.
 // Storage and recovery are handled by the embedded BondRoute instance.
@@ -22,6 +22,7 @@
 import {
     decodeErrorResult,
     encodeFunctionData,
+    formatUnits,
     parseAbi,
     type Account,
     type Address,
@@ -48,6 +49,7 @@ import {
 
 /** Canonical SafeSwap deployment address (same across all chains). ***TODO*** Set before release. */
 export const SAFESWAP_ADDRESS  =  "0x0000000000000000000000000000000000000000" as const;
+const ZERO_ADDRESS             =  "0x0000000000000000000000000000000000000000" as const;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -55,6 +57,27 @@ export const SAFESWAP_ADDRESS  =  "0x0000000000000000000000000000000000000000" a
 
 /** Re-export Bond and BondSnapshot so callers don't need to import BondRoute SDK directly. */
 export type { Bond, BondSnapshot, BondConstraints, ExecutionData, TokenAmount };
+
+export type SafeSwapOperationKind =
+    | "swap_exact_input"
+    | "swap_exact_output"
+    | "add_liquidity"
+    | "remove_liquidity"
+    | "donate";
+
+export type TokenDisplayMetadata = {
+    symbol:   string;
+    decimals: number;
+};
+
+export type RenderDescriptionOpts = {
+    native_token?: TokenDisplayMetadata;
+};
+
+export type PreparedSafeSwapOperation = Bond & {
+    kind: SafeSwapOperationKind;
+    render_description: ( opts?: RenderDescriptionOpts ) => Promise<string>;
+};
 
 /** Uniswap V4 pool configuration shared by all SafeSwap operations. */
 export type PoolInfo = {
@@ -153,6 +176,66 @@ export type PositionInfo = {
     fee_growth_inside_1_last_x128:    bigint;
 };
 
+export type ParsedSafeSwapRevert =
+    | {
+        kind:                "slippage_exceeded";
+        description:         string;
+        amount_received:     bigint;
+        minimum_required:    bigint;
+    }
+    | {
+        kind:                "unsupported_fee_tier";
+        description:         string;
+        fee:                 number;
+    }
+    | {
+        kind:                "one_sided_deposit_mismatch";
+        description:         string;
+        expected_token:      Address;
+        minimum_required:    bigint;
+    }
+    | {
+        kind:                    "minimum_added_tokens_mismatch";
+        description:             string;
+        funding_token0:          Address;
+        funding_token1:          Address;
+        minimum_added_a_token:   Address;
+        minimum_added_b_token:   Address;
+    }
+    | {
+        kind:                "bondroute_required";
+        description:         string;
+        caller:              Address;
+        bondroute:           Address;
+    }
+    | {
+        kind:                "unauthorized";
+        description:         string;
+        caller:              Address;
+        expected:            Address;
+    }
+    | {
+        kind:                "invalid";
+        description:         string;
+        field:               string;
+        value:               bigint;
+    }
+    | {
+        kind:                "transfer_failed";
+        description:         string;
+        token:               Address;
+        recipient:           Address;
+        amount:              bigint;
+    }
+    | {
+        kind:                "unsupported_call";
+        description:         string;
+    }
+    | {
+        kind:                "unknown";
+        description:         string;
+    };
+
 export type SafeSwapOpts = {
     public_client:  PublicClient;
     wallet_client:  WalletClient;
@@ -207,8 +290,13 @@ export const SAFESWAP_ABI  =  parseAbi([
     "error UnsupportedCall()",
 ]);
 
+const ERC20_METADATA_ABI  =  parseAbi([
+    "function decimals() view returns (uint8)",
+    "function symbol() view returns (string)",
+]);
+
 /** Decode SafeSwap revert output against the SDK's bundled SafeSwap ABI. */
-export function decode_safeswap_revert( output: Hex ): { name: string, args: readonly unknown[] } | null
+function decode_safeswap_revert( output: Hex ): { name: string, args: readonly unknown[] } | null
 {
     if(  output.length < 10  )  return null;
     try
@@ -220,6 +308,140 @@ export function decode_safeswap_revert( output: Hex ): { name: string, args: rea
     {
         return null;
     }
+}
+
+function as_bigint( value: unknown ): bigint
+{
+    return typeof value === "bigint"  ?  value  :  BigInt( String( value ) );
+}
+
+function as_number( value: unknown ): number
+{
+    return Number( as_bigint( value ) );
+}
+
+function as_address( value: unknown ): Address
+{
+    return String( value ) as Address;
+}
+
+function as_string( value: unknown ): string
+{
+    return String( value );
+}
+
+/** Parse SafeSwap revert output into a UI-facing semantic shape. */
+export function parse_safeswap_revert( output: Hex ): ParsedSafeSwapRevert
+{
+    const decoded  =  decode_safeswap_revert( output );
+    if(  decoded === null  )  return { kind: "unknown", description: "SafeSwap reverted with an unknown error." };
+
+    switch( decoded.name )
+    {
+        case "SlippageExceeded": {
+            const amount_received   =  as_bigint( decoded.args[0] );
+            const minimum_required  =  as_bigint( decoded.args[1] );
+            return {
+                kind:        "slippage_exceeded",
+                description: `SafeSwap slippage check failed: received ${ String(amount_received) }, required at least ${ String(minimum_required) }.`,
+                amount_received,
+                minimum_required,
+            };
+        }
+
+        case "UnsupportedFeeTier": {
+            const fee  =  as_number( decoded.args[0] );
+            return {
+                kind:        "unsupported_fee_tier",
+                description: `SafeSwap does not support this pool fee tier: ${ String(fee) }.`,
+                fee,
+            };
+        }
+
+        case "OneSidedDepositMismatch": {
+            const expected_token    =  as_address( decoded.args[0] );
+            const minimum_required  =  as_bigint( decoded.args[1] );
+            return {
+                kind:        "one_sided_deposit_mismatch",
+                description: `SafeSwap expected a one-sided liquidity deposit in token ${ expected_token } with minimum amount ${ String(minimum_required) }.`,
+                expected_token,
+                minimum_required,
+            };
+        }
+
+        case "MinimumAddedTokensMismatch": {
+            const funding_token0         =  as_address( decoded.args[0] );
+            const funding_token1         =  as_address( decoded.args[1] );
+            const minimum_added_a_token  =  as_address( decoded.args[2] );
+            const minimum_added_b_token  =  as_address( decoded.args[3] );
+            return {
+                kind:        "minimum_added_tokens_mismatch",
+                description: `SafeSwap minimum-added token order does not match the bond fundings. Funding tokens were ${ funding_token0 } and ${ funding_token1 }; minimum-added tokens were ${ minimum_added_a_token } and ${ minimum_added_b_token }.`,
+                funding_token0,
+                funding_token1,
+                minimum_added_a_token,
+                minimum_added_b_token,
+            };
+        }
+
+        case "BondRouteRequired": {
+            const caller     =  as_address( decoded.args[0] );
+            const bondroute  =  as_address( decoded.args[1] );
+            return {
+                kind:        "bondroute_required",
+                description: `SafeSwap operation must execute through BondRoute ${ bondroute }; caller was ${ caller }.`,
+                caller,
+                bondroute,
+            };
+        }
+
+        case "Unauthorized": {
+            const caller    =  as_address( decoded.args[0] );
+            const expected  =  as_address( decoded.args[1] );
+            return {
+                kind:        "unauthorized",
+                description: `SafeSwap rejected unauthorized caller ${ caller }; expected ${ expected }.`,
+                caller,
+                expected,
+            };
+        }
+
+        case "Invalid": {
+            const field  =  as_string( decoded.args[0] );
+            const value  =  as_bigint( decoded.args[1] );
+            return {
+                kind:        "invalid",
+                description: `SafeSwap rejected invalid parameter ${ field } with value ${ String(value) }.`,
+                field,
+                value,
+            };
+        }
+
+        case "TransferFailed": {
+            const token      =  as_address( decoded.args[0] );
+            const recipient  =  as_address( decoded.args[1] );
+            const amount     =  as_bigint( decoded.args[2] );
+            return {
+                kind:        "transfer_failed",
+                description: `SafeSwap token transfer failed for token ${ token } to recipient ${ recipient } with amount ${ String(amount) }.`,
+                token,
+                recipient,
+                amount,
+            };
+        }
+
+        case "UnsupportedCall":
+            return { kind: "unsupported_call", description: "SafeSwap does not support this encoded call." };
+
+        default:
+            return { kind: "unknown", description: `SafeSwap reverted with ${ decoded.name }.` };
+    }
+}
+
+/** Return a user-facing explanation for SafeSwap revert output. */
+export function explain_safeswap_revert( output: Hex ): string
+{
+    return parse_safeswap_revert( output ).description;
 }
 
 function get_ordered_pool_tokens( token_a: Address, token_b: Address ): { token0: Address, token1: Address }
@@ -249,6 +471,23 @@ function is_native_token( token: Address ): boolean
     return token.toLowerCase() === NATIVE_TOKEN.toLowerCase();
 }
 
+function assert_positive_amount( field: string, amount: bigint ): void
+{
+    if(  amount <= 0n  )  throw new Error( `${ field } must be greater than zero.` );
+}
+
+function assert_distinct_tokens( token_a: Address, token_b: Address, context: string ): void
+{
+    if(  token_a.toLowerCase() === token_b.toLowerCase()  )  throw new Error( `${ context } tokens must be different.` );
+}
+
+function assert_ticks( tick_lower: number, tick_upper: number, tick_spacing: number ): void
+{
+    if(  tick_spacing <= 0  )  throw new Error( "pool_info.tick_spacing must be greater than zero." );
+    if(  tick_lower >= tick_upper  )  throw new Error( "tick_lower must be less than tick_upper." );
+    if(  tick_lower % tick_spacing !== 0  )  throw new Error( "tick_lower must be aligned to pool_info.tick_spacing." );
+    if(  tick_upper % tick_spacing !== 0  )  throw new Error( "tick_upper must be aligned to pool_info.tick_spacing." );
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SDK
@@ -265,18 +504,19 @@ function is_native_token( token: Address ): boolean
  *       public_client, wallet_client, account,
  *       on_pending_bond: (bond) => bond.resume(),
  *   });
- *   const bond = await safeswap.swap_exact_input({
+ *   const operation = await safeswap.prepare_swap_exact_input({
  *       input:  { token: USDC, exact_amount: 1000_000_000n },
  *       output: { token: WETH, minimum_amount: 0n },
  *       pool_info: { fee: 3000, tick_spacing: 60 },
  *   });
- *   await bond.dispatch();
- *   if (bond.status === "executed") { ... }
+ *   await operation.dispatch();
+ *   if (operation.status === "executed") { ... }
  */
 export class SafeSwap {
 
     readonly #bondRoute: BondRoute;
     readonly safeswap_address: Address;
+    readonly #tokenMetadataCache = new Map<string, Promise<TokenDisplayMetadata>>();
 
     private constructor( bondRoute: BondRoute, safeswap_address: Address )
     {
@@ -292,6 +532,9 @@ export class SafeSwap {
      */
     static async init( opts: SafeSwapOpts ): Promise<SafeSwap>
     {
+        const safeswap_address  =  opts.safeswap_address ?? SAFESWAP_ADDRESS;
+        if(  safeswap_address.toLowerCase() === ZERO_ADDRESS  )  throw new Error( "safeswap_address is not configured." );
+
         const bondRoute  =  await BondRoute.init({
             public_client:              opts.public_client,
             wallet_client:              opts.wallet_client,
@@ -302,7 +545,7 @@ export class SafeSwap {
             gas:                        opts.gas,
             min_confirmations_to_forget: opts.min_confirmations_to_forget,
         });
-        return new SafeSwap( bondRoute, opts.safeswap_address ?? SAFESWAP_ADDRESS );
+        return new SafeSwap( bondRoute, safeswap_address );
     }
 
 
@@ -310,18 +553,21 @@ export class SafeSwap {
 
     /**
      * Prepare a swap where the input amount is fixed and the output amount is at least `output.minimum_amount`.
-     * Returns a prepared Bond; call `bond.dispatch()` to execute.
+     * Returns a prepared operation; call `operation.dispatch()` to execute.
      *
      * @example
-     *   const bond = await safeswap.swap_exact_input({
+     *   const operation = await safeswap.prepare_swap_exact_input({
      *       input:  { token: USDC, exact_amount: 1000_000_000n },
      *       output: { token: WETH, minimum_amount: 390_000_000_000_000_000n },
      *       pool_info: { fee: 3000, tick_spacing: 60 },
      *   });
-     *   await bond.dispatch();
+     *   await operation.dispatch();
      */
-    async swap_exact_input( params: SwapExactInputParams ): Promise<Bond>
+    async prepare_swap_exact_input( params: SwapExactInputParams ): Promise<PreparedSafeSwapOperation>
     {
+        assert_distinct_tokens( params.input.token, params.output.token, "swap" );
+        assert_positive_amount( "input.exact_amount", params.input.exact_amount );
+
         const call  =  encodeFunctionData({
             abi:          SAFESWAP_ABI,
             functionName: "swap_exact_input",
@@ -332,27 +578,36 @@ export class SafeSwap {
             }],
         });
 
-        return await this.#bondRoute.prepare({
+        const operation  =  await this.#bondRoute.prepare({
             protocol:           this.safeswap_address,
             call,
             preferred_fundings: [{ token: params.input.token, amount: params.input.exact_amount }],
+        });
+        return this.#attach_operation_description( operation, "swap_exact_input", async ( opts ) => {
+            const input   =  await this.#render_token_amount( params.input.token, params.input.exact_amount, opts );
+            const output  =  await this.#render_token_amount( params.output.token, params.output.minimum_amount, opts );
+            return `Swap exactly ${ input } for at least ${ output }.`;
         });
     }
 
     /**
      * Prepare a swap where the output amount is exact and input is capped at `input.maximum_amount`.
-     * Reverts if required input exceeds the cap. Returns a prepared Bond.
+     * Reverts if required input exceeds the cap. Returns a prepared operation.
      *
      * @example
-     *   const bond = await safeswap.swap_exact_output({
+     *   const operation = await safeswap.prepare_swap_exact_output({
      *       input:  { token: USDC, maximum_amount: 1100_000_000n },
      *       output: { token: WETH, exact_amount: 400_000_000_000_000_000n },
      *       pool_info: { fee: 3000, tick_spacing: 60 },
      *   });
-     *   await bond.dispatch();
+     *   await operation.dispatch();
      */
-    async swap_exact_output( params: SwapExactOutputParams ): Promise<Bond>
+    async prepare_swap_exact_output( params: SwapExactOutputParams ): Promise<PreparedSafeSwapOperation>
     {
+        assert_distinct_tokens( params.input.token, params.output.token, "swap" );
+        assert_positive_amount( "input.maximum_amount", params.input.maximum_amount );
+        assert_positive_amount( "output.exact_amount", params.output.exact_amount );
+
         const call  =  encodeFunctionData({
             abi:          SAFESWAP_ABI,
             functionName: "swap_exact_output",
@@ -363,10 +618,15 @@ export class SafeSwap {
             }],
         });
 
-        return await this.#bondRoute.prepare({
+        const operation  =  await this.#bondRoute.prepare({
             protocol:           this.safeswap_address,
             call,
             preferred_fundings: [{ token: params.input.token, amount: params.input.maximum_amount }],
+        });
+        return this.#attach_operation_description( operation, "swap_exact_output", async ( opts ) => {
+            const input   =  await this.#render_token_amount( params.input.token, params.input.maximum_amount, opts );
+            const output  =  await this.#render_token_amount( params.output.token, params.output.exact_amount, opts );
+            return `Swap up to ${ input } for exactly ${ output }.`;
         });
     }
 
@@ -375,16 +635,21 @@ export class SafeSwap {
      * `minimum_added` guards against slippage during position minting.
      *
      * @example
-     *   const bond = await safeswap.add_liquidity({
+     *   const operation = await safeswap.prepare_add_liquidity({
      *       a: { token: USDC, amount: 1000_000_000n, minimum_added: 990_000_000n },
      *       b: { token: WETH, amount: 400_000_000_000_000_000n, minimum_added: 396_000_000_000_000_000n },
      *       pool_info: { fee: 3000, tick_spacing: 60 },
      *       tick_lower: -887220, tick_upper: 887220,
      *   });
-     *   await bond.dispatch();
+     *   await operation.dispatch();
      */
-    async add_liquidity( params: AddLiquidityParams ): Promise<Bond>
+    async prepare_add_liquidity( params: AddLiquidityParams ): Promise<PreparedSafeSwapOperation>
     {
+        assert_distinct_tokens( params.a.token, params.b.token, "liquidity" );
+        assert_positive_amount( "a.amount", params.a.amount );
+        assert_positive_amount( "b.amount", params.b.amount );
+        assert_ticks( params.tick_lower, params.tick_upper, params.pool_info.tick_spacing );
+
         const preferred_stake_token  =  resolve_explicit_preferred_stake_token( params.preferred_stake_token, params.a.token, params.b.token );
 
         const call  =  encodeFunctionData({
@@ -404,7 +669,14 @@ export class SafeSwap {
             { token: params.b.token, amount: params.b.amount },
         ];
 
-        return await this.#prepare_with_auto_stake_token( call, params.a.token, params.b.token, preferred_fundings, preferred_stake_token );
+        const operation  =  await this.#prepare_with_auto_stake_token( call, params.a.token, params.b.token, preferred_fundings, preferred_stake_token );
+        return this.#attach_operation_description( operation, "add_liquidity", async ( opts ) => {
+            const amount_a   =  await this.#render_token_amount( params.a.token, params.a.amount, opts );
+            const amount_b   =  await this.#render_token_amount( params.b.token, params.b.amount, opts );
+            const minimum_a  =  await this.#render_token_amount( params.a.token, params.a.minimum_added, opts );
+            const minimum_b  =  await this.#render_token_amount( params.b.token, params.b.minimum_added, opts );
+            return `Add ${ amount_a } and ${ amount_b } as liquidity from tick ${ params.tick_lower } to ${ params.tick_upper }, requiring at least ${ minimum_a } and ${ minimum_b } added.`;
+        });
     }
 
     /**
@@ -412,17 +684,21 @@ export class SafeSwap {
      * `minimum_received` guards against slippage during position burn.
      *
      * @example
-     *   const bond = await safeswap.remove_liquidity({
+     *   const operation = await safeswap.prepare_remove_liquidity({
      *       pool_info: { fee: 3000, tick_spacing: 60 },
      *       tick_lower: -887220, tick_upper: 887220,
      *       liquidity: 500_000_000_000_000n,
      *       a: { token: USDC, minimum_received: 990_000_000n },
      *       b: { token: WETH, minimum_received: 396_000_000_000_000_000n },
      *   });
-     *   await bond.dispatch();
+     *   await operation.dispatch();
      */
-    async remove_liquidity( params: RemoveLiquidityParams ): Promise<Bond>
+    async prepare_remove_liquidity( params: RemoveLiquidityParams ): Promise<PreparedSafeSwapOperation>
     {
+        assert_distinct_tokens( params.a.token, params.b.token, "liquidity" );
+        assert_positive_amount( "liquidity", params.liquidity );
+        assert_ticks( params.tick_lower, params.tick_upper, params.pool_info.tick_spacing );
+
         const preferred_stake_token  =  resolve_explicit_preferred_stake_token( params.preferred_stake_token, params.a.token, params.b.token );
 
         const call  =  encodeFunctionData({
@@ -438,7 +714,12 @@ export class SafeSwap {
             }],
         });
 
-        return await this.#prepare_with_auto_stake_token( call, params.a.token, params.b.token, [], preferred_stake_token );
+        const operation  =  await this.#prepare_with_auto_stake_token( call, params.a.token, params.b.token, [], preferred_stake_token );
+        return this.#attach_operation_description( operation, "remove_liquidity", async ( opts ) => {
+            const minimum_a  =  await this.#render_token_amount( params.a.token, params.a.minimum_received, opts );
+            const minimum_b  =  await this.#render_token_amount( params.b.token, params.b.minimum_received, opts );
+            return `Remove ${ String(params.liquidity) } liquidity from tick ${ params.tick_lower } to ${ params.tick_upper }, receiving at least ${ minimum_a } and ${ minimum_b }.`;
+        });
     }
 
     /**
@@ -446,15 +727,19 @@ export class SafeSwap {
      * Both amounts come from bond fundings.
      *
      * @example
-     *   const bond = await safeswap.donate({
+     *   const operation = await safeswap.prepare_donate({
      *       a: { token: USDC, amount: 100_000_000n },
      *       b: { token: WETH, amount: 40_000_000_000_000_000n },
      *       pool_info: { fee: 3000, tick_spacing: 60 },
      *   });
-     *   await bond.dispatch();
+     *   await operation.dispatch();
      */
-    async donate( params: DonateParams ): Promise<Bond>
+    async prepare_donate( params: DonateParams ): Promise<PreparedSafeSwapOperation>
     {
+        assert_distinct_tokens( params.a.token, params.b.token, "donation" );
+        assert_positive_amount( "a.amount", params.a.amount );
+        assert_positive_amount( "b.amount", params.b.amount );
+
         const preferred_stake_token  =  resolve_explicit_preferred_stake_token( params.preferred_stake_token, params.a.token, params.b.token );
 
         const call  =  encodeFunctionData({
@@ -468,7 +753,12 @@ export class SafeSwap {
             { token: params.b.token, amount: params.b.amount },
         ];
 
-        return await this.#prepare_with_auto_stake_token( call, params.a.token, params.b.token, preferred_fundings, preferred_stake_token );
+        const operation  =  await this.#prepare_with_auto_stake_token( call, params.a.token, params.b.token, preferred_fundings, preferred_stake_token );
+        return this.#attach_operation_description( operation, "donate", async ( opts ) => {
+            const amount_a  =  await this.#render_token_amount( params.a.token, params.a.amount, opts );
+            const amount_b  =  await this.#render_token_amount( params.b.token, params.b.amount, opts );
+            return `Donate ${ amount_a } and ${ amount_b } to in-range liquidity providers.`;
+        });
     }
 
     async #prepare_with_auto_stake_token(
@@ -510,6 +800,51 @@ export class SafeSwap {
             preferred_stake_token,
             preferred_fundings,
         });
+    }
+
+    #attach_operation_description(
+        bond: Bond,
+        kind: SafeSwapOperationKind,
+        render_description: ( opts?: RenderDescriptionOpts ) => Promise<string>
+    ): PreparedSafeSwapOperation
+    {
+        return Object.assign( bond, { kind, render_description });
+    }
+
+    async #render_token_amount( token: Address, amount: bigint, opts?: RenderDescriptionOpts ): Promise<string>
+    {
+        const metadata  =  await this.#get_token_display_metadata( token, opts );
+        return `${ formatUnits( amount, metadata.decimals ) } ${ metadata.symbol }`;
+    }
+
+    async #get_token_display_metadata( token: Address, opts?: RenderDescriptionOpts ): Promise<TokenDisplayMetadata>
+    {
+        if(  is_native_token( token )  )  return opts?.native_token ?? { symbol: "ETH", decimals: 18 };
+
+        const key  =  token.toLowerCase();
+        const cached  =  this.#tokenMetadataCache.get( key );
+        if(  cached !== undefined  )  return await cached;
+
+        const promise  =  this.#fetch_token_display_metadata( token );
+        this.#tokenMetadataCache.set( key, promise );
+        return await promise;
+    }
+
+    async #fetch_token_display_metadata( token: Address ): Promise<TokenDisplayMetadata>
+    {
+        const [ decimals, symbol ]  =  await Promise.all([
+            this.#bondRoute.public_client.readContract({
+                address:      token,
+                abi:          ERC20_METADATA_ABI,
+                functionName: "decimals",
+            }),
+            this.#bondRoute.public_client.readContract({
+                address:      token,
+                abi:          ERC20_METADATA_ABI,
+                functionName: "symbol",
+            }),
+        ]);
+        return { decimals: Number( decimals ), symbol: String( symbol ) };
     }
 
 
