@@ -8,3 +8,5 @@ lcov.info
 .agents/
 node_modules/
 sdk/dist/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo

@@ -1,3 +1,12 @@
+# *** IMPORTANT ***
+
+Lets check/add "unchecked" arith on the codebase.
+Add more tests.
+Perform gas benchmarks.
+
+
+
+
 # SafeSwap Deployment Readiness Pass
 
 Date: 2026-05-19
