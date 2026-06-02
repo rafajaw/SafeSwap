@@ -168,14 +168,14 @@ contract CanonicalBondRouteIntegrationTest is SafeSwapTestBase {
         assertGt( token1.balanceOf( user ), user_token1_before, "User should receive ERC20 output from native input swap." );
     }
 
-    function test_canonical_bondroute_add_liquidity_pulls_two_erc20_fundings_from_user( ) external
+    function test_canonical_bondroute_create_position_pulls_two_erc20_fundings_from_user( ) external
     {
         uint256 amount0              =  100 ether;
         uint256 amount1              =  120 ether;
         uint256 user_token0_before   =  token0.balanceOf( user );
         uint256 user_token1_before   =  token1.balanceOf( user );
 
-        ExecutionData memory execution_data  =  _create_erc20_add_liquidity_execution_data( amount0, amount1, 8 );
+        ExecutionData memory execution_data  =  _create_erc20_create_position_execution_data( amount0, amount1, 8 );
         _create_canonical_bond( execution_data );
         _advance_to_valid_execution_time( );
 
@@ -187,7 +187,7 @@ contract CanonicalBondRouteIntegrationTest is SafeSwapTestBase {
         assertEq( user_token1_before - token1.balanceOf( user ), amount1, "User should pay token1 funding." );
     }
 
-    function test_canonical_bondroute_add_liquidity_uses_native_and_erc20_fundings( ) external
+    function test_canonical_bondroute_create_position_uses_native_and_erc20_fundings( ) external
     {
         uint256 amount_eth           =  100 ether;
         uint256 amount_erc20         =  120 ether;
@@ -196,7 +196,7 @@ contract CanonicalBondRouteIntegrationTest is SafeSwapTestBase {
         vm.deal( user, 1_000 ether );
         uint256 user_eth_before  =  user.balance;
 
-        ExecutionData memory execution_data  =  _create_native_add_liquidity_execution_data( amount_eth, amount_erc20, 9 );
+        ExecutionData memory execution_data  =  _create_native_create_position_execution_data( amount_eth, amount_erc20, 9 );
         _create_canonical_bond( execution_data );
         _advance_to_valid_execution_time( );
 
@@ -332,7 +332,7 @@ contract CanonicalBondRouteIntegrationTest is SafeSwapTestBase {
         });
     }
 
-    function _create_erc20_add_liquidity_execution_data( uint256 amount0, uint256 amount1, uint256 salt )
+    function _create_erc20_create_position_execution_data( uint256 amount0, uint256 amount1, uint256 salt )
     internal returns ( ExecutionData memory execution_data )
     {
         pool_manager.set_mock_liquidity_amounts( -int128(uint128(amount0)), -int128(uint128(amount1)) );
@@ -341,18 +341,18 @@ contract CanonicalBondRouteIntegrationTest is SafeSwapTestBase {
         fundings[ 0 ]  =  CanonicalTokenAmount({ token: CanonicalIERC20(address(token0)), amount: amount0 });
         fundings[ 1 ]  =  CanonicalTokenAmount({ token: CanonicalIERC20(address(token1)), amount: amount1 });
 
-        AddLiquidityParams memory params  =  _create_add_liquidity_params( );
+        CreatePositionParams memory params  =  _create_create_position_params( );
 
         execution_data  =  ExecutionData({
             fundings: fundings,
             stake: CanonicalTokenAmount({ token: CanonicalIERC20(address(token0)), amount: ( amount0 + amount1 ) / 100 }),
             salt: salt,
             protocol: CanonicalBondRouteProtected(address(hook)),
-            call: _encode_add_liquidity_calldata( params )
+            call: _encode_create_position_calldata( params )
         });
     }
 
-    function _create_native_add_liquidity_execution_data( uint256 amount_eth, uint256 amount_erc20, uint256 salt )
+    function _create_native_create_position_execution_data( uint256 amount_eth, uint256 amount_erc20, uint256 salt )
     internal returns ( ExecutionData memory execution_data )
     {
         pool_manager.set_mock_liquidity_amounts( -int128(uint128(amount_eth)), -int128(uint128(amount_erc20)) );
@@ -361,12 +361,15 @@ contract CanonicalBondRouteIntegrationTest is SafeSwapTestBase {
         fundings[ 0 ]  =  CanonicalTokenAmount({ token: CanonicalIERC20(address(0)), amount: amount_eth });
         fundings[ 1 ]  =  CanonicalTokenAmount({ token: CanonicalIERC20(address(token1)), amount: amount_erc20 });
 
-        AddLiquidityParams memory params  =  AddLiquidityParams({
+        // token0 sorts to the native currency (address(0) < token1), so minimum_deposited_a references native.
+        CreatePositionParams memory params  =  CreatePositionParams({
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: -TICK_SPACING_60 * 10,
             tick_upper: TICK_SPACING_60 * 10,
-            minimum_added_a: TokenAmount({ token: IERC20(address(0)), amount: 0 }),
-            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
+            liquidity: 100 ether,
+            sqrt_price_x96: SQRT_PRICE_1_1,
+            minimum_deposited_a: TokenAmount({ token: IERC20(address(0)), amount: 0 }),
+            minimum_deposited_b: TokenAmount({ token: token1, amount: 0 })
         });
 
         execution_data  =  ExecutionData({
@@ -374,7 +377,7 @@ contract CanonicalBondRouteIntegrationTest is SafeSwapTestBase {
             stake: CanonicalTokenAmount({ token: CanonicalIERC20(address(0)), amount: ( amount_eth + amount_erc20 ) / 100 }),
             salt: salt,
             protocol: CanonicalBondRouteProtected(address(hook)),
-            call: _encode_add_liquidity_calldata( params )
+            call: _encode_create_position_calldata( params )
         });
     }
 

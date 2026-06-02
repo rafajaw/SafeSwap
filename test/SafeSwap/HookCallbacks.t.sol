@@ -317,6 +317,29 @@ contract HookCallbacksTest is SafeSwapTestBase {
     }
 
 
+    // ━━━━  beforeInitialize( )  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //
+    // Pool initialization is gated: only the PoolManager may call beforeInitialize, and only while SafeSwap has
+    // armed a one-shot initialization allowance (set transiently inside create_position). Both guards block the
+    // permissionless-pool-init attack where anyone seeds the first price for a hooked pool.
+
+    function test_before_initialize_reverts_if_not_pool_manager( ) external
+    {
+        vm.prank( user );
+        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, address(pool_manager) ) );
+        hook.beforeInitialize( user, pool_key, SQRT_PRICE_1_1 );
+    }
+
+    function test_before_initialize_reverts_if_not_authorized( ) external
+    {
+        // No initialization allowance armed → even the PoolManager cannot initialize a hooked pool directly.
+        // The armed pool id / price are both zero since nothing set them.
+        vm.prank( address(pool_manager) );
+        vm.expectRevert( abi.encodeWithSelector( PoolInitializationUnauthorized.selector, address(pool_manager), bytes32(0), uint160(0) ) );
+        hook.beforeInitialize( user, pool_key, SQRT_PRICE_1_1 );
+    }
+
+
     // ━━━━  Protected Context State  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function test_protected_context_cleared_after_swap( ) external

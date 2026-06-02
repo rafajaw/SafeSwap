@@ -28,7 +28,7 @@ import "@SafeSwap/Treasury.sol";
  *
  *   BondRouteProtected - commit-reveal bond mechanism
  *   UniswapHook        - PoolManager + V4 callbacks + protected context
- *   User               - user functions (swap, liquidity) + off-chain getters
+ *   User               - user functions (swap, external-NFT-backed liquidity) + off-chain getters
  *   BondRouteIntegration - BondRoute selectors, quote, validation, signing-info dispatch
  *   Treasury           - protocol-fee withdrawal + treasury role transfer
  *   SafeSwap           - final composition + receive()
@@ -36,7 +36,7 @@ import "@SafeSwap/Treasury.sol";
 contract SafeSwap is BondRouteIntegration, Treasury {
 
     /**
-     * @notice Deploy SafeSwap and initialize PoolManager, BondRoute, and treasury configuration.
+     * @notice Deploy SafeSwap and initialize PoolManager, BondRoute, position NFT, and treasury configuration.
      * @dev Constructor reads deployment configuration from ChainConfig and reverts with string errors for human-facing deployment failures.
      */
     constructor( )

@@ -97,15 +97,17 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         );
     }
 
-    function test_unlock_callback_dispatches_add_liquidity( ) external
+    function test_unlock_callback_dispatches_modify_liquidity_add( ) external
     {
         BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  _create_add_liquidity_params( );
+
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(100 ether) );
 
         // Set mock amounts (negative means user provides).
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
-        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.AddLiquidity)), abi.encode( context, params ) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.ModifyLiquidity)), abi.encode( context, params, position_info ) );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
@@ -117,24 +119,26 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         assertEq(
             user_token0_before - token0.balanceOf( user ),
             50 ether,
-            "Add liquidity dispatch: user should provide 50 ether of token0."
+            "Modify liquidity add dispatch: user should provide 50 ether of token0."
         );
         assertEq(
             user_token1_before - token1.balanceOf( user ),
             50 ether,
-            "Add liquidity dispatch: user should provide 50 ether of token1."
+            "Modify liquidity add dispatch: user should provide 50 ether of token1."
         );
     }
 
-    function test_unlock_callback_dispatches_remove_liquidity( ) external
+    function test_unlock_callback_dispatches_modify_liquidity_remove( ) external
     {
-        BondContext memory context  =  _create_bond_context( user, 0 );
-        RemoveLiquidityParams memory params  =  _create_remove_liquidity_params( 100 ether );
+        BondContext memory context  =  _create_modify_liquidity_no_funding_context( user );
+
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, -int128(100 ether) );
 
         // Set mock amounts (positive means pool returns to user).
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
 
-        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.RemoveLiquidity)), abi.encode( context, params ) );
+        bytes memory data  =  bytes.concat( bytes1(uint8(UniswapHook.Action.ModifyLiquidity)), abi.encode( context, params, position_info ) );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
@@ -146,12 +150,12 @@ contract UnlockCallbackTest is SafeSwapTestBase {
         assertEq(
             token0.balanceOf( user ) - user_token0_before,
             50 ether,
-            "Remove liquidity dispatch: user should receive 50 ether of token0."
+            "Modify liquidity remove dispatch: user should receive 50 ether of token0."
         );
         assertEq(
             token1.balanceOf( user ) - user_token1_before,
             50 ether,
-            "Remove liquidity dispatch: user should receive 50 ether of token1."
+            "Modify liquidity remove dispatch: user should receive 50 ether of token1."
         );
     }
 

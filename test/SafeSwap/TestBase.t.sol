@@ -6,11 +6,12 @@ import "@SafeSwap/SafeSwap.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import "@SafeSwap/libraries/ExactInputSwapLib.sol";
 import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
-import "@SafeSwap/libraries/AddLiquidityLib.sol";
-import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
+import "@SafeSwap/libraries/ModifyLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
+import "@SafeSwapNft/SafeSwapPositionNft.sol";
+import "@SafeSwapNft/ISafeSwapPositionNft.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
-import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY } from "@SafeSwap/Definitions.sol";
+import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, POSITION_NFT_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
@@ -336,17 +337,12 @@ contract TestableSafeSwap is SafeSwap {
         _is_hook_callback_allowed  =  false;
     }
 
-    function harness_execute_add_liquidity( BondContext memory context, AddLiquidityParams memory params ) external
+    /// @dev Unified liquidity harness mirroring production's single Action.ModifyLiquidity dispatch.
+    ///      `params.liquidity_delta` selects the operation: > 0 create/add, < 0 remove, == 0 collect.
+    function harness_execute_modify_liquidity( BondContext memory context, ModifyLiquidityParams memory params, SafeSwapPositionInfo memory position_info ) external
     {
         _is_hook_callback_allowed  =  true;
-        AddLiquidityLib.execute( context, params, PoolManager, address(this) );
-        _is_hook_callback_allowed  =  false;
-    }
-
-    function harness_execute_remove_liquidity( BondContext memory context, RemoveLiquidityParams memory params ) external
-    {
-        _is_hook_callback_allowed  =  true;
-        RemoveLiquidityLib.execute( context, params, PoolManager, address(this) );
+        ModifyLiquidityLib.execute( context, params, PoolManager, address(this), position_info );
         _is_hook_callback_allowed  =  false;
     }
 
@@ -381,6 +377,34 @@ contract TestableSafeSwap is SafeSwap {
     {
         return SafeSwapCommon.calculate_normalized_liquidity_stake( sqrtPriceX96, token0, token1, amount0, amount1, preferred_stake_token );
     }
+
+    function harness_mint_lp_position(
+        address owner,
+        IERC20 token_a,
+        IERC20 token_b,
+        PoolInfo memory pool_info,
+        int24 tick_lower,
+        int24 tick_upper
+    ) external returns ( uint256 token_id )
+    {
+        ( IERC20 token0, , IERC20 token1, )  =  SafeSwapCommon.sort_token_amount_pair(
+            TokenAmount({ token: token_a, amount: 0 }),
+            TokenAmount({ token: token_b, amount: 0 })
+        );
+
+        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token0, token1, pool_info.fee, pool_info.tick_spacing, address(this) );
+
+        SafeSwapPositionInfo memory position_info  =  SafeSwapPositionInfo({
+            pool_id:      pool_key.toId( ),
+            token0:       token0,
+            token1:       token1,
+            pool_info:    pool_info,
+            tick_lower:   tick_lower,
+            tick_upper:   tick_upper
+        });
+
+        token_id  =  PositionNft.mint_position( owner, position_info );
+    }
 }
 
 
@@ -390,6 +414,7 @@ abstract contract SafeSwapTestBase is Test {
 
     // Contracts.
     TestableSafeSwap public hook;
+    SafeSwapPositionNft public position_nft;
     MockPoolManager public pool_manager;
     MockBondRoute public bond_route;
     MockChainConfig public chain_config;
@@ -412,9 +437,11 @@ abstract contract SafeSwapTestBase is Test {
     uint24 constant POOL_FEE_100       =  10000;   // 1.00%.
     int24 constant TICK_SPACING_60     =  60;
     int24 constant TICK_SPACING_10     =  10;
+    int24 constant DEFAULT_TICK_LOWER  =  -TICK_SPACING_60 * 10;
+    int24 constant DEFAULT_TICK_UPPER  =  TICK_SPACING_60 * 10;
     uint256 constant INITIAL_BALANCE   =  1_000_000 ether;
 
-    address constant HOOK_TARGET          =  address(uint160(0x10AA0));
+    address constant HOOK_TARGET          =  address(uint160(0x12AA0));
 
     function setUp( ) public virtual
     {
@@ -439,6 +466,10 @@ abstract contract SafeSwapTestBase is Test {
         // Set deployment config in ChainConfig under the hardcoded CONFIG_SIGNER keyspace.
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(pool_manager) );
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, treasury );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY, HOOK_TARGET );
+
+        position_nft  =  new SafeSwapPositionNft( );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POSITION_NFT_KEY, address(position_nft) );
 
         // Set skip_actual_transfer to true on the etched BondRoute.
         MockBondRoute(payable(BONDROUTE_ADDRESS)).set_skip_actual_transfer( true );
@@ -512,6 +543,19 @@ abstract contract SafeSwapTestBase is Test {
         });
     }
 
+    /// @dev Zero-funding context for remove/collect operations (they pull nothing from the user).
+    function _create_modify_liquidity_no_funding_context( address _user )
+    internal view returns ( BondContext memory )
+    {
+        return BondContext({
+            user: _user,
+            stake: TokenAmount({ token: token0, amount: 1 ether }),
+            fundings: new TokenAmount[]( 0 ),
+            creation_block: block.number - 5,
+            creation_timestamp: block.timestamp - 1 hours
+        });
+    }
+
     function _create_exact_input_params( uint256 min_out )
     internal view returns ( ExactInputSwapParams memory )
     {
@@ -532,26 +576,47 @@ abstract contract SafeSwapTestBase is Test {
         });
     }
 
-    function _create_add_liquidity_params( )
-    internal view returns ( AddLiquidityParams memory )
+    function _create_create_position_params( )
+    internal view returns ( CreatePositionParams memory )
     {
-        return AddLiquidityParams({
-            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
+        return CreatePositionParams({
+            pool_info: _default_pool_info( ),
+            tick_lower: DEFAULT_TICK_LOWER,
+            tick_upper: DEFAULT_TICK_UPPER,
+            liquidity: 100 ether,
+            sqrt_price_x96: SQRT_PRICE_1_1,
+            minimum_deposited_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_deposited_b: TokenAmount({ token: token1, amount: 0 })
         });
     }
 
-    function _create_remove_liquidity_params( uint128 liquidity )
-    internal view returns ( RemoveLiquidityParams memory )
+    function _create_add_liquidity_params( uint256 token_id, uint128 liquidity )
+    internal view returns ( AddPositionLiquidityParams memory )
     {
-        return RemoveLiquidityParams({
-            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
+        return AddPositionLiquidityParams({
+            token_id: token_id,
             liquidity: liquidity,
+            minimum_deposited_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_deposited_b: TokenAmount({ token: token1, amount: 0 })
+        });
+    }
+
+    function _create_remove_liquidity_params( uint256 token_id, uint128 liquidity )
+    internal view returns ( RemovePositionLiquidityParams memory )
+    {
+        return RemovePositionLiquidityParams({
+            token_id: token_id,
+            liquidity: liquidity,
+            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_received_b: TokenAmount({ token: token1, amount: 0 })
+        });
+    }
+
+    function _create_collect_fees_params( uint256 token_id )
+    internal view returns ( CollectFeesParams memory )
+    {
+        return CollectFeesParams({
+            token_id: token_id,
             minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
             minimum_received_b: TokenAmount({ token: token1, amount: 0 })
         });
@@ -598,21 +663,82 @@ abstract contract SafeSwapTestBase is Test {
         return abi.encodeWithSelector( hook.swap_exact_output.selector, params );
     }
 
-    function _encode_add_liquidity_calldata( AddLiquidityParams memory params )
+    function _encode_create_position_calldata( CreatePositionParams memory params )
+    internal view returns ( bytes memory )
+    {
+        return abi.encodeWithSelector( hook.create_position.selector, params );
+    }
+
+    function _encode_add_liquidity_calldata( AddPositionLiquidityParams memory params )
     internal view returns ( bytes memory )
     {
         return abi.encodeWithSelector( hook.add_liquidity.selector, params );
     }
 
-    function _encode_remove_liquidity_calldata( RemoveLiquidityParams memory params )
+    function _encode_remove_liquidity_calldata( RemovePositionLiquidityParams memory params )
     internal view returns ( bytes memory )
     {
         return abi.encodeWithSelector( hook.remove_liquidity.selector, params );
+    }
+
+    function _encode_collect_fees_calldata( CollectFeesParams memory params )
+    internal view returns ( bytes memory )
+    {
+        return abi.encodeWithSelector( hook.collect_fees.selector, params );
     }
 
     function _encode_donate_calldata( DonateParams memory params )
     internal view returns ( bytes memory )
     {
         return abi.encodeWithSelector( hook.donate.selector, params );
+    }
+
+
+    // ━━━━  BONDROUTE DRIVERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// @dev Drive a protected action exactly as BondRoute would, via BondRoute_entry_point.
+    function _execute_bondroute_call( bytes memory call_data, BondContext memory context )
+    internal returns ( bytes memory output )
+    {
+        vm.prank( BONDROUTE_ADDRESS );
+        bool success;
+        ( success, output )  =  address(hook).call( abi.encodeWithSelector( hook.BondRoute_entry_point.selector, call_data, context ) );
+        assertTrue( success, "BondRoute entry call should succeed." );
+    }
+
+    function _execute_bondroute_call_expect_revert( bytes memory call_data, BondContext memory context )
+    internal returns ( bytes memory revert_data )
+    {
+        vm.prank( BONDROUTE_ADDRESS );
+        bool success;
+        ( success, revert_data )  =  address(hook).call( abi.encodeWithSelector( hook.BondRoute_entry_point.selector, call_data, context ) );
+        assertFalse( success, "BondRoute entry call should revert." );
+    }
+
+
+    // ━━━━  POSITION HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// @dev Mint a default-range LP position NFT directly (bypassing BondRoute) for tests that need an
+    ///      existing position to add to / remove from / collect on.
+    function _mint_default_position( address owner )
+    internal returns ( uint256 token_id, SafeSwapPositionInfo memory position_info )
+    {
+        token_id       =  hook.harness_mint_lp_position( owner, token0, token1, _default_pool_info( ), DEFAULT_TICK_LOWER, DEFAULT_TICK_UPPER );
+        position_info  =  position_nft.get_lp_position( token_id );
+    }
+
+    /// @dev Build a unified ModifyLiquidityParams for the harness. Sign of `liquidity_delta` picks the op.
+    function _build_modify_params( uint256 token_id, int128 liquidity_delta )
+    internal view returns ( ModifyLiquidityParams memory )
+    {
+        return ModifyLiquidityParams({
+            token_id: token_id,
+            pool_info: _default_pool_info( ),
+            tick_lower: DEFAULT_TICK_LOWER,
+            tick_upper: DEFAULT_TICK_UPPER,
+            liquidity_delta: liquidity_delta,
+            minimum_amount_a: TokenAmount({ token: token0, amount: 0 }),
+            minimum_amount_b: TokenAmount({ token: token1, amount: 0 })
+        });
     }
 }

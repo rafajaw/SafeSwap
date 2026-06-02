@@ -6,10 +6,11 @@ import "@SafeSwap/SafeSwap.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import "@SafeSwap/libraries/ExactInputSwapLib.sol";
 import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
-import "@SafeSwap/libraries/AddLiquidityLib.sol";
-import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
+import "@SafeSwap/libraries/ModifyLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
-import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY } from "@SafeSwap/Definitions.sol";
+import "@SafeSwapNft/SafeSwapPositionNft.sol";
+import "@SafeSwapNft/ISafeSwapPositionNft.sol";
+import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, POSITION_NFT_KEY } from "@SafeSwap/Definitions.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
@@ -19,8 +20,32 @@ import { PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
+import { LiquidityAmounts } from "./vendor/LiquidityAmounts.sol";
 
 import { MockERC20, MockBondRoute, MockChainConfig } from "./TestBase.t.sol";
+
+
+// ━━━━  TEST FIXTURE PARAMS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Desired-amount fixtures used by the real-pool harness. The harness converts these into the NFT model:
+// add becomes a create_position with a liquidity derived from the desired amounts (via LiquidityAmounts),
+// and remove targets the position's minted token id. These are test-only shapes, not production params.
+struct AddLiquidityParams {
+    PoolInfo pool_info;
+    int24 tick_lower;
+    int24 tick_upper;
+    TokenAmount minimum_added_a;
+    TokenAmount minimum_added_b;
+}
+
+struct RemoveLiquidityParams {
+    PoolInfo pool_info;
+    int24 tick_lower;
+    int24 tick_upper;
+    uint128 liquidity;
+    TokenAmount minimum_received_a;
+    TokenAmount minimum_received_b;
+}
 
 
 // ━━━━  REAL POOL TEST HOOK  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -28,6 +53,10 @@ import { MockERC20, MockBondRoute, MockChainConfig } from "./TestBase.t.sol";
 /// @dev Extends SafeSwap with test entry points that bypass BondRoute_initialize but go through the real
 ///      PoolManager.unlock -> unlockCallback -> library execute -> real pool flow.
 contract RealPoolTestHook is SafeSwap {
+
+    uint160 constant HARNESS_SQRT_PRICE_1_1  =  79228162514264337593543950336;
+
+    mapping( address => uint256 ) public latest_position_token_id;
 
     constructor( ) SafeSwap( ) { }
 
@@ -46,13 +75,37 @@ contract RealPoolTestHook is SafeSwap {
     function harness_add_liquidity( BondContext memory context, AddLiquidityParams memory params )
     external
     {
-        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.AddLiquidity)), abi.encode( context, params ) ) );
+        uint128 liquidity  =  _calculate_liquidity_from_fundings( context, params );
+
+        CreatePositionParams memory create_position_params  =  CreatePositionParams({
+            pool_info: params.pool_info,
+            tick_lower: params.tick_lower,
+            tick_upper: params.tick_upper,
+            liquidity: liquidity,
+            sqrt_price_x96: HARNESS_SQRT_PRICE_1_1,
+            minimum_deposited_a: params.minimum_added_a,
+            minimum_deposited_b: params.minimum_added_b
+        });
+
+        ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )  =  _prepare_create_position( context, create_position_params );
+        latest_position_token_id[ context.user ]  =  executable_params.token_id;
+
+        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.ModifyLiquidity)), abi.encode( context, executable_params, position_info ) ) );
     }
 
     function harness_remove_liquidity( BondContext memory context, RemoveLiquidityParams memory params )
     external
     {
-        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.RemoveLiquidity)), abi.encode( context, params ) ) );
+        RemovePositionLiquidityParams memory remove_liquidity_params  =  RemovePositionLiquidityParams({
+            token_id: latest_position_token_id[ context.user ],
+            liquidity: params.liquidity,
+            minimum_received_a: params.minimum_received_a,
+            minimum_received_b: params.minimum_received_b
+        });
+
+        ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )  =  _prepare_remove_liquidity( context, remove_liquidity_params );
+
+        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.ModifyLiquidity)), abi.encode( context, executable_params, position_info ) ) );
     }
 
     function harness_donate( BondContext memory context, DonateParams memory params )
@@ -61,9 +114,56 @@ contract RealPoolTestHook is SafeSwap {
         PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.Donate)), abi.encode( context, params ) ) );
     }
 
+    function harness_initialize_pool( PoolKey memory key, uint160 sqrt_price_x96 )
+    external
+    {
+        PoolManager.initialize( key, sqrt_price_x96 );
+    }
+
+    function harness_mint_lp_position(
+        address owner,
+        IERC20 token_a,
+        IERC20 token_b,
+        PoolInfo memory pool_info,
+        int24 tick_lower,
+        int24 tick_upper
+    ) external returns ( uint256 token_id )
+    {
+        ( IERC20 token0, , IERC20 token1, )  =  SafeSwapCommon.sort_token_amount_pair(
+            TokenAmount({ token: token_a, amount: 0 }),
+            TokenAmount({ token: token_b, amount: 0 })
+        );
+
+        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token0, token1, pool_info.fee, pool_info.tick_spacing, address(this) );
+
+        SafeSwapPositionInfo memory position_info  =  SafeSwapPositionInfo({
+            pool_id:      pool_key.toId( ),
+            token0:       token0,
+            token1:       token1,
+            pool_info:    pool_info,
+            tick_lower:   tick_lower,
+            tick_upper:   tick_upper
+        });
+
+        token_id  =  PositionNft.mint_position( owner, position_info );
+    }
+
     function harness_hook_callback_allowed( ) external view returns ( bool )
     {
         return _is_hook_callback_allowed;
+    }
+
+    function _calculate_liquidity_from_fundings( BondContext memory context, AddLiquidityParams memory params ) private view returns ( uint128 liquidity )
+    {
+        ( IERC20 token0, uint256 amount0_desired, IERC20 token1, uint256 amount1_desired )  =  SafeSwapCommon.sort_token_amount_pair( context.fundings[ 0 ], context.fundings[ 1 ] );
+
+        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token0, token1, params.pool_info.fee, params.pool_info.tick_spacing, address(this) );
+
+        ( uint160 sqrt_price_x96, , , )  =  StateLibrary.getSlot0( PoolManager, pool_key.toId( ) );
+        uint160 sqrt_price_a_x96         =  TickMath.getSqrtPriceAtTick( params.tick_lower );
+        uint160 sqrt_price_b_x96         =  TickMath.getSqrtPriceAtTick( params.tick_upper );
+
+        liquidity  =  LiquidityAmounts.getLiquidityForAmounts( sqrt_price_x96, sqrt_price_a_x96, sqrt_price_b_x96, amount0_desired, amount1_desired );
     }
 }
 
@@ -193,8 +293,13 @@ contract RealPoolIntegrationTest is Test {
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, treasury );
 
         // Deploy hook at the address carrying SafeSwap's Uniswap V4 permission flags:
-        // BEFORE_SWAP(0x80) | BEFORE_DONATE(0x20) | BEFORE_REMOVE_LIQUIDITY(0x200) | BEFORE_ADD_LIQUIDITY(0x800) = 0x0AA0.
-        address hook_target  =  address(uint160(0x0AA0));
+        // BEFORE_INITIALIZE(0x2000) | BEFORE_SWAP(0x80) | BEFORE_DONATE(0x20) | BEFORE_REMOVE_LIQUIDITY(0x200) | BEFORE_ADD_LIQUIDITY(0x800) = 0x2AA0.
+        address hook_target  =  address(uint160(0x2AA0));
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY, hook_target );
+
+        SafeSwapPositionNft position_nft  =  new SafeSwapPositionNft( );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POSITION_NFT_KEY, address(position_nft) );
+
         deployCodeTo( "RealPoolIntegration.t.sol:RealPoolTestHook", hook_target );
         hook  =  RealPoolTestHook(payable(hook_target));
 
@@ -214,7 +319,7 @@ contract RealPoolIntegrationTest is Test {
             tickSpacing: TICK_SPACING_60,
             hooks: IHooks(address(hook))
         });
-        real_pool_manager.initialize( pool_key, SQRT_PRICE_1_1 );
+        hook.harness_initialize_pool( pool_key, SQRT_PRICE_1_1 );
 
         // Mint tokens and set up approvals.
         token0.mint( user, INITIAL_BALANCE );
@@ -533,6 +638,7 @@ contract RealPoolIntegrationTest is Test {
             minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
         hook.harness_add_liquidity( add_context, add_params );
+        uint256 token_id  =  hook.latest_position_token_id( user );
 
         // Read the position's liquidity from the real PoolManager.
         ( uint128 position_liquidity, , )  =  StateLibrary.getPositionInfo(
@@ -541,7 +647,7 @@ contract RealPoolIntegrationTest is Test {
             address(hook),
             tick_lower,
             tick_upper,
-            bytes32(uint256(uint160(user)))
+            bytes32(token_id)
         );
         assertGt( position_liquidity, 0, "Position should have liquidity after adding." );
 
@@ -615,6 +721,7 @@ contract RealPoolIntegrationTest is Test {
             minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
         hook.harness_add_liquidity( add_context, add_params );
+        uint256 token_id  =  hook.latest_position_token_id( user );
 
         uint256 token0_deposited  =  user_token0_before_add - token0.balanceOf( user );
         uint256 token1_deposited  =  user_token1_before_add - token1.balanceOf( user );
@@ -626,7 +733,7 @@ contract RealPoolIntegrationTest is Test {
             address(hook),
             tick_lower,
             tick_upper,
-            bytes32(uint256(uint160(user)))
+            bytes32(token_id)
         );
 
         // Remove all liquidity.
@@ -791,6 +898,28 @@ contract RealPoolIntegrationTest is Test {
         attacker.attack( );
     }
 
+    function test_real_pool_hook_rejects_direct_pool_initialize( ) external
+    {
+        MockERC20 new_token0  =  new MockERC20( "NewToken0", "NT0", 18 );
+        MockERC20 new_token1  =  new MockERC20( "NewToken1", "NT1", 18 );
+
+        if(  address(new_token0) > address(new_token1)  )
+        {
+            ( new_token0, new_token1 )  =  ( new_token1, new_token0 );
+        }
+
+        PoolKey memory direct_initialize_pool_key  =  PoolKey({
+            currency0: Currency.wrap( address(new_token0) ),
+            currency1: Currency.wrap( address(new_token1) ),
+            fee: POOL_FEE_030,
+            tickSpacing: TICK_SPACING_60,
+            hooks: IHooks(address(hook))
+        });
+
+        vm.expectRevert( );
+        real_pool_manager.initialize( direct_initialize_pool_key, SQRT_PRICE_1_1 );
+    }
+
     function test_real_pool_fee_accumulation_and_withdrawal( ) external
     {
         // Execute multiple swaps.
@@ -835,7 +964,7 @@ contract RealPoolIntegrationTest is Test {
             minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
             minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
-        bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
+        bytes memory call_data  =  _encode_modify_liquidity_create_calldata( params );
 
         TokenAmount[] memory fundings  =  new TokenAmount[](2);
         fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 100 ether });
@@ -856,7 +985,7 @@ contract RealPoolIntegrationTest is Test {
             minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
             minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
-        bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
+        bytes memory call_data  =  _encode_modify_liquidity_create_calldata( params );
 
         TokenAmount[] memory fundings  =  new TokenAmount[](2);
         fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 1 });
@@ -877,7 +1006,7 @@ contract RealPoolIntegrationTest is Test {
             minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
             minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
-        bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
+        bytes memory call_data  =  _encode_modify_liquidity_create_calldata( params );
 
         TokenAmount[] memory fundings  =  new TokenAmount[](2);
         fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 0 });
@@ -898,7 +1027,7 @@ contract RealPoolIntegrationTest is Test {
             minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
             minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
-        bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
+        bytes memory call_data  =  _encode_modify_liquidity_create_calldata( params );
 
         TokenAmount[] memory fundings  =  new TokenAmount[](2);
         fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 100 ether });
@@ -925,7 +1054,7 @@ contract RealPoolIntegrationTest is Test {
             minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
             minimum_added_b: TokenAmount({ token: token1, amount: 0 })
         });
-        bytes memory call_data  =  abi.encodeWithSelector( hook.add_liquidity.selector, params );
+        bytes memory call_data  =  _encode_modify_liquidity_create_calldata( params );
 
         TokenAmount[] memory fundings  =  new TokenAmount[](2);
         fundings[ 0 ]  =  TokenAmount({ token: IERC20(address(token0)), amount: 100 ether });
@@ -937,7 +1066,7 @@ contract RealPoolIntegrationTest is Test {
         assertEq( constraints.min_stake.amount, 3 ether, "At 1:1 price, token1 stake is 1% of (100 + 200) = 3 ether." );
     }
 
-    function test_real_pool_quote_remove_liquidity_stake_uses_position_amounts( ) external view
+    function test_real_pool_quote_remove_liquidity_stake_uses_position_amounts( ) external
     {
         RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
             pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
@@ -947,7 +1076,8 @@ contract RealPoolIntegrationTest is Test {
             minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
             minimum_received_b: TokenAmount({ token: token1, amount: 0 })
         });
-        bytes memory call_data  =  abi.encodeWithSelector( hook.remove_liquidity.selector, params );
+        uint256 token_id        =  hook.harness_mint_lp_position( user, token0, token1, params.pool_info, params.tick_lower, params.tick_upper );
+        bytes memory call_data  =  _encode_modify_liquidity_remove_calldata( params, token_id );
 
         TokenAmount[] memory no_fundings  =  new TokenAmount[]( 0 );
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token0)), no_fundings );
@@ -959,7 +1089,7 @@ contract RealPoolIntegrationTest is Test {
         assertEq( constraints.max_execution_delay_in_seconds, 1 hours, "All SafeSwap bonds have a 1-hour execution window." );
     }
 
-    function test_real_pool_quote_remove_liquidity_stake_ignores_user_supplied_mins( ) external view
+    function test_real_pool_quote_remove_liquidity_stake_ignores_user_supplied_mins( ) external
     {
         RemoveLiquidityParams memory params_zero_mins  =  RemoveLiquidityParams({
             pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
@@ -979,14 +1109,15 @@ contract RealPoolIntegrationTest is Test {
         });
 
         TokenAmount[] memory no_fundings  =  new TokenAmount[]( 0 );
+        uint256 token_id  =  hook.harness_mint_lp_position( user, token0, token1, params_zero_mins.pool_info, params_zero_mins.tick_lower, params_zero_mins.tick_upper );
 
         BondConstraints memory constraints_zero  =  hook.BondRoute_quote_call(
-            abi.encodeWithSelector( hook.remove_liquidity.selector, params_zero_mins ),
+            _encode_modify_liquidity_remove_calldata( params_zero_mins, token_id ),
             IERC20(address(token0)),
             no_fundings
         );
         BondConstraints memory constraints_high  =  hook.BondRoute_quote_call(
-            abi.encodeWithSelector( hook.remove_liquidity.selector, params_high_mins ),
+            _encode_modify_liquidity_remove_calldata( params_high_mins, token_id ),
             IERC20(address(token0)),
             no_fundings
         );
@@ -994,7 +1125,7 @@ contract RealPoolIntegrationTest is Test {
         assertEq( constraints_zero.min_stake.amount, constraints_high.min_stake.amount, "Stake must depend on real position amounts, not on user-supplied slippage bounds." );
     }
 
-    function test_real_pool_quote_remove_liquidity_honors_token1_stake_preference( ) external view
+    function test_real_pool_quote_remove_liquidity_honors_token1_stake_preference( ) external
     {
         RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
             pool_info:   PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
@@ -1004,7 +1135,8 @@ contract RealPoolIntegrationTest is Test {
             minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
             minimum_received_b: TokenAmount({ token: token1, amount: 0 })
         });
-        bytes memory call_data  =  abi.encodeWithSelector( hook.remove_liquidity.selector, params );
+        uint256 token_id        =  hook.harness_mint_lp_position( user, token0, token1, params.pool_info, params.tick_lower, params.tick_upper );
+        bytes memory call_data  =  _encode_modify_liquidity_remove_calldata( params, token_id );
 
         TokenAmount[] memory no_fundings  =  new TokenAmount[]( 0 );
         BondConstraints memory constraints  =  hook.BondRoute_quote_call( call_data, IERC20(address(token1)), no_fundings );
@@ -1156,7 +1288,7 @@ contract RealPoolIntegrationTest is Test {
             tickSpacing: TICK_SPACING_60,
             hooks: IHooks(address(hook))
         });
-        real_pool_manager.initialize( native_pool_key, SQRT_PRICE_1_1 );
+        hook.harness_initialize_pool( native_pool_key, SQRT_PRICE_1_1 );
 
         // Mint ERC20 + grant ETH to the seeding LP and the test users.
         erc20_token.mint( user,       INITIAL_BALANCE );
@@ -1339,5 +1471,32 @@ contract RealPoolIntegrationTest is Test {
         // Remove sends ETH back to the user via V4's `take` — V4 transfers real ETH from PoolManager to the user EOA.
         assertGt( user.balance,                  user_eth_after_add,   "ETH should return to user on remove_liquidity." );
         assertGt( erc20_token.balanceOf( user ), user_erc20_after_add, "ERC20 should return to user on remove_liquidity." );
+    }
+
+    function _encode_modify_liquidity_create_calldata( AddLiquidityParams memory params ) private view returns ( bytes memory call_data )
+    {
+        CreatePositionParams memory create_position_params  =  CreatePositionParams({
+            pool_info: params.pool_info,
+            tick_lower: params.tick_lower,
+            tick_upper: params.tick_upper,
+            liquidity: 100 ether,
+            sqrt_price_x96: SQRT_PRICE_1_1,
+            minimum_deposited_a: params.minimum_added_a,
+            minimum_deposited_b: params.minimum_added_b
+        });
+
+        call_data  =  abi.encodeWithSelector( hook.create_position.selector, create_position_params );
+    }
+
+    function _encode_modify_liquidity_remove_calldata( RemoveLiquidityParams memory params, uint256 token_id ) private view returns ( bytes memory call_data )
+    {
+        RemovePositionLiquidityParams memory remove_liquidity_params  =  RemovePositionLiquidityParams({
+            token_id: token_id,
+            liquidity: params.liquidity,
+            minimum_received_a: params.minimum_received_a,
+            minimum_received_b: params.minimum_received_b
+        });
+
+        call_data  =  abi.encodeWithSelector( hook.remove_liquidity.selector, remove_liquidity_params );
     }
 }

@@ -5,8 +5,7 @@ import "@BondRouteProtected/BondRouteProtected.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import "@SafeSwap/libraries/ExactInputSwapLib.sol";
 import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
-import "@SafeSwap/libraries/AddLiquidityLib.sol";
-import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
+import "@SafeSwap/libraries/ModifyLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
 import "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
@@ -15,9 +14,12 @@ import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { Hooks } from "@UniswapV4Core/libraries/Hooks.sol";
 import { IUnlockCallback } from "@UniswapV4Core/interfaces/callback/IUnlockCallback.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
+import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { BeforeSwapDelta, BeforeSwapDeltaLibrary } from "@UniswapV4Core/types/BeforeSwapDelta.sol";
 import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
 import { IERC165 } from "@OpenZeppelin/utils/introspection/IERC165.sol";
+
+using PoolIdLibrary for PoolKey;
 
 interface IExtsloadSparse {
     /**
@@ -32,6 +34,7 @@ interface IExtsloadSparse {
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 error BondRouteRequired( address caller, address bondroute );
+error PoolInitializationUnauthorized( address caller, bytes32 expected_pool_id, uint160 expected_sqrt_price_x96 );
 
 
 // ━━━━  UNISWAP V4 CONFIG  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -49,8 +52,11 @@ abstract contract UniswapHook is IUnlockCallback {
     IPoolManager internal immutable PoolManager;
 
     bool transient _is_hook_callback_allowed;
+    bool transient _is_pool_initialization_allowed;
+    bytes32 transient _expected_initialize_pool_id;
+    uint160 transient _expected_initialize_sqrt_price_x96;
 
-    enum Action { ExactInputSwap, ExactOutputSwap, AddLiquidity, RemoveLiquidity, Donate }
+    enum Action { ExactInputSwap, ExactOutputSwap, Donate, ModifyLiquidity }
 
     /**
      * @notice Initialize PoolManager configuration and validate hook deployment flags.
@@ -60,6 +66,7 @@ abstract contract UniswapHook is IUnlockCallback {
     {
         // *NOTE*  -  Only declared-true flags are set; the other 10 fields stay zero-initialized → false.
         Hooks.Permissions memory permissions;
+        permissions.beforeInitialize       =  true;
         permissions.beforeAddLiquidity     =  true;
         permissions.beforeRemoveLiquidity  =  true;
         permissions.beforeSwap             =  true;
@@ -109,20 +116,15 @@ abstract contract UniswapHook is IUnlockCallback {
             ( BondContext memory context, ExactOutputSwapParams memory params )  =  abi.decode( payload, (BondContext, ExactOutputSwapParams) );
             ExactOutputSwapLib.execute( context, params, PoolManager, address(this) );
         }
-        else if(  action == Action.AddLiquidity  )
-        {
-            ( BondContext memory context, AddLiquidityParams memory params )  =  abi.decode( payload, (BondContext, AddLiquidityParams) );
-            AddLiquidityLib.execute( context, params, PoolManager, address(this) );
-        }
-        else if(  action == Action.RemoveLiquidity  )
-        {
-            ( BondContext memory context, RemoveLiquidityParams memory params )  =  abi.decode( payload, (BondContext, RemoveLiquidityParams) );
-            RemoveLiquidityLib.execute( context, params, PoolManager, address(this) );
-        }
         else if(  action == Action.Donate  )
         {
             ( BondContext memory context, DonateParams memory params )  =  abi.decode( payload, (BondContext, DonateParams) );
             DonateLib.execute( context, params, PoolManager, address(this) );
+        }
+        else if(  action == Action.ModifyLiquidity  )
+        {
+            ( BondContext memory context, ModifyLiquidityParams memory params, SafeSwapPositionInfo memory position_info )  =  abi.decode( payload, (BondContext, ModifyLiquidityParams, SafeSwapPositionInfo) );
+            ModifyLiquidityLib.execute( context, params, PoolManager, address(this), position_info );
         }
 
         _is_hook_callback_allowed  =  false;  // *SECURITY*  -  Likely already cleared at actual hook callback, yet cheap defensive good practice.
@@ -132,6 +134,33 @@ abstract contract UniswapHook is IUnlockCallback {
 
 
     // ━━━━  HOOK CALLBACKS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /**
+     * @notice Authorize a SafeSwap-controlled Uniswap V4 pool initialization.
+     * @return Hook selector.
+     */
+    function beforeInitialize( address, PoolKey calldata key, uint160 sqrt_price_x96 )
+    external returns ( bytes4 )
+    {
+        if(  msg.sender != address(PoolManager)  )  revert Unauthorized({ caller: msg.sender, expected: address(PoolManager) });
+
+        bytes32 pool_id  =  PoolId.unwrap( key.toId( ) );
+        bool pool_matches   =  pool_id == _expected_initialize_pool_id;
+        bool price_matches  =  sqrt_price_x96 == _expected_initialize_sqrt_price_x96;
+
+        if(  _is_pool_initialization_allowed == false  ||  pool_matches == false  ||  price_matches == false  )
+        {
+            revert PoolInitializationUnauthorized({
+                caller: msg.sender,
+                expected_pool_id: _expected_initialize_pool_id,
+                expected_sqrt_price_x96: _expected_initialize_sqrt_price_x96
+            });
+        }
+
+        _clear_pool_initialization_allowance( );
+
+        return IHooks.beforeInitialize.selector;
+    }
 
     /**
      * @notice Authorize a BondRoute-protected Uniswap V4 swap callback.
@@ -232,5 +261,19 @@ abstract contract UniswapHook is IUnlockCallback {
         if(  _is_hook_callback_allowed == false  )  revert BondRouteRequired({ caller: msg.sender, bondroute: address(BondRoute) });
 
         _is_hook_callback_allowed  =  false;  // *SECURITY*  -  Defense against a malicious token re-entering the uniswap's pool_manager directly.
+    }
+
+    function _allow_pool_initialization( PoolKey memory pool_key, uint160 sqrt_price_x96 ) internal
+    {
+        _is_pool_initialization_allowed     =  true;
+        _expected_initialize_pool_id        =  PoolId.unwrap( pool_key.toId( ) );
+        _expected_initialize_sqrt_price_x96 =  sqrt_price_x96;
+    }
+
+    function _clear_pool_initialization_allowance( ) internal
+    {
+        _is_pool_initialization_allowed      =  false;
+        _expected_initialize_pool_id         =  bytes32(0);
+        _expected_initialize_sqrt_price_x96  =  0;
     }
 }

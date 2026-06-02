@@ -23,7 +23,7 @@ contract ConstructorTest is SafeSwapTestBase {
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(0) );
 
         vm.expectRevert( bytes("SafeSwap: Invalid pool_manager") );
-        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", address(uint160(0x4AA0)) );
+        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", address(uint160(0x2AA0)) );
 
         // Restore pool manager entry.
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(pool_manager) );
@@ -36,7 +36,7 @@ contract ConstructorTest is SafeSwapTestBase {
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(not_pool_manager) );
 
         vm.expectRevert( bytes("SafeSwap: Invalid pool_manager") );
-        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", address(uint160(0x4AA0)) );
+        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", address(uint160(0x2AA0)) );
 
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(pool_manager) );
     }
@@ -46,9 +46,19 @@ contract ConstructorTest is SafeSwapTestBase {
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, address(0) );
 
         vm.expectRevert( bytes("SafeSwap: Invalid initial_treasury") );
-        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", address(uint160(0x4AA0)) );
+        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", address(uint160(0x2AA0)) );
 
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, treasury );
+    }
+
+    function test_position_nft_constructor_reverts_if_hook_not_set( ) external
+    {
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY, address(0) );
+
+        vm.expectRevert( bytes("SafeSwapPositionNft: Invalid safeswap_hook") );
+        new SafeSwapPositionNft( );
+
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY, HOOK_TARGET );
     }
 
     function test_constructor_reverts_if_hook_address_has_wrong_flags( ) external
@@ -67,6 +77,6 @@ contract ConstructorTest is SafeSwapTestBase {
         vm.expectEmit( true, true, true, true, BONDROUTE_ADDRESS );
         emit MockBondRoute.ProtocolAnnounced( SAFESWAP_PROTOCOL_NAME, SAFESWAP_PROTOCOL_DESCRIPTION );
 
-        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", address(uint160(0x4AA0)) );
+        deployCodeTo( "TestBase.t.sol:TestableSafeSwap", address(uint160(0x2AA0)) );
     }
 }

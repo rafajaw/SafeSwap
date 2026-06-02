@@ -4,6 +4,9 @@ pragma solidity ^0.8.30;
 import "./TestBase.t.sol";
 
 
+/// @dev Direct-execution tests for the unified ModifyLiquidityLib.execute path (create/add share the
+///      settle branch via liquidity_delta > 0; remove/collect share the take branch via <= 0). Positions
+///      are NFT-backed, so the V4 position salt is the LP token id, not the user address.
 contract LiquidityExecutionTest is SafeSwapTestBase {
 
     function setUp( ) public override
@@ -13,7 +16,6 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
         // Enable real token transfers via BondRoute for execution tests.
         MockBondRoute(payable(BONDROUTE_ADDRESS)).set_skip_actual_transfer( false );
 
-        // Approve the etched BondRoute address to spend user tokens.
         vm.startPrank( user );
         token0.approve( BONDROUTE_ADDRESS, type(uint256).max );
         token1.approve( BONDROUTE_ADDRESS, type(uint256).max );
@@ -26,539 +28,325 @@ contract LiquidityExecutionTest is SafeSwapTestBase {
     }
 
 
-    // ━━━━  Add Liquidity  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  Add Liquidity (liquidity_delta > 0 → settle)  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function test_add_liquidity_calculates_liquidity_correctly( ) external
+    function test_add_liquidity_settles_both_tokens_from_user( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  _create_add_liquidity_params( );
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(50 ether) );
 
-        // Mock returns negative deltas (user provides tokens).
-        pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
+        pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );  // Negative: user provides tokens.
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
 
-        assertEq(
-            user_token0_before - token0.balanceOf( user ),
-            50 ether,
-            "User should provide 50 ether of token0."
-        );
-        assertEq(
-            user_token1_before - token1.balanceOf( user ),
-            50 ether,
-            "User should provide 50 ether of token1."
-        );
+        assertEq( user_token0_before - token0.balanceOf( user ), 50 ether, "User should provide 50 ether of token0." );
+        assertEq( user_token1_before - token1.balanceOf( user ), 50 ether, "User should provide 50 ether of token1." );
     }
 
     function test_add_liquidity_transfers_token0_to_pool( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  _create_add_liquidity_params( );
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(80 ether) );
 
         pool_manager.set_mock_liquidity_amounts( -80 ether, -20 ether );
 
         uint256 pm_balance_before  =  token0.balanceOf( address(pool_manager) );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
 
-        assertEq(
-            token0.balanceOf( address(pool_manager) ) - pm_balance_before,
-            80 ether,
-            "Pool manager should receive 80 ether of token0."
-        );
+        assertEq( token0.balanceOf( address(pool_manager) ) - pm_balance_before, 80 ether, "Pool manager should receive 80 ether of token0." );
     }
 
     function test_add_liquidity_transfers_token1_to_pool( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  _create_add_liquidity_params( );
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(80 ether) );
 
         pool_manager.set_mock_liquidity_amounts( -20 ether, -80 ether );
 
         uint256 pm_balance_before  =  token1.balanceOf( address(pool_manager) );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
 
-        assertEq(
-            token1.balanceOf( address(pool_manager) ) - pm_balance_before,
-            80 ether,
-            "Pool manager should receive 80 ether of token1."
-        );
+        assertEq( token1.balanceOf( address(pool_manager) ) - pm_balance_before, 80 ether, "Pool manager should receive 80 ether of token1." );
     }
 
     function test_add_liquidity_reverts_on_amount0_slippage( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            minimum_added_a: TokenAmount({ token: token0, amount: 60 ether }),  // Require at least 60 ether.
-            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
-        });
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(50 ether) );
+        params.minimum_amount_a  =  TokenAmount({ token: token0, amount: 60 ether });  // Require at least 60 ether token0.
 
-        // Mock returns only 50 ether for token0, less than min.
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
-        vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 50 ether, 60 ether ) );
-        hook.harness_execute_add_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
     }
 
     function test_add_liquidity_reverts_on_amount1_slippage( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_added_b: TokenAmount({ token: token1, amount: 60 ether })  // Require at least 60 ether.
-        });
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(50 ether) );
+        params.minimum_amount_b  =  TokenAmount({ token: token1, amount: 60 ether });  // Require at least 60 ether token1.
 
-        // Mock returns only 50 ether for token1, less than min.
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
-        vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 50 ether, 60 ether ) );
-        hook.harness_execute_add_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
     }
 
     function test_add_liquidity_passes_when_amounts_meet_minimums( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            minimum_added_a: TokenAmount({ token: token0, amount: 50 ether }),
-            minimum_added_b: TokenAmount({ token: token1, amount: 50 ether })
-        });
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(50 ether) );
+        params.minimum_amount_a  =  TokenAmount({ token: token0, amount: 50 ether });
+        params.minimum_amount_b  =  TokenAmount({ token: token1, amount: 50 ether });
 
-        // Mock returns exactly the minimums.
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
 
-        assertEq(
-            user_token0_before - token0.balanceOf( user ),
-            50 ether,
-            "Token0 should transfer when amount meets minimum."
-        );
-        assertEq(
-            user_token1_before - token1.balanceOf( user ),
-            50 ether,
-            "Token1 should transfer when amount meets minimum."
-        );
+        assertEq( user_token0_before - token0.balanceOf( user ), 50 ether, "Token0 should transfer when amount meets minimum." );
+        assertEq( user_token1_before - token1.balanceOf( user ), 50 ether, "Token1 should transfer when amount meets minimum." );
     }
 
     function test_add_liquidity_reverts_on_one_sided_mismatch_token1_expected( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_added_b: TokenAmount({ token: token1, amount: 50 ether })  // User expects token1 deposit.
-        });
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(100 ether) );
+        params.minimum_amount_b  =  TokenAmount({ token: token1, amount: 50 ether });  // User expects token1 deposit.
 
-        // Pool decides only token0 is needed (e.g., price moved out of range above).
+        // Pool decides only token0 is needed (price out of range above).
         pool_manager.set_mock_liquidity_amounts( -100 ether, 0 );
 
-        vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( OneSidedDepositMismatch.selector, address(token1), 50 ether ) );
-        hook.harness_execute_add_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
     }
 
     function test_add_liquidity_reverts_on_one_sided_mismatch_token0_expected( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            minimum_added_a: TokenAmount({ token: token0, amount: 50 ether }),  // User expects token0 deposit.
-            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
-        });
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(100 ether) );
+        params.minimum_amount_a  =  TokenAmount({ token: token0, amount: 50 ether });  // User expects token0 deposit.
 
         // Pool decides only token1 is needed.
         pool_manager.set_mock_liquidity_amounts( 0, -100 ether );
 
-        vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( OneSidedDepositMismatch.selector, address(token0), 50 ether ) );
-        hook.harness_execute_add_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
     }
 
     function test_add_liquidity_handles_single_sided_deposit( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 0 );
-        AddLiquidityParams memory params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 100,  // Wide range below current price.
-            tick_upper: -TICK_SPACING_60 * 50,
-            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
-        });
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_bond_context_two_fundings( user, 100 ether, 0 );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(100 ether) );
 
-        // Single-sided: only token0 is deposited, token1 delta is 0.
+        // Single-sided: only token0 is deposited, token1 delta is 0 with no token1 minimum.
         pool_manager.set_mock_liquidity_amounts( -100 ether, 0 );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
 
-        assertEq(
-            user_token0_before - token0.balanceOf( user ),
-            100 ether,
-            "User should provide all token0 in single-sided deposit."
-        );
-        assertEq(
-            token1.balanceOf( user ),
-            user_token1_before,
-            "Token1 balance should remain unchanged in single-sided deposit."
-        );
+        assertEq( user_token0_before - token0.balanceOf( user ), 100 ether, "User should provide all token0 in single-sided deposit." );
+        assertEq( token1.balanceOf( user ), user_token1_before, "Token1 balance should remain unchanged in single-sided deposit." );
     }
 
-    function test_add_liquidity_uses_correct_tick_range( ) external
+    function test_add_liquidity_uses_lp_token_id_as_position_salt( ) external
     {
-        BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        int24 tick_lower  =  -1200;
-        int24 tick_upper  =  1200;
-
-        AddLiquidityParams memory params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: tick_lower,
-            tick_upper: tick_upper,
-            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
-        });
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(50 ether) );
 
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
-        uint256 user_token0_before  =  token0.balanceOf( user );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context, params );
-
-        // Verify execution completed (tick range accepted by pool manager).
-        assertGt(
-            user_token0_before - token0.balanceOf( user ),
-            0,
-            "Tokens should be provided for custom tick range."
-        );
+        assertEq( pool_manager.last_modify_salt( ), bytes32(token_id), "V4 position salt must be the LP NFT token id." );
     }
 
-    function test_add_liquidity_different_users_produce_isolated_position_salts( ) external
+    function test_add_liquidity_distinct_positions_produce_distinct_salts( ) external
     {
-        AddLiquidityParams memory params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
-        });
+        ( uint256 token_id_a, SafeSwapPositionInfo memory position_a )  =  _mint_default_position( user );
+        ( uint256 token_id_b, SafeSwapPositionInfo memory position_b )  =  _mint_default_position( other_user );
 
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
-        // User A adds liquidity.
         BondContext memory context_a  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context_a, params );
-        bytes32 salt_from_user_a  =  pool_manager.last_modify_salt( );
+        hook.harness_execute_modify_liquidity( context_a, _build_modify_params( token_id_a, int128(50 ether) ), position_a );
+        bytes32 salt_a  =  pool_manager.last_modify_salt( );
 
-        // User B adds liquidity at the same range — must land on a distinct V4 position salt.
         BondContext memory context_b  =  _create_bond_context_two_fundings( other_user, 100 ether, 100 ether );
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context_b, params );
-        bytes32 salt_from_user_b  =  pool_manager.last_modify_salt( );
+        hook.harness_execute_modify_liquidity( context_b, _build_modify_params( token_id_b, int128(50 ether) ), position_b );
+        bytes32 salt_b  =  pool_manager.last_modify_salt( );
 
-        assertEq(
-            salt_from_user_a,
-            bytes32(uint256(uint160(user))),
-            "User A's position salt must equal their address padded to 32 bytes."
-        );
-        assertEq(
-            salt_from_user_b,
-            bytes32(uint256(uint160(other_user))),
-            "User B's position salt must equal their address padded to 32 bytes."
-        );
-        assertTrue(
-            salt_from_user_a != salt_from_user_b,
-            "Different users at the same range must produce different position salts - positions must be isolated."
-        );
+        assertEq( salt_a, bytes32(token_id_a), "Position A salt must equal its token id." );
+        assertEq( salt_b, bytes32(token_id_b), "Position B salt must equal its token id." );
+        assertTrue( salt_a != salt_b, "Distinct positions must produce distinct V4 salts." );
     }
 
 
-    // ━━━━  Remove Liquidity  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  Remove Liquidity (liquidity_delta < 0 → take)  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function test_remove_liquidity_returns_tokens_to_user( ) external
     {
-        BondContext memory context  =  _create_bond_context( user, 0 );
-        RemoveLiquidityParams memory params  =  _create_remove_liquidity_params( 100 ether );
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_modify_liquidity_no_funding_context( user );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, -int128(100 ether) );
 
-        // Positive deltas mean pool returns tokens to user.
-        pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
+        pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );  // Positive: pool returns tokens.
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
 
-        assertEq(
-            token0.balanceOf( user ) - user_token0_before,
-            50 ether,
-            "User should receive 50 ether of token0."
-        );
-        assertEq(
-            token1.balanceOf( user ) - user_token1_before,
-            50 ether,
-            "User should receive 50 ether of token1."
-        );
+        assertEq( token0.balanceOf( user ) - user_token0_before, 50 ether, "User should receive 50 ether of token0." );
+        assertEq( token1.balanceOf( user ) - user_token1_before, 50 ether, "User should receive 50 ether of token1." );
     }
 
     function test_remove_liquidity_reverts_on_amount0_slippage( ) external
     {
-        BondContext memory context  =  _create_bond_context( user, 0 );
-        RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            liquidity: 100 ether,
-            minimum_received_a: TokenAmount({ token: token0, amount: 60 ether }),  // Require at least 60 ether.
-            minimum_received_b: TokenAmount({ token: token1, amount: 0 })
-        });
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_modify_liquidity_no_funding_context( user );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, -int128(100 ether) );
+        params.minimum_amount_a  =  TokenAmount({ token: token0, amount: 60 ether });
 
-        // Returns only 50 ether for token0.
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
 
-        vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 50 ether, 60 ether ) );
-        hook.harness_execute_remove_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
     }
 
     function test_remove_liquidity_reverts_on_amount1_slippage( ) external
     {
-        BondContext memory context  =  _create_bond_context( user, 0 );
-        RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            liquidity: 100 ether,
-            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_received_b: TokenAmount({ token: token1, amount: 60 ether })  // Require at least 60 ether.
-        });
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_modify_liquidity_no_funding_context( user );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, -int128(100 ether) );
+        params.minimum_amount_b  =  TokenAmount({ token: token1, amount: 60 ether });
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
 
-        vm.prank( address(pool_manager) );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 50 ether, 60 ether ) );
-        hook.harness_execute_remove_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
     }
 
     function test_remove_liquidity_passes_when_amounts_meet_minimums( ) external
     {
-        BondContext memory context  =  _create_bond_context( user, 0 );
-        RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            liquidity: 100 ether,
-            minimum_received_a: TokenAmount({ token: token0, amount: 50 ether }),
-            minimum_received_b: TokenAmount({ token: token1, amount: 50 ether })
-        });
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_modify_liquidity_no_funding_context( user );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, -int128(100 ether) );
+        params.minimum_amount_a  =  TokenAmount({ token: token0, amount: 50 ether });
+        params.minimum_amount_b  =  TokenAmount({ token: token1, amount: 50 ether });
 
-        // Returns exactly the minimums.
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
 
-        assertEq(
-            token0.balanceOf( user ) - user_token0_before,
-            50 ether,
-            "User should receive token0 when amount meets minimum."
-        );
-        assertEq(
-            token1.balanceOf( user ) - user_token1_before,
-            50 ether,
-            "User should receive token1 when amount meets minimum."
-        );
-    }
-
-    function test_remove_liquidity_uses_correct_tick_range( ) external
-    {
-        BondContext memory context  =  _create_bond_context( user, 0 );
-        int24 tick_lower  =  -1200;
-        int24 tick_upper  =  1200;
-
-        RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: tick_lower,
-            tick_upper: tick_upper,
-            liquidity: 100 ether,
-            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_received_b: TokenAmount({ token: token1, amount: 0 })
-        });
-
-        pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
-
-        uint256 user_token0_before  =  token0.balanceOf( user );
-
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( context, params );
-
-        assertEq(
-            token0.balanceOf( user ) - user_token0_before,
-            50 ether,
-            "Tokens should be returned for custom tick range."
-        );
-    }
-
-    function test_remove_liquidity_different_users_produce_isolated_position_salts( ) external
-    {
-        RemoveLiquidityParams memory params  =  RemoveLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            liquidity: 100 ether,
-            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_received_b: TokenAmount({ token: token1, amount: 0 })
-        });
-
-        pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
-
-        BondContext memory context_a  =  _create_bond_context( user, 0 );
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( context_a, params );
-        bytes32 salt_from_user_a  =  pool_manager.last_modify_salt( );
-
-        BondContext memory context_b  =  _create_bond_context( other_user, 0 );
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( context_b, params );
-        bytes32 salt_from_user_b  =  pool_manager.last_modify_salt( );
-
-        assertEq(
-            salt_from_user_a,
-            bytes32(uint256(uint160(user))),
-            "User A's position salt must equal their address padded to 32 bytes."
-        );
-        assertEq(
-            salt_from_user_b,
-            bytes32(uint256(uint160(other_user))),
-            "User B's position salt must equal their address padded to 32 bytes."
-        );
-        assertTrue(
-            salt_from_user_a != salt_from_user_b,
-            "Different users at the same range must produce different position salts - removals are isolated."
-        );
-    }
-
-    function test_remove_liquidity_position_salt_matches_add_liquidity( ) external
-    {
-        BondContext memory add_context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory add_params  =  AddLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            minimum_added_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_added_b: TokenAmount({ token: token1, amount: 0 })
-        });
-
-        pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
-
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( add_context, add_params );
-
-        bytes32 salt_from_add  =  pool_manager.last_modify_salt( );
-
-        BondContext memory remove_context  =  _create_bond_context( user, 0 );
-        RemoveLiquidityParams memory remove_params  =  RemoveLiquidityParams({
-            pool_info: _default_pool_info( ),
-            tick_lower: -TICK_SPACING_60 * 10,
-            tick_upper: TICK_SPACING_60 * 10,
-            liquidity: 100 ether,
-            minimum_received_a: TokenAmount({ token: token0, amount: 0 }),
-            minimum_received_b: TokenAmount({ token: token1, amount: 0 })
-        });
-
-        pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
-
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( remove_context, remove_params );
-
-        bytes32 salt_from_remove  =  pool_manager.last_modify_salt( );
-
-        assertEq(
-            salt_from_add,
-            salt_from_remove,
-            "Same user must produce identical position salt across add and remove - position must be round-trippable."
-        );
+        assertEq( token0.balanceOf( user ) - user_token0_before, 50 ether, "User should receive token0 when amount meets minimum." );
+        assertEq( token1.balanceOf( user ) - user_token1_before, 50 ether, "User should receive token1 when amount meets minimum." );
     }
 
     function test_remove_liquidity_full_position( ) external
     {
-        BondContext memory context  =  _create_bond_context( user, 0 );
-        RemoveLiquidityParams memory params  =  _create_remove_liquidity_params( 100 ether );
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_modify_liquidity_no_funding_context( user );
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, _build_modify_params( token_id, -int128(100 ether) ), position_info );
 
-        assertEq(
-            token0.balanceOf( user ) - user_token0_before,
-            50 ether,
-            "Full removal: user should receive all token0."
-        );
-        assertEq(
-            token1.balanceOf( user ) - user_token1_before,
-            50 ether,
-            "Full removal: user should receive all token1."
-        );
+        assertEq( token0.balanceOf( user ) - user_token0_before, 50 ether, "Full removal: user should receive all token0." );
+        assertEq( token1.balanceOf( user ) - user_token1_before, 50 ether, "Full removal: user should receive all token1." );
     }
 
     function test_remove_liquidity_partial_position( ) external
     {
-        BondContext memory context  =  _create_bond_context( user, 0 );
-        RemoveLiquidityParams memory params  =  _create_remove_liquidity_params( 50 ether );  // Half.
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_modify_liquidity_no_funding_context( user );
 
         pool_manager.set_mock_liquidity_amounts( 25 ether, 25 ether );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, _build_modify_params( token_id, -int128(50 ether) ), position_info );
 
-        assertEq(
-            token0.balanceOf( user ) - user_token0_before,
-            25 ether,
-            "Partial removal: user should receive half of token0."
-        );
-        assertEq(
-            token1.balanceOf( user ) - user_token1_before,
-            25 ether,
-            "Partial removal: user should receive half of token1."
-        );
+        assertEq( token0.balanceOf( user ) - user_token0_before, 25 ether, "Partial removal: user should receive half of token0." );
+        assertEq( token1.balanceOf( user ) - user_token1_before, 25 ether, "Partial removal: user should receive half of token1." );
+    }
+
+    function test_remove_liquidity_salt_matches_token_id_round_trip( ) external
+    {
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+
+        // Add then remove on the same NFT must hit the same V4 position salt.
+        BondContext memory add_context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
+        pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
+        hook.harness_execute_modify_liquidity( add_context, _build_modify_params( token_id, int128(50 ether) ), position_info );
+        bytes32 salt_from_add  =  pool_manager.last_modify_salt( );
+
+        BondContext memory remove_context  =  _create_modify_liquidity_no_funding_context( user );
+        pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
+        hook.harness_execute_modify_liquidity( remove_context, _build_modify_params( token_id, -int128(50 ether) ), position_info );
+        bytes32 salt_from_remove  =  pool_manager.last_modify_salt( );
+
+        assertEq( salt_from_add, bytes32(token_id), "Add salt must be the token id." );
+        assertEq( salt_from_add, salt_from_remove, "Same NFT must round-trip to the same position salt across add and remove." );
+    }
+
+
+    // ━━━━  Collect Fees (liquidity_delta == 0 → take)  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function test_collect_fees_takes_accrued_fees_to_user( ) external
+    {
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_modify_liquidity_no_funding_context( user );
+
+        pool_manager.set_mock_liquidity_amounts( 3 ether, 7 ether );  // Accrued fees.
+
+        uint256 user_token0_before  =  token0.balanceOf( user );
+        uint256 user_token1_before  =  token1.balanceOf( user );
+
+        hook.harness_execute_modify_liquidity( context, _build_modify_params( token_id, int128(0) ), position_info );
+
+        assertEq( pool_manager.last_modify_salt( ), bytes32(token_id), "Collect must target the NFT's position salt." );
+        assertEq( token0.balanceOf( user ) - user_token0_before, 3 ether, "User should receive accrued token0 fees." );
+        assertEq( token1.balanceOf( user ) - user_token1_before, 7 ether, "User should receive accrued token1 fees." );
+    }
+
+    function test_collect_fees_reverts_on_slippage( ) external
+    {
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context        =  _create_modify_liquidity_no_funding_context( user );
+        ModifyLiquidityParams memory params  =  _build_modify_params( token_id, int128(0) );
+        params.minimum_amount_a  =  TokenAmount({ token: token0, amount: 5 ether });  // Expect at least 5 ether token0 fees.
+
+        pool_manager.set_mock_liquidity_amounts( 3 ether, 7 ether );
+
+        vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, 3 ether, 5 ether ) );
+        hook.harness_execute_modify_liquidity( context, params, position_info );
     }
 }

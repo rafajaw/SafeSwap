@@ -10,6 +10,8 @@ pragma solidity ^0.8.30;
 address constant CONFIG_SIGNER  =  0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;  // ***TODO*** - Fix before deployment!
 bytes32 constant POOL_MANAGER_KEY       =  bytes32("uniswap_v4/pool_manager");
 bytes32 constant INITIAL_TREASURY_KEY   =  bytes32("safeswap/initial_treasury");
+bytes32 constant SAFESWAP_HOOK_KEY      =  bytes32("safeswap/hook");
+bytes32 constant POSITION_NFT_KEY       =  bytes32("safeswap/position_nft");
 
 
 // ━━━━  SAFESWAP ECONOMICS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -39,5 +41,7 @@ string constant SAFESWAP_PROTOCOL_DESCRIPTION           =  "Trustless MEV-protec
 string constant SWAPS_REQUIRE_EXACTLY_ONE_FUNDING       =  "Swaps require exactly 1 funding";
 string constant ADD_LIQUIDITY_REQUIRES_TWO_FUNDINGS     =  "Add liquidity requires exactly 2 fundings";
 string constant REMOVE_LIQUIDITY_REQUIRES_NO_FUNDINGS   =  "Remove liquidity requires 0 fundings";
+string constant MODIFY_LIQUIDITY_CREATE_REQUIRES_TWO_FUNDINGS  =  "Modify liquidity create or increase requires exactly 2 fundings";
+string constant MODIFY_LIQUIDITY_REMOVE_REQUIRES_NO_FUNDINGS    =  "Modify liquidity remove or collect requires 0 fundings";
 string constant DONATE_REQUIRES_TWO_FUNDINGS            =  "Donate requires exactly 2 fundings";
 string constant TOKENS_MUST_BE_DIFFERENT                =  "Tokens must be different";

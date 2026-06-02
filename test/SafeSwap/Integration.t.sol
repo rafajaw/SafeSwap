@@ -116,16 +116,15 @@ contract IntegrationTest is SafeSwapTestBase {
 
     function test_integration_add_liquidity_end_to_end( ) external
     {
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
         BondContext memory context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory params  =  _create_add_liquidity_params( );
 
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, _build_modify_params( token_id, int128(50 ether) ), position_info );
 
         assertEq(
             user_token0_before - token0.balanceOf( user ),
@@ -141,16 +140,15 @@ contract IntegrationTest is SafeSwapTestBase {
 
     function test_integration_remove_liquidity_end_to_end( ) external
     {
-        BondContext memory context  =  _create_bond_context( user, 0 );
-        RemoveLiquidityParams memory params  =  _create_remove_liquidity_params( 100 ether );
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+        BondContext memory context  =  _create_modify_liquidity_no_funding_context( user );
 
         pool_manager.set_mock_liquidity_amounts( 50 ether, 50 ether );
 
         uint256 user_token0_before  =  token0.balanceOf( user );
         uint256 user_token1_before  =  token1.balanceOf( user );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( context, params );
+        hook.harness_execute_modify_liquidity( context, _build_modify_params( token_id, -int128(100 ether) ), position_info );
 
         assertEq(
             token0.balanceOf( user ) - user_token0_before,
@@ -169,27 +167,21 @@ contract IntegrationTest is SafeSwapTestBase {
         uint256 user_token0_start  =  token0.balanceOf( user );
         uint256 user_token1_start  =  token1.balanceOf( user );
 
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
+
         // Add liquidity.
         BondContext memory add_context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory add_params  =  _create_add_liquidity_params( );
-
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
-
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( add_context, add_params );
+        hook.harness_execute_modify_liquidity( add_context, _build_modify_params( token_id, int128(50 ether) ), position_info );
 
         // User paid 50 each.
         assertEq( user_token0_start - token0.balanceOf( user ), 50 ether, "After add: user paid 50 token0." );
         assertEq( user_token1_start - token1.balanceOf( user ), 50 ether, "After add: user paid 50 token1." );
 
-        // Remove liquidity.
-        BondContext memory remove_context  =  _create_bond_context( user, 0 );
-        RemoveLiquidityParams memory remove_params  =  _create_remove_liquidity_params( 50 ether );
-
+        // Remove liquidity from the same NFT position.
+        BondContext memory remove_context  =  _create_modify_liquidity_no_funding_context( user );
         pool_manager.set_mock_liquidity_amounts( 25 ether, 25 ether );
-
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_remove_liquidity( remove_context, remove_params );
+        hook.harness_execute_modify_liquidity( remove_context, _build_modify_params( token_id, -int128(25 ether) ), position_info );
 
         // Net: paid 50, got back 25 → lost 25 of each.
         assertEq( user_token0_start - token0.balanceOf( user ), 25 ether, "After remove: net loss is 25 token0." );
@@ -273,13 +265,12 @@ contract IntegrationTest is SafeSwapTestBase {
     function test_integration_swap_after_liquidity_change( ) external
     {
         // Add liquidity first.
+        ( uint256 token_id, SafeSwapPositionInfo memory position_info )  =  _mint_default_position( user );
         BondContext memory liq_context  =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
-        AddLiquidityParams memory liq_params  =  _create_add_liquidity_params( );
 
         pool_manager.set_mock_liquidity_amounts( -50 ether, -50 ether );
 
-        vm.prank( address(pool_manager) );
-        hook.harness_execute_add_liquidity( liq_context, liq_params );
+        hook.harness_execute_modify_liquidity( liq_context, _build_modify_params( token_id, int128(50 ether) ), position_info );
 
         // Then swap from other_user.
         BondContext memory swap_context  =  _create_bond_context( other_user, 100 ether );

@@ -3,9 +3,9 @@ pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
 import "@SafeSwap/SafeSwap.sol";
-import "@SafeSwap/libraries/SafeSwapCommon.sol";
+import "@SafeSwapNft/SafeSwapPositionNft.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
-import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY } from "@SafeSwap/Definitions.sol";
+import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, POSITION_NFT_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -20,24 +20,28 @@ import { MockBondRoute, MockChainConfig, MockERC20 } from "./TestBase.t.sol";
 
 contract ReentryPoolTestHook is SafeSwap {
 
+    uint160 constant HARNESS_SQRT_PRICE_1_1  =  79228162514264337593543950336;
+
     constructor( ) SafeSwap( ) { }
 
-    function harness_donate( BondContext memory context, DonateParams memory params )
+    function harness_create_position( BondContext memory context, CreatePositionParams memory params )
     external
     {
-        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.Donate)), abi.encode( context, params ) ) );
-    }
+        ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )  =  _prepare_create_position( context, params );
 
-    function harness_add_liquidity( BondContext memory context, AddLiquidityParams memory params )
-    external
-    {
-        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.AddLiquidity)), abi.encode( context, params ) ) );
+        PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.ModifyLiquidity)), abi.encode( context, executable_params, position_info ) ) );
     }
 
     function harness_swap_exact_input( BondContext memory context, ExactInputSwapParams memory params )
     external
     {
         PoolManager.unlock( bytes.concat( bytes1(uint8(UniswapHook.Action.ExactInputSwap)), abi.encode( context, params ) ) );
+    }
+
+    function harness_initialize_pool( PoolKey memory key, uint160 sqrt_price_x96 )
+    external
+    {
+        PoolManager.initialize( key, sqrt_price_x96 );
     }
 }
 
@@ -222,7 +226,12 @@ contract ReentrantProtectedContextTest is Test {
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(real_pool_manager) );
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, treasury );
 
-        address hook_target  =  address(uint160(0x0AA0));
+        address hook_target  =  address(uint160(0x2AA0));
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY, hook_target );
+
+        SafeSwapPositionNft position_nft  =  new SafeSwapPositionNft( );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POSITION_NFT_KEY, address(position_nft) );
+
         deployCodeTo( "ReentrantProtectedContext.t.sol:ReentryPoolTestHook", hook_target );
         hook  =  ReentryPoolTestHook(payable(hook_target));
 
@@ -267,8 +276,8 @@ contract ReentrantProtectedContextTest is Test {
 
         attack_output_token  =  MockERC20(Currency.unwrap( attack_pool_key.currency1 ));
 
-        real_pool_manager.initialize( outer_pool_key, SQRT_PRICE_1_1 );
-        real_pool_manager.initialize( attack_pool_key, SQRT_PRICE_1_1 );
+        hook.harness_initialize_pool( outer_pool_key, SQRT_PRICE_1_1 );
+        hook.harness_initialize_pool( attack_pool_key, SQRT_PRICE_1_1 );
 
         malicious_token.configure_attack( real_pool_manager, attack_pool_key );
 
@@ -321,37 +330,19 @@ contract ReentrantProtectedContextTest is Test {
     {
         malicious_token.set_attack_enabled( false );
 
-        AddLiquidityParams memory params  =  AddLiquidityParams({
+        // User specifies liquidity directly in the NFT model; for a full-range position at price 1:1 this
+        // pulls ≈ SEED_AMOUNT of each token, comfortably under the generous fundings supplied below.
+        CreatePositionParams memory params  =  CreatePositionParams({
             pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 }),
             tick_lower: FULL_RANGE_LOWER,
             tick_upper: FULL_RANGE_UPPER,
-            minimum_added_a: TokenAmount({ token: IERC20(Currency.unwrap( key.currency0 )), amount: 0 }),
-            minimum_added_b: TokenAmount({ token: IERC20(Currency.unwrap( key.currency1 )), amount: 0 })
+            liquidity: uint128(SEED_AMOUNT),
+            sqrt_price_x96: SQRT_PRICE_1_1,
+            minimum_deposited_a: TokenAmount({ token: IERC20(Currency.unwrap( key.currency0 )), amount: 0 }),
+            minimum_deposited_b: TokenAmount({ token: IERC20(Currency.unwrap( key.currency1 )), amount: 0 })
         });
 
-        hook.harness_add_liquidity( _create_liquidity_context( key, lp, SEED_AMOUNT, SEED_AMOUNT ), params );
-    }
-
-    function _create_donate_params( ) private view returns ( DonateParams memory )
-    {
-        return DonateParams({
-            pool_info: PoolInfo({ fee: POOL_FEE_030, tick_spacing: TICK_SPACING_60 })
-        });
-    }
-
-    function _create_donate_context( address account, uint256 amount0, uint256 amount1 ) private view returns ( BondContext memory )
-    {
-        TokenAmount[] memory fundings  =  new TokenAmount[](2);
-        fundings[ 0 ]  =  TokenAmount({ token: IERC20(Currency.unwrap( outer_pool_key.currency0 )), amount: amount0 });
-        fundings[ 1 ]  =  TokenAmount({ token: IERC20(Currency.unwrap( outer_pool_key.currency1 )), amount: amount1 });
-
-        return BondContext({
-            user: account,
-            stake: TokenAmount({ token: IERC20(Currency.unwrap( outer_pool_key.currency0 )), amount: 0 }),
-            fundings: fundings,
-            creation_block: block.number - 5,
-            creation_timestamp: block.timestamp - 1 hours
-        });
+        hook.harness_create_position( _create_liquidity_context( key, lp, SEED_AMOUNT * 2, SEED_AMOUNT * 2 ), params );
     }
 
     function _create_swap_context( address account, uint256 amount_in ) private view returns ( BondContext memory )

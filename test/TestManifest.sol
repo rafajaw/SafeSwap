@@ -10,7 +10,7 @@ pragma solidity ^0.8.30;
  *      NAMING CONVENTION:
  *      - test_<function>_<scenario>_<expected_outcome>
  *      - testFuzz_<function>_<property>
- *      - testInvariant_<property>
+ *      - invariant_<property>
  */
 
 
@@ -25,6 +25,7 @@ interface IConstructorTests {
     function test_constructor_reverts_if_pool_manager_not_set( ) external;
     function test_constructor_reverts_if_chain_config_points_to_non_pool_manager( ) external;
     function test_constructor_reverts_if_initial_treasury_not_set( ) external;
+    function test_position_nft_constructor_reverts_if_hook_not_set( ) external;
     function test_constructor_reverts_if_hook_address_has_wrong_flags( ) external;
     function test_constructor_announces_protocol_to_bondroute( ) external;
 }
@@ -53,15 +54,17 @@ interface ITreasuryTests {
 
 interface IMockBondRouteIntegrationTests {
     // ─── BondRoute_get_protected_selectors( ) ──────────────────────────────────────
-    function test_get_protected_selectors_returns_five_selectors( ) external;
+    function test_get_protected_selectors_returns_seven_selectors( ) external;
     function test_get_protected_selectors_includes_swap_exact_input( ) external;
     function test_get_protected_selectors_includes_swap_exact_output( ) external;
+    function test_get_protected_selectors_includes_create_position( ) external;
     function test_get_protected_selectors_includes_add_liquidity( ) external;
     function test_get_protected_selectors_includes_remove_liquidity( ) external;
+    function test_get_protected_selectors_includes_collect_fees( ) external;
     function test_get_protected_selectors_includes_donate( ) external;
     function test_get_protected_selectors_gas_below_50000( ) external;
 
-    // ─── BondRoute_validate( ) ────────────────────────────────────────────────────
+    // ─── BondRoute_entry_point( ) timing ───────────────────────────────────────────
     function test_entry_point_reverts_before_minimum_seconds_delay( ) external;
 
     // ─── BondRoute_quote_call( ) - Exact Input Swap ────────────────────────────────
@@ -79,14 +82,22 @@ interface IMockBondRouteIntegrationTests {
     function test_quote_call_exact_output_reverts_if_tokens_same( ) external;
     function test_quote_call_exact_output_reverts_if_funding_count_not_1( ) external;
 
-    // ─── BondRoute_quote_call( ) - Add Liquidity ───────────────────────────────────
+    // ─── BondRoute_quote_call( ) - Create Position (token_id == 0 path) ─────────────
+    function test_quote_call_create_position_reverts_if_tokens_same( ) external;
+    function test_quote_call_create_position_reverts_if_funding_count_not_2( ) external;
+    function test_quote_call_create_position_returns_correct_execution_delays( ) external;
+
+    // ─── BondRoute_quote_call( ) - Add Liquidity (existing position) ───────────────
     function test_quote_call_add_liquidity_reverts_if_tokens_same( ) external;
     function test_quote_call_add_liquidity_reverts_if_funding_count_not_2( ) external;
     function test_quote_call_add_liquidity_returns_correct_execution_delays( ) external;
 
     // ─── BondRoute_quote_call( ) - Remove Liquidity ────────────────────────────────
-    function test_quote_call_remove_liquidity_reverts_if_tokens_same( ) external;
+    function test_quote_call_remove_liquidity_reverts_on_minimum_token_mismatch( ) external;
     function test_quote_call_remove_liquidity_returns_correct_execution_delays( ) external;
+
+    // ─── BondRoute_quote_call( ) - Collect Fees ────────────────────────────────────
+    function test_quote_call_collect_fees_returns_correct_execution_delays( ) external;
 
     // ─── BondRoute_quote_call( ) - Donate ─────────────────────────────────────────
     function test_quote_call_donate_reverts_if_tokens_same( ) external;
@@ -103,8 +114,10 @@ interface IMockBondRouteIntegrationTests {
     // ─── BondRoute_get_signing_info( ) ──────────────────────────────────────────────
     function test_get_signing_info_exact_input_returns_valid_type_string( ) external;
     function test_get_signing_info_exact_output_returns_valid_type_string( ) external;
+    function test_get_signing_info_create_position_returns_valid_type_string( ) external;
     function test_get_signing_info_add_liquidity_returns_valid_type_string( ) external;
     function test_get_signing_info_remove_liquidity_returns_valid_type_string( ) external;
+    function test_get_signing_info_collect_fees_returns_valid_type_string( ) external;
     function test_get_signing_info_donate_returns_valid_type_string( ) external;
     function test_get_signing_info_struct_hash_changes_with_params( ) external;
     function test_get_signing_info_reverts_on_unknown_selector( ) external;
@@ -113,8 +126,10 @@ interface IMockBondRouteIntegrationTests {
     // ─── Protected Function Access Control ─────────────────────────────────────────
     function test_swap_exact_input_reverts_if_not_bondroute( ) external;
     function test_swap_exact_output_reverts_if_not_bondroute( ) external;
+    function test_create_position_reverts_if_not_bondroute( ) external;
     function test_add_liquidity_reverts_if_not_bondroute( ) external;
     function test_remove_liquidity_reverts_if_not_bondroute( ) external;
+    function test_collect_fees_reverts_if_not_bondroute( ) external;
     function test_donate_reverts_if_not_bondroute( ) external;
 }
 
@@ -132,8 +147,8 @@ interface ICanonicalBondRouteIntegrationTests {
     function test_canonical_bondroute_executes_exact_input_swap( ) external;
     function test_canonical_bondroute_exact_input_swap_pulls_erc20_funding_from_user( ) external;
     function test_canonical_bondroute_exact_input_swap_uses_native_funding_from_msg_value( ) external;
-    function test_canonical_bondroute_add_liquidity_pulls_two_erc20_fundings_from_user( ) external;
-    function test_canonical_bondroute_add_liquidity_uses_native_and_erc20_fundings( ) external;
+    function test_canonical_bondroute_create_position_pulls_two_erc20_fundings_from_user( ) external;
+    function test_canonical_bondroute_create_position_uses_native_and_erc20_fundings( ) external;
     function test_canonical_bondroute_reverts_same_block_execution( ) external;
     function test_canonical_bondroute_reverts_before_safeswap_seconds_delay( ) external;
     function test_canonical_bondroute_retries_after_safeswap_seconds_delay( ) external;
@@ -147,6 +162,10 @@ interface ICanonicalBondRouteIntegrationTests {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 interface IHookCallbackTests {
+    // ─── beforeInitialize( ) ───────────────────────────────────────────────────────
+    function test_before_initialize_reverts_if_not_pool_manager( ) external;
+    function test_before_initialize_reverts_if_not_authorized( ) external;
+
     // ─── beforeSwap( ) ─────────────────────────────────────────────────────────────
     function test_before_swap_reverts_if_not_pool_manager( ) external;
     function test_before_swap_reverts_if_not_protected_context( ) external;
@@ -192,8 +211,8 @@ interface IUnlockCallbackTests {
     // ─── Operation Type Dispatch ───────────────────────────────────────────────────
     function test_unlock_callback_dispatches_exact_input_swap( ) external;
     function test_unlock_callback_dispatches_exact_output_swap( ) external;
-    function test_unlock_callback_dispatches_add_liquidity( ) external;
-    function test_unlock_callback_dispatches_remove_liquidity( ) external;
+    function test_unlock_callback_dispatches_modify_liquidity_add( ) external;
+    function test_unlock_callback_dispatches_modify_liquidity_remove( ) external;
     function test_unlock_callback_dispatches_donate( ) external;
     function test_unlock_callback_reverts_on_invalid_action( ) external;
 
@@ -238,33 +257,54 @@ interface ISwapExecutionTests {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 interface ILiquidityExecutionTests {
-    // ─── Add Liquidity ─────────────────────────────────────────────────────────────
-    function test_add_liquidity_calculates_liquidity_correctly( ) external;
+    // ─── Add Liquidity (liquidity_delta > 0 → settle) ──────────────────────────────
+    function test_add_liquidity_settles_both_tokens_from_user( ) external;
     function test_add_liquidity_transfers_token0_to_pool( ) external;
     function test_add_liquidity_transfers_token1_to_pool( ) external;
     function test_add_liquidity_reverts_on_amount0_slippage( ) external;
     function test_add_liquidity_reverts_on_amount1_slippage( ) external;
-    function test_add_liquidity_handles_single_sided_deposit( ) external;
-    function test_add_liquidity_uses_correct_tick_range( ) external;
     function test_add_liquidity_passes_when_amounts_meet_minimums( ) external;
     function test_add_liquidity_reverts_on_one_sided_mismatch_token0_expected( ) external;
     function test_add_liquidity_reverts_on_one_sided_mismatch_token1_expected( ) external;
+    function test_add_liquidity_handles_single_sided_deposit( ) external;
 
-    // ─── Add Liquidity — Position Isolation ─────────────────────────────────────────
-    function test_add_liquidity_different_users_produce_isolated_position_salts( ) external;
+    // ─── Add Liquidity — NFT Position Salt ──────────────────────────────────────────
+    function test_add_liquidity_uses_lp_token_id_as_position_salt( ) external;
+    function test_add_liquidity_distinct_positions_produce_distinct_salts( ) external;
 
-    // ─── Remove Liquidity ──────────────────────────────────────────────────────────
+    // ─── Remove Liquidity (liquidity_delta < 0 → take) ─────────────────────────────
     function test_remove_liquidity_returns_tokens_to_user( ) external;
     function test_remove_liquidity_reverts_on_amount0_slippage( ) external;
     function test_remove_liquidity_reverts_on_amount1_slippage( ) external;
-    function test_remove_liquidity_uses_correct_tick_range( ) external;
+    function test_remove_liquidity_passes_when_amounts_meet_minimums( ) external;
     function test_remove_liquidity_full_position( ) external;
     function test_remove_liquidity_partial_position( ) external;
-    function test_remove_liquidity_passes_when_amounts_meet_minimums( ) external;
+    function test_remove_liquidity_salt_matches_token_id_round_trip( ) external;
 
-    // ─── Remove Liquidity — Position Isolation ──────────────────────────────────────
-    function test_remove_liquidity_different_users_produce_isolated_position_salts( ) external;
-    function test_remove_liquidity_position_salt_matches_add_liquidity( ) external;
+    // ─── Collect Fees (liquidity_delta == 0 → take) ────────────────────────────────
+    function test_collect_fees_takes_accrued_fees_to_user( ) external;
+    function test_collect_fees_reverts_on_slippage( ) external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// NFT-BACKED POSITIONS
+// Implemented in: test/SafeSwap/Nft.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface INftTests {
+    // ─── Position Minting & Salt ────────────────────────────────────────────────────
+    function test_create_position_mints_lp_nft_and_uses_token_id_salt( ) external;
+    function test_create_position_reverts_on_pool_price_mismatch( ) external;
+
+    // ─── Position Authority (owner / approved / operator) ───────────────────────────
+    function test_position_nft_transfer_moves_position_authority( ) external;
+    function test_position_approved_address_can_operate( ) external;
+    function test_position_operator_can_operate( ) external;
+
+    // ─── Position NFT Contract Guards ───────────────────────────────────────────────
+    function test_mint_position_reverts_for_non_hook_caller( ) external;
+    function test_get_lp_position_reverts_for_nonexistent_token( ) external;
 }
 
 
@@ -425,6 +465,7 @@ interface IRealPoolIntegrationTests {
     // ─── Security ─────────────────────────────────────────────────────────────────
     function test_real_pool_hook_rejects_direct_pool_swap( ) external;
     function test_real_pool_hook_rejects_direct_pool_donate( ) external;
+    function test_real_pool_hook_rejects_direct_pool_initialize( ) external;
     function test_real_pool_protected_context_cleared_after_operation( ) external;
 
     // ─── Stake Quotation ──────────────────────────────────────────────────────────
@@ -543,24 +584,25 @@ interface IGasBenchmarkTests {
 // SUMMARY STATISTICS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Implemented & Passing:      235 ✓
+// Implemented & Passing:      257 ✓
 // Manifest-only Benchmarks:    10 declared above, not currently in the test suite.
 //
 // Coverage by Section:
-// - Constructor:                6 tests  ✓
-// - Treasury:                  5 tests  ✓
-// - Mock BondRoute:            43 tests  ✓
+// - Constructor:                7 tests  ✓
+// - Treasury:                  6 tests  ✓
+// - Mock BondRoute:            53 tests  ✓
 // - Canonical BondRoute:       13 tests  ✓
-// - Hook Callbacks:            21 tests  ✓
+// - Hook Callbacks:            23 tests  ✓
 // - Unlock Callback:            9 tests  ✓
 // - Swap Execution:            15 tests  ✓
 // - Liquidity Execution:       20 tests  ✓
+// - NFT-Backed Positions:       7 tests  ✓
 // - Donate Execution:           3 tests  ✓
 // - Protocol Fee:              13 tests  ✓
 // - Fee Withdrawal:            12 tests  ✓
 // - Stake Calculation:          7 tests  ✓
 // - Integration Tests:         12 tests  ✓
-// - Real Pool Integration:     36 tests  ✓
+// - Real Pool Integration:     37 tests  ✓
 // - Reentrant Context:          1 test    ✓
 // - Memory Zero Init:           4 tests  ✓
 // - Fuzz Tests:                 8 tests  ✓
