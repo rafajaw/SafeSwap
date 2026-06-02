@@ -170,57 +170,57 @@ contract InvariantsTest is SafeSwapTestBase {
     }
 
 
-    // ━━━━  Collector Invariants  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  Treasury Invariants  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function invariant_only_collector_can_withdraw( ) external
+    function invariant_only_treasury_can_withdraw( ) external
     {
-        // Non-collector should not be able to withdraw.
+        // Non-treasury should not be able to withdraw.
         token0.mint( address(hook), 100 ether );
 
         vm.prank( user );
-        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, collector ) );
-        hook.withdraw_fees( token0, user );
+        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, treasury ) );
+        hook.withdraw_protocol_fees( token0, user );
 
-        // Collector should succeed.
-        vm.prank( collector );
-        hook.withdraw_fees( token0, collector );
+        // Treasury should succeed.
+        vm.prank( treasury );
+        hook.withdraw_protocol_fees( token0, treasury );
     }
 
-    function invariant_collectorship_transfer_requires_current_collector( ) external
+    function invariant_treasury_transfer_requires_current_treasury( ) external
     {
-        address new_collector  =  makeAddr( "new_collector" );
+        address new_treasury  =  makeAddr( "new_treasury" );
 
-        // Non-collector cannot initiate transfer.
+        // Non-treasury cannot initiate transfer.
         vm.prank( user );
-        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, collector ) );
-        hook.transfer_collector( new_collector );
+        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, treasury ) );
+        hook.transfer_treasury( new_treasury );
 
-        // Collector can initiate transfer (2-step process).
-        address current_collector  =  hook.get_collector( );
-        vm.prank( current_collector );
-        hook.transfer_collector( new_collector );
+        // Treasury can initiate transfer (2-step process).
+        address current_treasury  =  hook.get_treasury( );
+        vm.prank( current_treasury );
+        hook.transfer_treasury( new_treasury );
 
-        // Collector unchanged until accepted.
+        // Treasury unchanged until accepted.
         assertEq(
-            hook.get_collector( ),
-            current_collector,
-            "Collector should not change until accepted."
+            hook.get_treasury( ),
+            current_treasury,
+            "Treasury should not change until accepted."
         );
 
-        // New collector accepts.
-        vm.prank( new_collector );
-        hook.accept_collector( );
+        // New treasury accepts.
+        vm.prank( new_treasury );
+        hook.accept_treasury( );
 
         assertEq(
-            hook.get_collector( ),
-            new_collector,
-            "Collector should transfer after accept."
+            hook.get_treasury( ),
+            new_treasury,
+            "Treasury should transfer after accept."
         );
 
         // Restore for other tests.
-        vm.prank( new_collector );
-        hook.transfer_collector( collector );
-        vm.prank( collector );
-        hook.accept_collector( );
+        vm.prank( new_treasury );
+        hook.transfer_treasury( treasury );
+        vm.prank( treasury );
+        hook.accept_treasury( );
     }
 }

@@ -14,7 +14,7 @@ pragma solidity ^0.8.30;
 */
 
 import "@SafeSwap/BondRouteIntegration.sol";
-import "@SafeSwap/Collector.sol";
+import "@SafeSwap/Treasury.sol";
 
 
 /**
@@ -24,24 +24,24 @@ import "@SafeSwap/Collector.sol";
  *
  * Inheritance Chain (base → derived):
  *   BondRouteProtected, UniswapHook → User → BondRouteIntegration → SafeSwap
- *   Collector → SafeSwap
+ *   Treasury → SafeSwap
  *
  *   BondRouteProtected - commit-reveal bond mechanism
  *   UniswapHook        - PoolManager + V4 callbacks + protected context
  *   User               - user functions (swap, liquidity) + off-chain getters
  *   BondRouteIntegration - BondRoute selectors, quote, validation, signing-info dispatch
- *   Collector          - fee withdrawal + role transfer
+ *   Treasury           - protocol-fee withdrawal + treasury role transfer
  *   SafeSwap           - final composition + receive()
  */
-contract SafeSwap is BondRouteIntegration, Collector {
+contract SafeSwap is BondRouteIntegration, Treasury {
 
     /**
-     * @notice Deploy SafeSwap and initialize PoolManager, BondRoute, and collector configuration.
+     * @notice Deploy SafeSwap and initialize PoolManager, BondRoute, and treasury configuration.
      * @dev Constructor reads deployment configuration from ChainConfig and reverts with string errors for human-facing deployment failures.
      */
     constructor( )
     BondRouteIntegration( )
-    Collector( ) { }
+    Treasury( ) { }
 
     /**
      * @notice Receive native token from PoolManager (protocol fees on native swaps) or BondRoute (native funding pulls).

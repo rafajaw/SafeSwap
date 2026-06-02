@@ -9,7 +9,7 @@ import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
-import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_COLLECTOR_KEY } from "@SafeSwap/Definitions.sol";
+import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY } from "@SafeSwap/Definitions.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
@@ -145,7 +145,7 @@ contract RealPoolIntegrationTest is Test {
     PoolKey public native_pool_key;
     bool private _native_pool_initialized;
 
-    address public collector;
+    address public treasury;
     address public user;
     address public other_user;
     address public lp;
@@ -164,7 +164,7 @@ contract RealPoolIntegrationTest is Test {
         vm.roll( 1000 );
         vm.warp( 1000000 );
 
-        collector   =  makeAddr( "collector" );
+        treasury   =  makeAddr( "treasury" );
         user        =  makeAddr( "user" );
         other_user  =  makeAddr( "other_user" );
         lp          =  makeAddr( "liquidity_provider" );
@@ -190,7 +190,7 @@ contract RealPoolIntegrationTest is Test {
 
         // Store pool manager address in ChainConfig.
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(real_pool_manager) );
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_COLLECTOR_KEY, collector );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, treasury );
 
         // Deploy hook at the address carrying SafeSwap's Uniswap V4 permission flags:
         // BEFORE_SWAP(0x80) | BEFORE_DONATE(0x20) | BEFORE_REMOVE_LIQUIDITY(0x200) | BEFORE_ADD_LIQUIDITY(0x800) = 0x0AA0.
@@ -808,14 +808,14 @@ contract RealPoolIntegrationTest is Test {
         uint256 hook_token1_balance  =  token1.balanceOf( address(hook) );
         assertGt( hook_token1_balance, 1, "Hook should have accumulated protocol fees." );
 
-        // Collector withdraws.
+        // Treasury withdraws.
         address recipient  =  makeAddr( "treasury" );
         token1.mint( recipient, 1 );  // Dust to avoid 0-to-nonzero.
 
         uint256 recipient_before  =  token1.balanceOf( recipient );
 
-        vm.prank( collector );
-        hook.withdraw_fees( token1, recipient );
+        vm.prank( treasury );
+        hook.withdraw_protocol_fees( token1, recipient );
 
         uint256 recipient_after  =  token1.balanceOf( recipient );
 

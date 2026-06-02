@@ -6,10 +6,10 @@ pragma solidity ^0.8.30;
 
 // *PLACEHOLDER*  -  Replace with the canonical SafeSwap protocol config-signer address before mainnet deploy.
 // Keyspace under which the PoolManager (and other chain-scoped) entries must be signed in ChainConfig.
-// Decoupled from the operational fee collector so each role can rotate independently.
+// Decoupled from the operational protocol treasury so each role can rotate independently.
 address constant CONFIG_SIGNER  =  0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;  // ***TODO*** - Fix before deployment!
 bytes32 constant POOL_MANAGER_KEY       =  bytes32("uniswap_v4/pool_manager");
-bytes32 constant INITIAL_COLLECTOR_KEY  =  bytes32("safeswap/initial_collector");
+bytes32 constant INITIAL_TREASURY_KEY   =  bytes32("safeswap/initial_treasury");
 
 
 // ━━━━  SAFESWAP ECONOMICS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

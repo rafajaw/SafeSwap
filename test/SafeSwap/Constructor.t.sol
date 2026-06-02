@@ -8,12 +8,12 @@ contract NotPoolManager { }
 
 
 contract ConstructorTest is SafeSwapTestBase {
-    function test_constructor_sets_collector_correctly( ) external view
+    function test_constructor_sets_treasury_correctly( ) external view
     {
         assertEq(
-            hook.get_collector( ),
-            collector,
-            "Constructor should set collector from ChainConfig."
+            hook.get_treasury( ),
+            treasury,
+            "Constructor should set treasury from ChainConfig."
         );
     }
 
@@ -41,14 +41,14 @@ contract ConstructorTest is SafeSwapTestBase {
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(pool_manager) );
     }
 
-    function test_constructor_reverts_if_initial_collector_not_set( ) external
+    function test_constructor_reverts_if_initial_treasury_not_set( ) external
     {
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_COLLECTOR_KEY, address(0) );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, address(0) );
 
-        vm.expectRevert( bytes("SafeSwap: Invalid initial_collector") );
+        vm.expectRevert( bytes("SafeSwap: Invalid initial_treasury") );
         deployCodeTo( "TestBase.t.sol:TestableSafeSwap", address(uint160(0x4AA0)) );
 
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_COLLECTOR_KEY, collector );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, treasury );
     }
 
     function test_constructor_reverts_if_hook_address_has_wrong_flags( ) external

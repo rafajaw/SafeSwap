@@ -24,7 +24,7 @@ contract CanonicalBondRouteIntegrationTest is SafeSwapTestBase {
     {
         super.setUp( );
 
-        deployCodeTo( "BondRoute.sol:BondRoute", abi.encode( collector ), BONDROUTE_ADDRESS );
+        deployCodeTo( "BondRoute.sol:BondRoute", abi.encode( treasury ), BONDROUTE_ADDRESS );
         canonical_bond_route  =  CanonicalBondRoute(payable(BONDROUTE_ADDRESS));
 
         vm.startPrank( user );

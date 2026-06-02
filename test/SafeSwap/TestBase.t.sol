@@ -10,7 +10,7 @@ import "@SafeSwap/libraries/AddLiquidityLib.sol";
 import "@SafeSwap/libraries/RemoveLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
-import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_COLLECTOR_KEY } from "@SafeSwap/Definitions.sol";
+import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
@@ -401,10 +401,9 @@ abstract contract SafeSwapTestBase is Test {
     FailingERC20 public failing_token;
 
     // Addresses.
-    address public collector;
+    address public treasury;
     address public user;
     address public other_user;
-    address public treasury;
 
     // Constants.
     uint24 constant POOL_FEE_030       =  3000;    // 0.30%.
@@ -424,10 +423,9 @@ abstract contract SafeSwapTestBase is Test {
         vm.warp( 1000000 );
 
         // Create addresses.
-        collector   =  makeAddr( "collector" );
+        treasury   =  makeAddr( "treasury" );
         user        =  makeAddr( "user" );
         other_user  =  makeAddr( "other_user" );
-        treasury    =  makeAddr( "treasury" );
 
         // Deploy mocks.
         chain_config   =  new MockChainConfig( );
@@ -440,7 +438,7 @@ abstract contract SafeSwapTestBase is Test {
 
         // Set deployment config in ChainConfig under the hardcoded CONFIG_SIGNER keyspace.
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(pool_manager) );
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_COLLECTOR_KEY, collector );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, treasury );
 
         // Set skip_actual_transfer to true on the etched BondRoute.
         MockBondRoute(payable(BONDROUTE_ADDRESS)).set_skip_actual_transfer( true );

@@ -332,14 +332,14 @@ contract IntegrationTest is SafeSwapTestBase {
         );
     }
 
-    function test_integration_collector_withdraws_accumulated_fees( ) external
+    function test_integration_treasury_withdraws_accumulated_fees( ) external
     {
         token1.mint( address(hook), 10 ether );
 
         uint256 treasury_before  =  token1.balanceOf( treasury );
 
-        vm.prank( collector );
-        hook.withdraw_fees( token1, treasury );
+        vm.prank( treasury );
+        hook.withdraw_protocol_fees( token1, treasury );
 
         uint256 treasury_after  =  token1.balanceOf( treasury );
 
@@ -347,7 +347,7 @@ contract IntegrationTest is SafeSwapTestBase {
         assertEq(
             treasury_after - treasury_before,
             10 ether,
-            "Collector should withdraw accumulated fees minus 1 wei."
+            "Treasury should withdraw accumulated fees minus 1 wei."
         );
     }
 }

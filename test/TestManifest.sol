@@ -21,27 +21,28 @@ pragma solidity ^0.8.30;
 
 interface IConstructorTests {
     // ─── Deployment ────────────────────────────────────────────────────────────────
-    function test_constructor_sets_collector_correctly( ) external;
+    function test_constructor_sets_treasury_correctly( ) external;
     function test_constructor_reverts_if_pool_manager_not_set( ) external;
     function test_constructor_reverts_if_chain_config_points_to_non_pool_manager( ) external;
-    function test_constructor_reverts_if_initial_collector_not_set( ) external;
+    function test_constructor_reverts_if_initial_treasury_not_set( ) external;
     function test_constructor_reverts_if_hook_address_has_wrong_flags( ) external;
     function test_constructor_announces_protocol_to_bondroute( ) external;
 }
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// COLLECTOR
-// Implemented in: test/SafeSwap/Collector.t.sol
+// TREASURY
+// Implemented in: test/SafeSwap/Treasury.t.sol
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-interface ICollectorTests {
+interface ITreasuryTests {
     // ─── Role Transfer ─────────────────────────────────────────────────────────────
-    function test_get_collector_returns_initial_collector( ) external;
-    function test_transfer_collector_sets_pending( ) external;
-    function test_transfer_collector_reverts_for_non_collector( ) external;
-    function test_accept_collector_completes_transfer( ) external;
-    function test_accept_collector_reverts_for_non_pending( ) external;
+    function test_get_treasury_returns_initial_treasury( ) external;
+    function test_transfer_treasury_sets_pending( ) external;
+    function test_transfer_treasury_reverts_for_non_treasury( ) external;
+    function test_transfer_treasury_reverts_for_current_treasury( ) external;
+    function test_accept_treasury_completes_transfer( ) external;
+    function test_accept_treasury_reverts_for_non_pending( ) external;
 }
 
 
@@ -315,14 +316,14 @@ interface IProtocolFeeTests {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 interface IFeeWithdrawalTests {
-    // ─── withdraw_fees( ) ──────────────────────────────────────────────────────────
-    function test_withdraw_fees_transfers_erc20_to_recipient( ) external;
-    function test_withdraw_fees_transfers_native_to_recipient( ) external;
-    function test_withdraw_fees_reverts_if_not_collector( ) external;
-    function test_withdraw_fees_keeps_1_wei_for_gas_optimization( ) external;
-    function test_withdraw_fees_no_op_if_balance_is_1_or_less( ) external;
-    function test_withdraw_fees_reverts_on_failed_native_transfer( ) external;
-    function test_withdraw_fees_reverts_on_failed_erc20_transfer( ) external;
+    // ─── withdraw_protocol_fees( ) ──────────────────────────────────────────────────────────
+    function test_withdraw_protocol_fees_transfers_erc20_to_recipient( ) external;
+    function test_withdraw_protocol_fees_transfers_native_to_recipient( ) external;
+    function test_withdraw_protocol_fees_reverts_if_not_treasury( ) external;
+    function test_withdraw_protocol_fees_keeps_1_wei_for_gas_optimization( ) external;
+    function test_withdraw_protocol_fees_no_op_if_balance_is_1_or_less( ) external;
+    function test_withdraw_protocol_fees_reverts_on_failed_native_transfer( ) external;
+    function test_withdraw_protocol_fees_reverts_on_failed_erc20_transfer( ) external;
 
     // ─── receive( ) ────────────────────────────────────────────────────────────────
     function test_receive_rejects_direct_native_transfer_from_arbitrary_sender( ) external;
@@ -330,8 +331,8 @@ interface IFeeWithdrawalTests {
     function test_receive_accepts_native_from_bondroute( ) external;
 
     // ─── Multi-Token Withdrawal ────────────────────────────────────────────────────
-    function test_withdraw_fees_multiple_tokens_sequentially( ) external;
-    function test_withdraw_fees_to_different_recipients( ) external;
+    function test_withdraw_protocol_fees_multiple_tokens_sequentially( ) external;
+    function test_withdraw_protocol_fees_to_different_recipients( ) external;
 }
 
 
@@ -378,7 +379,7 @@ interface IIntegrationTests {
 
     // ─── Fee Accumulation ──────────────────────────────────────────────────────────
     function test_integration_fees_accumulate_over_swaps( ) external;
-    function test_integration_collector_withdraws_accumulated_fees( ) external;
+    function test_integration_treasury_withdraws_accumulated_fees( ) external;
 }
 
 
@@ -504,9 +505,9 @@ interface IInvariantTests {
     function invariant_protected_context_always_cleared_after_operation( ) external;
     function invariant_hooks_only_pass_in_protected_context( ) external;
 
-    // ─── Collectorship Invariants ───────────────────────────────────────────────────
-    function invariant_only_collector_can_withdraw( ) external;
-    function invariant_collectorship_transfer_requires_current_collector( ) external;
+    // ─── Treasury Invariants ───────────────────────────────────────────────────
+    function invariant_only_treasury_can_withdraw( ) external;
+    function invariant_treasury_transfer_requires_current_treasury( ) external;
 }
 
 
@@ -530,8 +531,8 @@ interface IGasBenchmarkTests {
     function test_gas_before_remove_liquidity_callback( ) external;
 
     // ─── Fee Operations ────────────────────────────────────────────────────────────
-    function test_gas_withdraw_fees_erc20( ) external;
-    function test_gas_withdraw_fees_native( ) external;
+    function test_gas_withdraw_protocol_fees_erc20( ) external;
+    function test_gas_withdraw_protocol_fees_native( ) external;
 
     // ─── Encoding Comparison ───────────────────────────────────────────────────────
     function test_gas_trailing_byte_encoding_vs_abi_encode( ) external;
@@ -547,7 +548,7 @@ interface IGasBenchmarkTests {
 //
 // Coverage by Section:
 // - Constructor:                6 tests  ✓
-// - Collector:                  5 tests  ✓
+// - Treasury:                  5 tests  ✓
 // - Mock BondRoute:            43 tests  ✓
 // - Canonical BondRoute:       13 tests  ✓
 // - Hook Callbacks:            21 tests  ✓
@@ -617,8 +618,8 @@ interface IGasBenchmarkTests {
 // ┌────────────────────────────┬────────────┐
 // │ Operation                  │ Gas Cost   │
 // ├────────────────────────────┼────────────┤
-// │ withdraw_fees (ERC20)      │   34,189   │
-// │ withdraw_fees (Native)     │   39,768   │
+// │ withdraw_protocol_fees (ERC20)      │   34,189   │
+// │ withdraw_protocol_fees (Native)     │   39,768   │
 // └────────────────────────────┴────────────┘
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import "@SafeSwap/SafeSwap.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
-import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_COLLECTOR_KEY } from "@SafeSwap/Definitions.sol";
+import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -185,7 +185,7 @@ contract ReentrantProtectedContextTest is Test {
     MockERC20 public attack_token_b;
     MockERC20 public attack_output_token;
 
-    address public collector;
+    address public treasury;
     address public user;
     address public lp;
 
@@ -203,7 +203,7 @@ contract ReentrantProtectedContextTest is Test {
         vm.roll( 1000 );
         vm.warp( 1000000 );
 
-        collector  =  makeAddr( "collector" );
+        treasury  =  makeAddr( "treasury" );
         user       =  makeAddr( "user" );
         lp         =  makeAddr( "lp" );
 
@@ -220,7 +220,7 @@ contract ReentrantProtectedContextTest is Test {
         real_pool_manager  =  IPoolManager(abi.decode( ret, (address) ));
 
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POOL_MANAGER_KEY, address(real_pool_manager) );
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_COLLECTOR_KEY, collector );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, treasury );
 
         address hook_target  =  address(uint160(0x0AA0));
         deployCodeTo( "ReentrantProtectedContext.t.sol:ReentryPoolTestHook", hook_target );

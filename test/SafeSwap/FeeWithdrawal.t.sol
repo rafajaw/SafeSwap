@@ -6,16 +6,16 @@ import "./TestBase.t.sol";
 
 contract FeeWithdrawalTest is SafeSwapTestBase {
 
-    // ━━━━  withdraw_fees( )  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  withdraw_protocol_fees( )  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function test_withdraw_fees_transfers_erc20_to_recipient( ) external
+    function test_withdraw_protocol_fees_transfers_erc20_to_recipient( ) external
     {
         token0.mint( address(hook), 100 ether );
 
         uint256 recipient_balance_before  =  token0.balanceOf( treasury );
 
-        vm.prank( collector );
-        hook.withdraw_fees( token0, treasury );
+        vm.prank( treasury );
+        hook.withdraw_protocol_fees( token0, treasury );
 
         uint256 recipient_balance_after  =  token0.balanceOf( treasury );
 
@@ -26,15 +26,15 @@ contract FeeWithdrawalTest is SafeSwapTestBase {
         );
     }
 
-    function test_withdraw_fees_transfers_native_to_recipient( ) external
+    function test_withdraw_protocol_fees_transfers_native_to_recipient( ) external
     {
         // Send ETH to hook.
         vm.deal( address(hook), 100 ether );
 
         uint256 recipient_balance_before  =  treasury.balance;
 
-        vm.prank( collector );
-        hook.withdraw_fees( NATIVE_TOKEN, treasury );
+        vm.prank( treasury );
+        hook.withdraw_protocol_fees( NATIVE_TOKEN, treasury );
 
         uint256 recipient_balance_after  =  treasury.balance;
 
@@ -46,21 +46,21 @@ contract FeeWithdrawalTest is SafeSwapTestBase {
         );
     }
 
-    function test_withdraw_fees_reverts_if_not_collector( ) external
+    function test_withdraw_protocol_fees_reverts_if_not_treasury( ) external
     {
         token0.mint( address(hook), 100 ether );
 
         vm.prank( user );
-        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, collector ) );
-        hook.withdraw_fees( token0, treasury );
+        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, user, treasury ) );
+        hook.withdraw_protocol_fees( token0, treasury );
     }
 
-    function test_withdraw_fees_keeps_1_wei_for_gas_optimization( ) external
+    function test_withdraw_protocol_fees_keeps_1_wei_for_gas_optimization( ) external
     {
         token0.mint( address(hook), 100 ether );
 
-        vm.prank( collector );
-        hook.withdraw_fees( token0, treasury );
+        vm.prank( treasury );
+        hook.withdraw_protocol_fees( token0, treasury );
 
         uint256 remaining_balance  =  token0.balanceOf( address(hook) );
 
@@ -71,12 +71,12 @@ contract FeeWithdrawalTest is SafeSwapTestBase {
         );
     }
 
-    function test_withdraw_fees_no_op_if_balance_is_1_or_less( ) external
+    function test_withdraw_protocol_fees_no_op_if_balance_is_1_or_less( ) external
     {
         uint256 recipient_balance_before  =  token0.balanceOf( treasury );
 
-        vm.prank( collector );
-        hook.withdraw_fees( token0, treasury );
+        vm.prank( treasury );
+        hook.withdraw_protocol_fees( token0, treasury );
 
         uint256 recipient_balance_after  =  token0.balanceOf( treasury );
 
@@ -87,25 +87,25 @@ contract FeeWithdrawalTest is SafeSwapTestBase {
         );
     }
 
-    function test_withdraw_fees_reverts_on_failed_native_transfer( ) external
+    function test_withdraw_protocol_fees_reverts_on_failed_native_transfer( ) external
     {
         vm.deal( address(hook), 100 ether );
 
         RejectingRecipient rejector  =  new RejectingRecipient( );
 
-        vm.prank( collector );
+        vm.prank( treasury );
         vm.expectRevert( abi.encodeWithSelector( TransferFailed.selector, address(NATIVE_TOKEN), address(rejector), 100 ether - 1 ) );
-        hook.withdraw_fees( NATIVE_TOKEN, address(rejector) );
+        hook.withdraw_protocol_fees( NATIVE_TOKEN, address(rejector) );
     }
 
-    function test_withdraw_fees_reverts_on_failed_erc20_transfer( ) external
+    function test_withdraw_protocol_fees_reverts_on_failed_erc20_transfer( ) external
     {
         failing_token.mint( address(hook), 100 ether );
         failing_token.set_should_fail( true );
 
-        vm.prank( collector );
+        vm.prank( treasury );
         vm.expectRevert( abi.encodeWithSelector( TransferFailed.selector, address(failing_token), treasury, 100 ether - 1 ) );
-        hook.withdraw_fees( IERC20(address(failing_token)), treasury );
+        hook.withdraw_protocol_fees( IERC20(address(failing_token)), treasury );
     }
 
 
@@ -154,15 +154,15 @@ contract FeeWithdrawalTest is SafeSwapTestBase {
 
     // ━━━━  Multi-Token Withdrawal  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function test_withdraw_fees_multiple_tokens_sequentially( ) external
+    function test_withdraw_protocol_fees_multiple_tokens_sequentially( ) external
     {
         token0.mint( address(hook), 100 ether );
         token1.mint( address(hook), 200 ether );
 
-        vm.startPrank( collector );
+        vm.startPrank( treasury );
 
-        hook.withdraw_fees( token0, treasury );
-        hook.withdraw_fees( token1, treasury );
+        hook.withdraw_protocol_fees( token0, treasury );
+        hook.withdraw_protocol_fees( token1, treasury );
 
         vm.stopPrank( );
 
@@ -179,7 +179,7 @@ contract FeeWithdrawalTest is SafeSwapTestBase {
         );
     }
 
-    function test_withdraw_fees_to_different_recipients( ) external
+    function test_withdraw_protocol_fees_to_different_recipients( ) external
     {
         token0.mint( address(hook), 100 ether );
         token1.mint( address(hook), 200 ether );
@@ -187,10 +187,10 @@ contract FeeWithdrawalTest is SafeSwapTestBase {
         address recipient1  =  makeAddr( "recipient1" );
         address recipient2  =  makeAddr( "recipient2" );
 
-        vm.startPrank( collector );
+        vm.startPrank( treasury );
 
-        hook.withdraw_fees( token0, recipient1 );
-        hook.withdraw_fees( token1, recipient2 );
+        hook.withdraw_protocol_fees( token0, recipient1 );
+        hook.withdraw_protocol_fees( token1, recipient2 );
 
         vm.stopPrank( );
 
