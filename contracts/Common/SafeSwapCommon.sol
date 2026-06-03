@@ -197,34 +197,88 @@ library SafeSwapCommon {
     // ━━━━  REPRICING FEE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
-     * @notice Compute the total swap fee (in Uniswap V4 pips) for a swap from its estimated tick movement.
-     * @param tick_before Pool tick before the swap.
-     * @param tick_after Estimated pool tick after the swap.
-     * @param rebate_percent LP capture share in percent (0..90).
+     * @notice Compute the total swap fee (in Uniswap V4 pips) from a swap's estimated repricing surplus.
+     * @param amount_in Input the swap pays (estimated at the base fee).
+     * @param amount_out Output the swap receives (estimated at the base fee).
+     * @param sqrt_price_after_x96 Estimated post-swap sqrt price — the terminal price the output is valued at.
+     * @param zero_for_one Swap direction (token0 → token1 when true).
+     * @param capture_percent LP capture share in percent (0..90): the share of SURPLUS paid to LPs.
      * @param base_fee_pips Base LP fee in v4 pips.
      * @return swap_fee_pips Base fee plus the capped repricing fee, in v4 pips, to be returned as the dynamic-fee override.
      *
-     * @dev Linear v1 approximation: 1 tick ≈ 1 bps of price movement. The repricing fee is `capture% × movement`, capped at
-     *      `MAX_REPRICING_REBATE_BPS`; the total is capped at `MAX_TOTAL_FEE_PIPS` so exact-output swaps stay feasible.
+     * @dev `surplus = (output valued at the post-swap price) − input`, in input-token units (clamped at 0). The repricing
+     *      fee is `capture% × surplus`, expressed as a flat rate over the input: `capture% × surplus / amount_in × 1e6`,
+     *      capped at `MAX_REPRICING_FEE_PIPS`. Direction-neutral. Total capped at `MAX_TOTAL_FEE_PIPS` so exact-output stays
+     *      feasible. This is NOT `capture% × displacement`: that over-captures by ~2× (see Definitions.sol / LVR_DETERRENCE.md).
      */
-    function compute_repricing_fee_pips( int24 tick_before, int24 tick_after, uint8 rebate_percent, uint24 base_fee_pips )
-    internal pure returns ( uint24 swap_fee_pips )
+    function compute_repricing_fee_pips(
+        uint256 amount_in,
+        uint256 amount_out,
+        uint160 sqrt_price_after_x96,
+        bool zero_for_one,
+        uint8 capture_percent,
+        uint24 base_fee_pips
+    ) internal pure returns ( uint24 swap_fee_pips )
     {
-        uint256 movement_bps   =  _abs_tick_delta( tick_before, tick_after );
-        uint256 repricing_bps  =  movement_bps * rebate_percent / PERCENT_DENOMINATOR;
-        if(  repricing_bps > MAX_REPRICING_REBATE_BPS  )  repricing_bps  =  MAX_REPRICING_REBATE_BPS;
+        uint256 repricing_pips  =  _repricing_fee_pips( amount_in, amount_out, sqrt_price_after_x96, zero_for_one, capture_percent );
+        if(  repricing_pips > MAX_REPRICING_FEE_PIPS  )  repricing_pips  =  MAX_REPRICING_FEE_PIPS;
 
-        uint256 total_pips  =  uint256(base_fee_pips) + repricing_bps * PIPS_PER_BPS;
+        uint256 total_pips  =  uint256(base_fee_pips) + repricing_pips;
         if(  total_pips > MAX_TOTAL_FEE_PIPS  )  total_pips  =  MAX_TOTAL_FEE_PIPS;
 
         swap_fee_pips  =  uint24(total_pips);
     }
 
-    function _abs_tick_delta( int24 tick_before, int24 tick_after ) private pure returns ( uint256 )
+    /**
+     * @notice Split the Uniswap V4 swap-amount convention into `(amount_in, amount_out)` given the simulator's counterpart.
+     * @dev `amount_specified < 0` is exact-input (amount_in = |specified|, amount_out = counterpart); `> 0` is exact-output.
+     */
+    function swap_legs( int256 amount_specified, uint256 counterpart ) internal pure returns ( uint256 amount_in, uint256 amount_out )
     {
-        int256 delta  =  int256(tick_after) - int256(tick_before);
+        if(  amount_specified < 0  )
+        {
+            amount_in   =  uint256(-amount_specified);
+            amount_out  =  counterpart;
+        }
+        else
+        {
+            amount_out  =  uint256(amount_specified);
+            amount_in   =  counterpart;
+        }
+    }
 
-        return delta < 0  ?  uint256(-delta)  :  uint256(delta);
+    // Repricing fee in v4 pips = `capture% × surplus / amount_in × 1e6`, where surplus = output valued at the post-swap price
+    // minus the input, in input-token units (0 if not positive). FullMath keeps the valuation and pip conversion exact.
+    function _repricing_fee_pips( uint256 amount_in, uint256 amount_out, uint160 sqrt_price_after_x96, bool zero_for_one, uint8 capture_percent )
+    private pure returns ( uint256 )
+    {
+        if(  amount_in == 0  ||  capture_percent == 0  )  return 0;
+
+        uint256 output_in_input_units  =  _value_output_in_input( amount_out, sqrt_price_after_x96, zero_for_one );
+        if(  output_in_input_units <= amount_in  )  return 0;
+
+        uint256 surplus  =  output_in_input_units - amount_in;
+
+        // capture% × surplus / amount_in × 1e6  =  surplus × (capture% × 1e6/100) / amount_in.
+        return FullMath.mulDiv( surplus, uint256(capture_percent) * PIPS_PER_PERCENT, amount_in );
+    }
+
+    // Value `amount_out` (the output token) in input-token units at the post-swap price P = (sqrtP / 2^96)^2 (token1/token0):
+    //   zeroForOne (out = token1): value in token0 = amount_out / P = amount_out · 2^192 / sqrtP^2
+    //   oneForZero (out = token0): value in token1 = amount_out · P = amount_out · sqrtP^2 / 2^192
+    function _value_output_in_input( uint256 amount_out, uint160 sqrt_price_after_x96, bool zero_for_one )
+    private pure returns ( uint256 )
+    {
+        uint256 sqrt_price  =  uint256(sqrt_price_after_x96);
+
+        if(  zero_for_one  )
+        {
+            uint256 term  =  FullMath.mulDiv( amount_out, FixedPoint96.Q96, sqrt_price );
+            return          FullMath.mulDiv( term, FixedPoint96.Q96, sqrt_price );
+        }
+
+        uint256 scaled  =  FullMath.mulDiv( amount_out, sqrt_price, FixedPoint96.Q96 );
+        return              FullMath.mulDiv( scaled, sqrt_price, FixedPoint96.Q96 );
     }
 
 

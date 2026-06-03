@@ -1,76 +1,36 @@
 # SafeSwap Dynamic-Fee LP Repricing Rebate — Implementation Plan
 
-## Context
+> Binding spec for the mechanism. Companions: **`LVR_DETERRENCE.md`** (why / economics) and
+> **`REPRICING_REBATE_ADDRESS_CONFIG.md`** (topology, hook-address encoding, registry). This is a new system — no backwards
+> compatibility required.
 
-The first cut of the repricing rebate (`feat/repricing-rebate`) measured a swap's **real** tick movement after the fact
-and `donate`d the rebate to LPs. That is exact in magnitude and cheap, but `donate` credits only the LPs **in range at the
-post-swap tick** — it systematically **fails to compensate the LPs whose ranges the swap crossed and exited**, which are
-exactly the LPs that got repriced. We benchmarked the alternative and decided the trade is worth it:
+## Context: the pivot, and the calibration fix
 
-- A native v4 **dynamic LP fee** accrues **per swap step to each crossed range**, so it compensates LPs **proportional to the
-  volume they served** — path-fair, the property `donate` lacks.
-- Its only real cost is that the fee must be set in `beforeSwap` **before** the realized movement is known, so the hook must
-  **simulate** the swap to estimate the post-swap tick. `SwapSimulator` (already built and benchmarked) does this for a
-  measured **~9,000 gas fixed + ~4,000 per initialized tick crossed** — cents on L1, dust on L2. Acceptable for correctly
-  paying the wrecked LP.
+The first cut measured a swap's real tick movement after the fact and `donate`d to LPs. `donate` only credits LPs in range at
+the post-swap tick, missing the crossed-and-exited LPs — exactly the repriced ones. So we pivoted to a native V4 **dynamic LP
+fee** (design A): the hook simulates the swap in `beforeSwap` and returns `base fee + repricing fee` as an override, which
+accrues **path-fairly** to every range the swap crosses.
 
-This plan pivots SafeSwap from *measure-and-donate* to **dynamic-fee (design A)**: the **hook itself** runs `SwapSimulator`
-in `beforeSwap` and returns `OVERRIDE_FEE = baseFee + repricingFee`. It builds on `bench/dynamic-fee-simulator` (router +
-config-hook registry + `SwapSimulator`).
-
-This is a new system — no backwards compatibility required.
+A second, independent correction: the repricing fee must be a share of the **surplus** the swap extracts, not a fee *rate*
+proportional to price displacement. Charging `capture% × movement` as a rate over-captures by ~2× (a flat rate hits the whole
+input; the surplus is only the price-impact triangle ≈ ½·movement·input), so a "50%" dial would take ~100% of the surplus and
+"90%" would make repricing unprofitable — defeating the freshness incentive the 90% ceiling exists to protect. See
+`LVR_DETERRENCE.md` §4. **`capture%` is the share of estimated surplus paid to LPs.**
 
 ## Decisions (confirmed)
 
-1. **Design A — the hook prices the swap.** `beforeSwap` runs `SwapSimulator`, computes `repricingFee` from the estimated
-   movement, and returns the v4 override fee. **Trustless**: LP compensation depends only on pool state + the audited hook
-   code, never on a router-supplied number.
-2. **Pools are `DYNAMIC_FEE_FLAG`.** The base fee no longer lives in `PoolKey.fee`; it moves into the hook config.
-3. **Hook address is BCD with mnemonic markers: `0xF` (Fee), 3 base-fee digits, `0xC` (Capture), 1 rebate digit.**
-   (`0x55` dropped — the hook isn't user-facing. `F` = "Fee" marks the base LP fee; `C` = "Capture" marks the share of
-   displacement the pool captures for LPs. With `C` owning the capture dimension there's no fee ambiguity. Both `0xF` and
-   `0xC` are >9, so neither marker can be confused with a `0..9` data digit and the config self-parses.)
-   - `0xF 030 C 5` → base **0.30%**, capture/rebate **50%**
-   - `0xF 150 C 9` → base **1.50%**, capture/rebate **90%**
-   - `0xF 001 C 1` → base **0.01%**, capture/rebate **10%**
-
-   Top 24 bits `[F][d2][d1][d0][C][r]` (`bits 136..159`) · free salt bits · low 14 bits = v4 permission bitmap. Decode:
-   assert `digit0 == 0xF` and `digit4 == 0xC`, and `d2,d1,d0,r <= 9`; then `base_fee_bps = 100*d2 + 10*d1 + d0`
-   (0..999 → **0.00%..9.99%**), `rebate_percent = 10*r` (0..90 → `rebate_bps = rebate_percent * 100`). 38 mined bits
-   (24 config + 14 perms), GPU vanity-mine (~minutes), one-time per config.
-
-   - The **90% rebate ceiling is economically intended**: leaving >=10% of the displacement to arbitrageurs preserves their
-     incentive to keep the pool price fresh (a 100% rebate would halt price correction). 10% steps also block odd/predatory
-     rebate values.
-4. **No base-fee allowlist — base fee is open (any whole bps <= 9.99%).** Fragmentation is rate-limited by *real friction*,
-   not a governance tier list: every `(fee, rebate)` hook must be GPU-mined, deployed, registered, and seeded by a first LP.
-   That cost stops 999-way splitting and doubles as a competitiveness escape hatch (an LP on a dead 0.30% pool can stand up
-   0.25% to pull flow) — mirroring v4's permissionless-fee philosophy. The rebate axis stays discrete for free (1 nibble = 10% steps).
-4. **Rebate = native LP fee, not a donation.** The swap libs drop measure-and-donate; the rebate is delivered entirely by
-   the `beforeSwap` fee override and accrues path-fairly through v4's per-step fee accounting.
-5. **Quoting:** the standard V4Quoter cannot quote SafeSwap pools (hook rejects `sender != ROUTER`), so SafeSwap exposes its
-   own `__OFF_CHAIN__quote_swap` that runs the **same** `SwapSimulator` → quote and execution agree by construction.
-6. **`BondRoute_quote_call` is unchanged in spirit** — stake (% of input), fundings, timing; no simulator. Fee/output
-   preview is the separate `__OFF_CHAIN__quote_swap`.
-
-## Topology (decided: Option B — split) — supersedes any single-router wording below
-
-Two BondRoute-protected contracts, because V4 position ownership = the `modifyLiquidity` caller, so the whole position
-lifecycle must live in one contract:
-
-- **SwapRouter** (`BondRouteProtected` #1): `swap_exact_input`, `swap_exact_output`, `register_hook`/`get_hook`, treasury,
-  `__OFF_CHAIN__quote_swap`/`get_pool_id`. Owns no positions. The dynamic-fee quoter (`SwapSimulator`) fits here because
-  the position lifecycle is no longer in this contract.
-- **PositionManagerNFT** (`BondRouteProtected` #2): `create_position`, `add_liquidity`, `remove_liquidity`, `collect_fees`,
-  ERC721, position getters. **Owns the V4 positions** (it is the `modifyLiquidity` caller; salt = tokenId) and has its own
-  unlock-callback + settlement (sharing the action libraries). Resolves the hook via `router.get_hook(...)`.
-
-**`donate` is removed** (not relabeled): the rebate is a native dynamic fee, so a bonded donate is gone, and the hook drops
-the `beforeDonate` permission (`REQUIRED_PERMISSIONS = 0x2A80`). Pools still accept *permissionless* `PoolManager.donate`
-(a harmless v4 primitive crediting in-range LPs), so external incentives can still tip LPs — SafeSwap just doesn't mediate it.
-
-**Hook gating:** `beforeSwap` ⇒ `sender == ROUTER`; `beforeInitialize`/`beforeAddLiquidity`/`beforeRemoveLiquidity` ⇒
-`sender == NFT`. The hook reads both `ROUTER` and `NFT` from ChainConfig. `DonateLib` is deleted.
+1. **Design A — the hook prices the swap.** `beforeSwap` runs `SwapSimulator`, computes the repricing fee from the estimated
+   **surplus**, returns the V4 override fee. Trustless: depends only on pool state + the audited hook code.
+2. **Pools are `DYNAMIC_FEE_FLAG`.** Base fee lives in the hook address, not `PoolKey.fee`.
+3. **Hook address is BCD `0xF d d d 0xC r`** (3 base-fee digits → `base_fee_bps` 0..999; 1 rebate digit →
+   `capture_percent = 10·r`, 0..90) + 14 permission bits. See the architecture doc. `REQUIRED_PERMISSIONS = 0x2A80`
+   (no `beforeDonate`).
+4. **Capture is a share of surplus, delivered as a native dynamic LP fee.** No measure-and-donate; the fee accrues per swap
+   step. The **90% ceiling** guarantees arbitrageurs keep ≥10% of the surplus.
+5. **Splitting:** no formula-level claim. BondRoute (per-swap stake + commit-reveal + delay) is the deterrent; no cumulative
+   tracking in v1 (immutable simplicity). See `LVR_DETERRENCE.md` §5.
+6. **Quoting:** SafeSwap exposes `__OFF_CHAIN__quote_swap` running the **same** `SwapSimulator` + fee formula, so quote and
+   execution agree by construction. `BondRoute_quote_call` (stake / fundings / timing) is unchanged in spirit.
 
 ## Mechanism
 
@@ -78,113 +38,95 @@ the `beforeDonate` permission (`REQUIRED_PERMISSIONS = 0x2A80`). Pools still acc
 beforeSwap(sender, key, params, hookData):
     require sender == ROUTER
     base_fee_pips = base_fee_bps * 100
-    (tick_before, tick_after, ) = SwapSimulator.simulate(manager, key, params.zeroForOne, params.amountSpecified, base_fee_pips)
-    movement_bps   = abs(tick_after - tick_before)                 // 1 tick ≈ 1 bps (linear v1)
-    repricing_bps  = min( movement_bps * rebate_bps / 10_000, MAX_REPRICING_REBATE_BPS )
-    swap_fee_pips  = min( base_fee_pips + repricing_bps * 100, MAX_TOTAL_FEE_PIPS )
+
+    (tick_before, tick_after, sqrt_after, counterpart) = SwapSimulator.simulate(
+        manager, key, params.zeroForOne, params.amountSpecified, base_fee_pips)
+
+    # Resolve the two legs from the V4 amount convention:
+    #   exact-input  (amountSpecified < 0): amount_in = |amountSpecified|, amount_out = counterpart
+    #   exact-output (amountSpecified > 0): amount_out =  amountSpecified , amount_in  = counterpart
+    (amount_in, amount_out) = legs(params.amountSpecified, counterpart)
+
+    # surplus = output valued at the post-swap (terminal) price, minus input paid, in INPUT-token units (≥ 0).
+    #   zeroForOne (in=token0, out=token1): surplus = amount_out / price_after − amount_in
+    #   oneForZero (in=token1, out=token0): surplus = amount_out * price_after − amount_in
+    #   where price_after = (sqrt_after / 2^96)^2  (token1 per token0); use FullMath, no /2 approximation.
+    surplus = max(0, value_at(amount_out, sqrt_after, params.zeroForOne) − amount_in)
+
+    # Express the captured surplus as the single flat V4 fee rate the swap needs:
+    #   repricing_pips = capture% · (surplus / amount_in) · 1e6  =  surplus · capture_percent · 10_000 / amount_in
+    repricing_pips = min( surplus * capture_percent * 10_000 / amount_in, MAX_REPRICING_FEE_PIPS )
+    swap_fee_pips  = min( base_fee_pips + repricing_pips, MAX_TOTAL_FEE_PIPS )
+
     return ( selector, ZERO_DELTA, OVERRIDE_FEE_FLAG | swap_fee_pips )
 ```
 
-- `base_fee_pips = base_fee_bps * 100`; `rebate_bps = rebate_percent * 100` (both decoded straight from the hook address).
-- v4 then charges `swap_fee_pips` on every swap step, accruing to each crossed range's liquidity → path-fair.
-- `MAX_TOTAL_FEE_PIPS` < `SwapMath.MAX_SWAP_FEE` so exact-output swaps remain feasible.
-- The sim runs *before* the swap math and reads the same slots → it warms them; the swap then reads warm (cost analysis holds).
-- Zero movement or zero liquidity → `repricing_bps = 0` → just the base fee. No donate edge cases anymore.
+- The fee is **direction-neutral**: a move up and the same move down charge the same share of surplus (the only difference is
+  multiply-vs-divide by `price_after` when valuing the output).
+- Simulating with the base fee is a deliberate second-order approximation (the fee-vs-movement feedback is small); the swap
+  then reads the same warmed slots. Quote uses the identical path.
+- Zero movement, zero liquidity, or non-positive surplus → `repricing_pips = 0` → just the base fee.
+- `MAX_TOTAL_FEE_PIPS < SwapMath.MAX_SWAP_FEE` (1e6) keeps exact-output swaps feasible.
 
-## Work breakdown (deltas from the current donate implementation)
+## Work breakdown (deltas from the current displacement-rate code)
 
-### `contracts/Router/Definitions.sol`
-- **BCD hook-address decode** helper: assert `digit0 (bits 156..159) == 0xF` and `digit4 (bits 140..143) == 0xC`; read the
-  base digits `d2 d1 d0` (bits 144..155) and rebate digit `r` (bits 136..139), each `<= 9`; return
-  `base_fee_bps = 100*d2 + 10*d1 + d0` (`uint16`, 0..999) and `rebate_percent = 10*r` (0..90). Keep
-  `REQUIRED_HOOK_PERMISSIONS` (low 14 bits). New constants: `FEE_MARKER = 0xF`, `CAPTURE_MARKER = 0xC`, `MAX_DECIMAL_DIGIT = 9`,
-  and the nibble shifts.
-- Replace the `rebate_profile` / `REBATE_PROFILE_BPS_STEP` / `MAX_REBATE_PROFILE` constants with the BCD-derived
-  `rebate_percent` (`rebate_bps = rebate_percent * 100`).
-- Add `MAX_TOTAL_FEE_PIPS` (fee cap in v4 pips). Keep `MAX_REPRICING_REBATE_BPS`, `BPS_DENOMINATOR`.
+### `contracts/Common/SwapSimulator.sol`
+- **Already returns** `tick_before, tick_after, sqrt_price_after_x96, amount_calculated` — enough for surplus: terminal price
+  from `sqrt_price_after_x96`, and the two legs from `amount_specified` + `amount_calculated`. No new return values needed.
+- Add a focused test suite (`test/Common/SwapSimulator.t.sol`, **currently missing**): exact-in/out, single-range and
+  multi-range crossings, both directions, zero-liquidity, and that simulated `(tick, amounts, sqrt)` match a real swap.
 
-### `contracts/Router/libraries/SwapSimulator.sol` (already present)
-- Extend `simulate(...)` to also return the **gross output (or required input)** amount (accumulate the per-step amounts it
-  already computes) so the quoter can return net output in one place. Keep the assembly `extsload` / scratch-only design.
+### `contracts/Common/SafeSwapCommon.sol`
+- Replace `compute_repricing_fee_pips(tick_before, tick_after, rebate_percent, base_fee_pips)` with the **surplus** version:
+  `compute_repricing_fee_pips(amount_in, amount_out, sqrt_price_after_x96, zero_for_one, capture_percent, base_fee_pips) →
+  uint24 swap_fee_pips`. Use `FullMath.mulDiv` for `value_at(...)` and the pip conversion; clamp surplus at 0; apply both caps.
+- `base_fee_units` stays.
 
-### `contracts/Router/libraries/SafeSwapCommon.sol`
-- Replace the rebate-amount + `donate_rebate` helpers with `compute_repricing_fee_pips(tick_before, tick_after, rebate_percent, base_fee_pips) → uint24 swap_fee_pips` (movement → capped total fee in pips).
-- `base_fee_units` stays. Drop the `RepricingRebateCharged`-as-amount event (or repurpose to log movement/fee at execution).
+### `contracts/Common/Definitions.sol`
+- Replace `MAX_REPRICING_REBATE_BPS` (a cap on the displacement-derived fee *rate*) with **`MAX_REPRICING_FEE_PIPS`** (cap on
+  the repricing component of the fee, in V4 pips). Keep `MAX_TOTAL_FEE_PIPS`, `PIPS_PER_BPS`, `PERCENT_DENOMINATOR`,
+  `BPS_DENOMINATOR`. Rewrite the "LP REPRICING REBATE" comment block to the surplus framing.
 
-### `contracts/Hook/` — single implementation + cheap clones
-**`SafeSwapHookImpl.sol`** (deployed once, audited, immutable):
-- Holds `PoolManager` / `ROUTER` as immutables (read fine under delegatecall — immutables live in the impl's code).
-- Decodes `base_fee_bps` + `rebate_percent` from **`address(this)`** (the proxy's mined address) on each call — config is
-  address-derived, **no storage, no constructor decode, no `initialize_once`-for-storage**. Exposes public getters.
-- `beforeSwap`: `sender == ROUTER` gate, run the mechanism (`SwapSimulator` inlined), return the override fee. Other v4
-  callbacks: unchanged gating. `initialize_once()` calls `ROUTER.register_hook()` (msg.sender = the proxy).
-- *SECURITY* guards: revert if `address(this) == IMPL_SELF` (direct calls to the impl have no valid F/C config); impl is
-  non-upgradeable / non-`selfdestruct` so the proxies' hardcoded target is permanent.
+### `contracts/Hook/SafeSwapHookImpl.sol`
+- `beforeSwap`: call `simulate`, derive legs, call the new `compute_repricing_fee_pips`, return the override. Update the
+  docstring from "movement" to "surplus". Gating unchanged.
 
-**`SafeSwapHookProxy`** (the tiny stub, deployed permissionlessly per config):
-- An EIP-1167-style minimal proxy that `delegatecall`s the fixed `SafeSwapHookImpl`. ~45 bytes → cheap to deploy. Its
-  CREATE2 address is mined to carry the `F d d d C r` config + v4 perm bits; that address *is* the pool's hook.
-- All proxies share one runtime codehash (the impl address is baked into the stub), which is what the registry approves.
+### `contracts/Router/{SafeSwapRouter (User),Nft}` + libraries
+- `__OFF_CHAIN__quote_swap(token_in, token_out, base_fee_bps, capture_percent, tick_spacing, zero_for_one, amount)` →
+  `{ expected_surplus, base_fee_pips, repricing_pips, total_fee_pips, expected_net_output }` via the same `SwapSimulator` +
+  formula. Keep `__OFF_CHAIN__get_pool_id`.
+- Swap libs: build `PoolKey.fee = DYNAMIC_FEE_FLAG`; pool charges `base + repricing` via the override; protocol fee taken from
+  output as today using `base_fee_units(base_fee_bps)`.
 
-### `contracts/Router/HookRegistry.sol`
-- Registry keyed by the decoded config packed as `(base_fee_bps << 4) | rebate_digit` (`uint16`); `get_hook(base_fee_bps,
-  rebate_percent)` resolves it. BCD decode + validation (F/C markers + every digit `<= 9`) runs at registration.
-- **Codehash allowlist targets the proxy-stub codehash** (uniform across all clones, with the audited impl address baked
-  in) — so an approved codehash provably means "delegatecalls the audited `SafeSwapHookImpl`." `register_hook` checks
-  `extcodehash(msg.sender) == approved_stub_codehash` + address bits + perms.
-
-### `contracts/Router/libraries/{ExactInputSwapLib,ExactOutputSwapLib}.sol`
-- **Drop the measure-and-donate path.** Build `PoolKey.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG`. Execute the swap (the pool now
-  takes `base + repricing` as the LP fee via the override), then take the **protocol fee** from output as today and settle
-  the user's net. Protocol-fee math uses `base_fee_units(base_fee_bps)` from config (not `PoolKey.fee`, which is the flag).
-- `get_constraints` unchanged (stake/funding/timing + `rebate_percent` range check).
-
-### `contracts/Router/libraries/{ModifyLiquidityLib,DonateLib}.sol`
-- `PoolKey.fee = DYNAMIC_FEE_FLAG` everywhere a SafeSwap pool key is built (positions/donate are on the same dynamic-fee pool).
-- No rebate logic (unchanged otherwise).
-
-### `contracts/Router/Orchestrator.sol` / `User.sol`
-- Pool init uses `DYNAMIC_FEE_FLAG`. User-facing params carry `base_fee_bps + rebate_percent + tick_spacing`; router
-  resolves the hook from `(base_fee_bps, rebate_percent)`.
-- NFT `SafeSwapPositionInfo` stores `base_fee_bps + rebate_percent + hook`; populate from the decoded address bytes.
-- Add **`__OFF_CHAIN__quote_swap(token_in, token_out, base_fee_bps, rebate_percent, tick_spacing, zero_for_one, amount)`**
-  → `{ expected_movement_bps, base_fee_bps, repricing_bps, total_fee_pips, expected_net_output }` using `SwapSimulator`
-  (two-pass for output precision; one pass already gives the exact fee). Keep `__OFF_CHAIN__get_pool_id` (dynamic-fee key).
-
-### `script/DeploySafeSwapHook.s.sol`
-- One-time: deploy `SafeSwapHookImpl`; publish its proxy-stub codehash (stub = EIP-1167 with the impl address baked in) to
-  ChainConfig as the approved hook codehash.
-- Per config: build the stub initcode (fixed `keccak`), mine a CREATE2 salt whose proxy address carries the `F`/`C` markers
-  + base/rebate digits + v4 perm bits, CREATE2-deploy the ~45-byte clone, then call `initialize_once()` to register it.
-
-## Security model (unchanged + additions)
-- Hook callbacks still gate `msg.sender == PoolManager && sender == ROUTER`.
-- The fee is **deterministic from pool state + the proxy address's BCD config** — no external input, no router trust.
-- **Proxy/impl integrity:** the approved codehash is the EIP-1167 stub's (impl address baked in), so a registered hook
-  provably delegatecalls the audited `SafeSwapHookImpl`; the impl rejects direct (non-proxy) calls and is non-upgradeable.
-- `SwapSimulator` is read-only (`extsload` staticcalls) and runs on pre-swap state inside `beforeSwap`.
-- `*SECURITY*` note: the fee override is capped at `MAX_TOTAL_FEE_PIPS < MAX_SWAP_FEE` so exact-output never becomes infeasible.
+### Docs
+- The three `.md` design docs now carry the surplus framing (this change). Keep code comments in lockstep when editing the
+  files above.
 
 ## Testing
-- **Unit:** `compute_repricing_fee_pips` (movement → pips, cap, rebate_percent 0, rebate_percent 100); base-fee + rebate byte decode.
-- **Hook:** `beforeSwap` returns `base + repricing` override for a seeded real pool; `sender != ROUTER` reverts.
-- **Real-pool path-fairness (the headline test):** swap that crosses ranges A (exited) and B (final), then assert
-  `feeGrowthInside` rose for **both** A and B — proving the dynamic fee compensates the crossed-and-exited LP that `donate`
-  left out. Contrast snapshot vs the donate branch.
-- **Quoter:** `__OFF_CHAIN__quote_swap` fee == executed fee exactly; net output matches (2-pass).
-- **Registry:** `(base_fee_bps, rebate_percent)` keying, duplicate/codehash/perms rejections.
-- **Accounting:** `pool_output == user_output + protocol_fee` (rebate is inside the pool's LP fee, not a separate take).
-- **Migrate the legacy suite** to the dynamic-fee topology (still outstanding from the prior branch).
+
+- **Unit (the headline calibration test):** for a seeded real pool, assert the repricing fee ≈ `capture% × surplus` — e.g.
+  C5 leaves ~half the surplus to the trader (the old displacement-rate code took ~all of it). Include `capture% = 0` and `90`.
+- **Symmetry:** an up-move and the equal down-move charge the same share of surplus (`zeroForOne` vs `oneForZero`).
+- **Splitting (documents behavior, not a guarantee):** one big move vs N small moves — the summed captured fee is *less* for
+  the split path; assert the direction and document it (the formula is not splitting-proof; BondRoute is the deterrent).
+- **Path-fairness:** a swap crossing range A (exited) and B (final) raises `feeGrowthInside` for **both** — the reason for the
+  dynamic-fee pivot.
+- **Quoter:** `__OFF_CHAIN__quote_swap` fee == executed fee; net output matches.
+- **Registry:** `(base_fee_bps, capture_percent)` keying; codehash / address-config / permission / duplicate rejections.
+- **Accounting:** `pool_output == user_output + protocol_fee` (repricing is inside the pool's LP fee).
+- **Simulator suite** (above) and **migrate the legacy suite** to this topology.
 
 ## Verification
-1. `forge build` clean; router under EIP-170 (hook carries `SwapSimulator` inlined — confirm hook size; it was 1,225 bytes).
-2. `forge test` — unit + hook + real-pool + quoter green.
-3. Real-pool gas check: confirm per-swap overhead ≈ ~9k + ~4k/initialized-tick as benchmarked.
-4. Path-fairness test green (the reason for the pivot).
 
-## Open items to confirm
-- **Base fee** is capped at **9.99%** by the 3 BCD digits, and **rebate at 90%** by the 1 digit (both decided: readable
-  addresses + the 90% economic ceiling). A higher base fee would need a 4th digit; not expected to be necessary.
-- **`MAX_TOTAL_FEE_PIPS`** value (e.g. 50% = 500000 pips, must stay < `MAX_SWAP_FEE` = 1e6).
+1. `forge build` clean; router under EIP-170; confirm hook clone size.
+2. `forge test` — unit + simulator + hook + path-fairness + quoter green.
+3. Real-pool gas check: per-swap overhead ≈ ~9k + ~4k per initialized tick crossed (as benchmarked).
+4. Calibration + symmetry tests green (the reason for the surplus fix).
+
+## Open items
+
+- **`MAX_REPRICING_FEE_PIPS`** value (cap on the repricing fee component; must keep `total ≤ MAX_TOTAL_FEE_PIPS < 1e6`).
 - **Quoter precision:** 2-pass (exact output) vs 1-pass (exact fee, ~2nd-order output error).
-- Keep `feat/repricing-rebate` (donate) as the fallback branch until the path-fairness test confirms the pivot end-to-end.
+- **`SafeSwapHookProxy`**: the EIP-1167 stub contract + deploy script + published codehash are not built yet (tests synthesize
+  the clone via `vm.etch`).
+- Keep the donate branch as a fallback only until path-fairness + calibration are confirmed end-to-end.

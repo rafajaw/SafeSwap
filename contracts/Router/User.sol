@@ -98,9 +98,10 @@ abstract contract User is Orchestrator, HookRegistry, BondRouteProtected {
         bool zero_for_one        =  address(token_in) < address(token_out);
         uint24 base_fee_pips     =  SafeSwapCommon.base_fee_units( pool_info.base_fee_bps );
 
-        ( int24 tick_before, int24 tick_after, , )  =  SwapSimulator.simulate( PoolManager, pool_key, zero_for_one, -int256(amount_in), base_fee_pips );
+        ( int24 tick_before, int24 tick_after, uint160 sqrt_price_after_x96, uint256 gross_output_estimate )  =  SwapSimulator.simulate( PoolManager, pool_key, zero_for_one, -int256(amount_in), base_fee_pips );
 
-        total_fee_pips  =  SafeSwapCommon.compute_repricing_fee_pips( tick_before, tick_after, pool_info.rebate_percent, base_fee_pips );
+        ( uint256 leg_in, uint256 leg_out )  =  SafeSwapCommon.swap_legs( -int256(amount_in), gross_output_estimate );
+        total_fee_pips  =  SafeSwapCommon.compute_repricing_fee_pips( leg_in, leg_out, sqrt_price_after_x96, zero_for_one, pool_info.rebate_percent, base_fee_pips );
         movement_bps    =  tick_after >= tick_before  ?  uint256(int256(tick_after) - int256(tick_before))  :  uint256(int256(tick_before) - int256(tick_after));
 
         ( , , , uint256 gross_output )  =  SwapSimulator.simulate( PoolManager, pool_key, zero_for_one, -int256(amount_in), total_fee_pips );
@@ -129,9 +130,10 @@ abstract contract User is Orchestrator, HookRegistry, BondRouteProtected {
         uint256 effective_fee_rate  =  base_fee_pips < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  base_fee_pips;
         uint256 grossed_up_output   =  exact_output_amount * PROTOCOL_FEE_DIVISOR / ( PROTOCOL_FEE_DIVISOR - effective_fee_rate );
 
-        ( int24 tick_before, int24 tick_after, , )  =  SwapSimulator.simulate( PoolManager, pool_key, zero_for_one, int256(grossed_up_output), base_fee_pips );
+        ( int24 tick_before, int24 tick_after, uint160 sqrt_price_after_x96, uint256 required_input_estimate )  =  SwapSimulator.simulate( PoolManager, pool_key, zero_for_one, int256(grossed_up_output), base_fee_pips );
 
-        total_fee_pips  =  SafeSwapCommon.compute_repricing_fee_pips( tick_before, tick_after, pool_info.rebate_percent, base_fee_pips );
+        ( uint256 leg_in, uint256 leg_out )  =  SafeSwapCommon.swap_legs( int256(grossed_up_output), required_input_estimate );
+        total_fee_pips  =  SafeSwapCommon.compute_repricing_fee_pips( leg_in, leg_out, sqrt_price_after_x96, zero_for_one, pool_info.rebate_percent, base_fee_pips );
         movement_bps    =  tick_after >= tick_before  ?  uint256(int256(tick_after) - int256(tick_before))  :  uint256(int256(tick_before) - int256(tick_after));
 
         ( , , , required_input )  =  SwapSimulator.simulate( PoolManager, pool_key, zero_for_one, int256(grossed_up_output), total_fee_pips );

@@ -172,9 +172,11 @@ contract SafeSwapHookImpl is ISafeSwapHook {
         ( uint16 fee_bps, uint8 capture_percent )  =  HookAddress.decode( address(this) );
         uint24 base_fee_pips  =  SafeSwapCommon.base_fee_units( fee_bps );
 
-        ( int24 tick_before, int24 tick_after, , )  =  SwapSimulator.simulate( PoolManager, key, params.zeroForOne, params.amountSpecified, base_fee_pips );
+        ( , , uint160 sqrt_price_after_x96, uint256 counterpart )  =  SwapSimulator.simulate( PoolManager, key, params.zeroForOne, params.amountSpecified, base_fee_pips );
 
-        uint24 swap_fee_pips  =  SafeSwapCommon.compute_repricing_fee_pips( tick_before, tick_after, capture_percent, base_fee_pips );
+        ( uint256 amount_in, uint256 amount_out )  =  SafeSwapCommon.swap_legs( params.amountSpecified, counterpart );
+
+        uint24 swap_fee_pips  =  SafeSwapCommon.compute_repricing_fee_pips( amount_in, amount_out, sqrt_price_after_x96, params.zeroForOne, capture_percent, base_fee_pips );
 
         return ( IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, LPFeeLibrary.OVERRIDE_FEE_FLAG | swap_fee_pips );
     }

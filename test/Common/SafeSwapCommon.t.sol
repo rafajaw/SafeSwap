@@ -43,9 +43,9 @@ contract SafeSwapCommonHarness {
         return SafeSwapCommon.base_fee_units( base_fee_bps );
     }
 
-    function compute_repricing_fee_pips( int24 tick_before, int24 tick_after, uint8 rebate_percent, uint24 base_fee_pips ) external pure returns ( uint24 )
+    function compute_repricing_fee_pips( uint256 amount_in, uint256 amount_out, uint160 sqrt_price_after_x96, bool zero_for_one, uint8 capture_percent, uint24 base_fee_pips ) external pure returns ( uint24 )
     {
-        return SafeSwapCommon.compute_repricing_fee_pips( tick_before, tick_after, rebate_percent, base_fee_pips );
+        return SafeSwapCommon.compute_repricing_fee_pips( amount_in, amount_out, sqrt_price_after_x96, zero_for_one, capture_percent, base_fee_pips );
     }
 
     function build_pool_key( IERC20 token_in, IERC20 token_out, uint24 fee, int24 tick_spacing, address hook_address ) external pure returns ( PoolKey memory )
@@ -329,49 +329,59 @@ contract SafeSwapCommonTest is ISafeSwapCommonTests, SafeSwapTestHelper {
         assertEq( harness.base_fee_units( 999 ), 99900, "999 bps should convert to 99900 v4 pips." );
     }
 
-    function test_compute_repricing_fee_pips_returns_base_fee_when_tick_movement_is_zero( )
+    // sqrt price for pool price 1:1 (2^96): output and input are valued 1:1, so surplus = amount_out − amount_in.
+    uint160 internal constant _SQRT_PRICE_1_1  =  79228162514264337593543950336;
+
+    function test_compute_repricing_fee_pips_returns_base_fee_when_no_surplus( )
     external  view
     {
-        assertEq( harness.compute_repricing_fee_pips( 100, 100, 50, 3000 ), 3000, "Zero movement should charge only base fee." );
+        // Output (valued at the post-swap price) does not exceed the input → no repricing surplus → base fee only.
+        assertEq( harness.compute_repricing_fee_pips( 100, 100, _SQRT_PRICE_1_1, true, 50, 3000 ), 3000, "No surplus should charge only the base fee." );
     }
 
-    function test_compute_repricing_fee_pips_charges_capture_percent_of_tick_movement( )
+    function test_compute_repricing_fee_pips_charges_capture_percent_of_surplus( )
     external  view
     {
-        assertEq( harness.compute_repricing_fee_pips( 0, 100, 50, 3000 ), 8000, "100 bps movement at 50 percent capture should add 50 bps." );
+        // in 100, out 110 at price 1 → surplus 10 (10% of input). Capture 50% → 5% repricing = 50_000 pips; + base 3_000.
+        assertEq( harness.compute_repricing_fee_pips( 100, 110, _SQRT_PRICE_1_1, true, 50, 3000 ), 53000, "50% capture of a 10% surplus should add 50_000 pips." );
     }
 
-    function test_compute_repricing_fee_pips_uses_absolute_tick_movement( )
+    function test_compute_repricing_fee_pips_is_symmetric_across_swap_direction( )
     external  view
     {
-        uint24 fee_down  =  harness.compute_repricing_fee_pips( 100, -50, 50, 3000 );
-        uint24 fee_up    =  harness.compute_repricing_fee_pips( -50, 100, 50, 3000 );
+        // Same surplus moving the price up (zeroForOne) or down (oneForZero) must charge the same fee.
+        uint24 fee_zero_for_one  =  harness.compute_repricing_fee_pips( 100, 110, _SQRT_PRICE_1_1, true,  50, 3000 );
+        uint24 fee_one_for_zero  =  harness.compute_repricing_fee_pips( 100, 110, _SQRT_PRICE_1_1, false, 50, 3000 );
 
-        assertEq( fee_down, fee_up, "Repricing fee should use absolute tick movement." );
+        assertEq( fee_zero_for_one, fee_one_for_zero, "Repricing fee must be direction-neutral for equal surplus." );
+        assertEq( fee_zero_for_one, 53000, "Both directions should charge 50% of the surplus." );
     }
 
     function test_compute_repricing_fee_pips_caps_repricing_component( )
     external  view
     {
-        assertEq( harness.compute_repricing_fee_pips( 0, 5000, 90, 3000 ), 103000, "Repricing component should cap at 1000 bps." );
+        // in 100, out 300 at price 1 → surplus 200 (200% of input); 90% capture would be 1_800_000 pips → capped at 100_000.
+        assertEq( harness.compute_repricing_fee_pips( 100, 300, _SQRT_PRICE_1_1, true, 90, 3000 ), 103000, "Repricing component should cap at MAX_REPRICING_FEE_PIPS." );
     }
 
     function test_compute_repricing_fee_pips_caps_total_swap_fee( )
     external  view
     {
-        assertEq( harness.compute_repricing_fee_pips( 0, 5000, 90, 499000 ), MAX_TOTAL_FEE_PIPS, "Total swap fee should cap at MAX_TOTAL_FEE_PIPS." );
+        // Base 450_000 + capped repricing 100_000 = 550_000 → clamped to MAX_TOTAL_FEE_PIPS.
+        assertEq( harness.compute_repricing_fee_pips( 100, 300, _SQRT_PRICE_1_1, true, 90, 450000 ), MAX_TOTAL_FEE_PIPS, "Total swap fee should cap at MAX_TOTAL_FEE_PIPS." );
     }
 
     function test_compute_repricing_fee_pips_allows_zero_capture_percent( )
     external  view
     {
-        assertEq( harness.compute_repricing_fee_pips( 0, 5000, 0, 3000 ), 3000, "Zero capture should not add repricing fee." );
+        assertEq( harness.compute_repricing_fee_pips( 100, 300, _SQRT_PRICE_1_1, true, 0, 3000 ), 3000, "Zero capture should not add a repricing fee." );
     }
 
     function test_compute_repricing_fee_pips_allows_ninety_percent_capture( )
     external  view
     {
-        assertEq( harness.compute_repricing_fee_pips( 0, 100, 90, 3000 ), 12000, "Ninety percent capture should add 90 bps for 100 bps movement." );
+        // in 100, out 110 → surplus 10 (10%). Capture 90% → 9% repricing = 90_000 pips; + base 3_000.
+        assertEq( harness.compute_repricing_fee_pips( 100, 110, _SQRT_PRICE_1_1, true, 90, 3000 ), 93000, "90% capture of a 10% surplus should add 90_000 pips." );
     }
 
     function test_build_pool_key_sorts_currencies_independently_of_user_token_order( )

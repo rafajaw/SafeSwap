@@ -1,525 +1,149 @@
-# SafeSwap Repricing Rebate Architecture
+# SafeSwap Repricing Rebate — Architecture & Address Config
 
-## Decision
+> Companion docs: **`LVR_DETERRENCE.md`** (why / economics) and **`DYNAMIC_FEE_REBATE_PLAN.md`** (mechanism formula, work
+> breakdown, tests). This doc is the *shape* of the system: contracts, the hook-address encoding, and the registry.
 
-SafeSwap should use a canonical router, a shared NFT, and many permissionlessly deployed hook config instances.
+## Topology
 
-```text
-SafeSwapRouter
-  user-facing entrypoint
-  BondRoute-protected execution surface
-  hook config registry
-  PoolKey construction
-  LP and swap dispatch
+Three roles, split so that V4 position ownership lives in exactly one contract:
 
-SafeSwapNft
-  durable ERC721 LP position registry
-  position ownership and approvals
-  immutable display metadata
-
-SafeSwapHook
-  Uniswap v4 hook callbacks
-  dynamic fee override logic
-  one deployed instance per base-fee / rebate-profile pair
-  same runtime bytecode for every config instance
+```
+SafeSwapRouter      canonical user entrypoint; BondRoute-protected swaps; hook registry; treasury; quoting.
+                    Owns no positions.
+SafeSwapNft         BondRoute-protected position lifecycle (create / add / remove / collect); ERC721 LP registry.
+                    OWNS the V4 positions (it is the modifyLiquidity caller; salt = tokenId). Resolves the hook via the router.
+SafeSwapHook        one audited implementation (SafeSwapHookImpl) + many permissionlessly-deployed config clones, one per
+                    (base fee, capture) profile, all sharing one runtime codehash. Dynamic-fee override logic.
 ```
 
-The router is the contract users and integrators normally touch. The NFT is the durable record of LP positions. Hooks are protocol execution modules selected by config.
+Both `SafeSwapRouter` and `SafeSwapNft` are `BondRouteProtected`. Shared primitives (pool-key building, fee math, the swap
+simulator, ChainConfig wiring, types, constants) live under `contracts/Common/`.
 
-This model gives:
+**`donate` is removed**, not relabeled: the rebate is a native dynamic fee, so there is no bonded donate and the hook does not
+request the `beforeDonate` permission. Pools still accept permissionless `PoolManager.donate` (a harmless V4 primitive that
+credits in-range LPs) — SafeSwap simply does not mediate it.
 
-```text
-one normal user-facing address
-one shared NFT covering all SafeSwap pools
-many fee/rebate markets without deploying many NFT contracts
-permissionless hook deployment
-no first-LP rebate lock across unrelated profiles
-no per-position fee/rebate accounting
-```
+## Why the hook address encodes the config
 
-## Why Hooks Encode Config
+A V4 `PoolId = hash(token0, token1, fee, tickSpacing, hooks)` includes the hook address. SafeSwap uses that directly: each
+`(base fee, capture)` profile gets its own hook address, hence its own `PoolId`. This avoids smuggling the profile into
+`tickSpacing` and avoids letting the first pool initializer lock a profile for everyone wanting the same plain parameters.
 
-Uniswap v4 pool identity includes the hook address:
-
-```text
-PoolId = hash(token0, token1, fee, tickSpacing, hooks)
-```
-
-SafeSwap uses that property directly. Each economic profile gets its own hook address, so each profile gets its own `PoolId`.
-
-For example:
-
-```text
-TOKEN0/TOKEN1
-dynamic fee
-tickSpacing = 60
-hook = profile(baseFeeBps = 30, rebateProfile = 5)
-```
-
-is a different v4 pool from:
-
-```text
-TOKEN0/TOKEN1
-dynamic fee
-tickSpacing = 60
-hook = profile(baseFeeBps = 30, rebateProfile = 8)
-```
-
-This avoids encoding the rebate in `tickSpacing` and avoids letting the first pool initializer lock the rebate profile for everyone who wanted the same normal pool parameters.
-
-## Dynamic Fee Requirement
-
-SafeSwap repricing rebates need to affect the swap that causes the repricing event. The pool should therefore be initialized with the v4 dynamic fee flag:
+Pools are initialized with the V4 dynamic-fee flag — the base fee does **not** live in `PoolKey.fee`:
 
 ```solidity
 PoolKey.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
 ```
 
-The base fee is not stored in `PoolKey.fee`. It is part of the SafeSwap hook config.
+The base fee and the capture share are read from the hook address; the hook returns `base fee + repricing fee` as a V4
+override fee (`LPFeeLibrary.OVERRIDE_FEE_FLAG | swapFeePips`) in `beforeSwap`. `100 V4 fee pips = 1 bps`.
 
-The hook computes:
+## Hook address format (BCD, self-describing)
 
-```text
-swap fee = base LP fee + repricing fee
+The clone's CREATE2 address carries the economics as readable binary-coded decimal in its top bytes, with the V4 permission
+bitmap in its low 14 bits:
+
+```
+0x F d2 d1 d0 C r ....(free salt)…. PPPP
+   │ └──┬───┘ │ │                   └─ low 14 bits: V4 hook permission bitmap
+   │    │     │ └─ rebate digit r  → capture% = 10·r            (0..90, 10% steps)
+   │    │     └─── capture marker  0xC
+   │    └───────── 3 base-fee digits → base_fee_bps = 100·d2 + 10·d1 + d0   (0..999 → 0.00%..9.99%)
+   └────────────── fee marker 0xF  (also marks the address as a SafeSwap config hook)
 ```
 
-and returns a v4 override fee:
+Decode (lives in `contracts/Common/HookAddress.sol`): assert `digit0 == 0xF` and `digit4 == 0xC` and every data nibble `≤ 9`;
+then `base_fee_bps = 100·d2 + 10·d1 + d0` and `capture_percent = 10·r`. `0xF` and `0xC` are both `> 9`, so a marker can never
+be confused with a data digit and the address self-parses. Examples: `0xF030C5…` → base 0.30%, capture 50%;
+`0xF150C9…` → base 1.50%, capture 90%.
+
+**Base fee is open** (any whole bps ≤ 9.99%); **capture is quantized** to 10% steps and capped at 90% (see
+`LVR_DETERRENCE.md` §4–6). Fragmentation is rate-limited by *real friction*, not a governance allowlist: every profile must be
+GPU-vanity-mined, deployed, registered, and seeded by a first LP. ~38 bits to mine (24 config + 14 permission), one-time per
+profile, minutes on a GPU.
+
+### Required V4 permissions
+
+`REQUIRED_PERMISSIONS = 0x2A80` = `beforeInitialize | beforeAddLiquidity | beforeRemoveLiquidity | beforeSwap`. `beforeDonate`
+is intentionally **not** requested. The low 14 bits of every clone address must equal this exactly.
+
+## Registry
+
+Deployment is permissionless; *usage* is registry-gated. After deploying a clone, the deployer calls `initialize_once()` on
+it, which calls `SafeSwapRouter.register_hook(base_fee_bps, rebate_percent)` with `msg.sender = the clone`. Registration binds
+three independent proofs:
+
+```
+1. runtime codehash  == approved clone-stub codehash   (published in ChainConfig under SAFESWAP_HOOK_CODEHASH_KEY)
+2. address BCD config decodes to the submitted (base_fee_bps, rebate_percent)
+3. address low 14 bits == REQUIRED_PERMISSIONS
+```
+
+Registry shape (`contracts/Router/HookRegistry.sol`):
 
 ```solidity
-LPFeeLibrary.OVERRIDE_FEE_FLAG | swapFee;
+mapping(uint256 => address) public hookByConfig;     // key = (base_fee_bps << 8) | rebate_percent
+mapping(address => bool)    public registeredHook;
+function get_hook(uint16 base_fee_bps, uint8 rebate_percent) external view returns (address);
 ```
 
-`baseFeeBps` is converted to v4 fee units as:
+Users and the NFT pass `(base_fee_bps, rebate_percent)`, never raw hook addresses; the router resolves the clone.
 
-```solidity
-uint24 baseFeeUnits = uint24(baseFeeBps) * 100;
+### Why codehash, not self-identification
+
+Authorize by **exact runtime codehash** of `msg.sender`, never by `isSafeSwapHook()`-style self-identification or `tx.origin`.
+An EIP-7702 delegated EOA's code is the `0xef0100 || delegate` designator, whose hash never equals the clone-stub codehash, so
+exact-codehash matching rejects it. The approved codehash is the EIP-1167 clone stub's (the audited `SafeSwapHookImpl` address
+baked in), so an approved hook provably delegatecalls the audited implementation.
+
+> **Status:** the `SafeSwapHookProxy` (EIP-1167 stub) is not yet a contract in the repo — only the impl exists. The test
+> harness synthesizes a clone with the standard EIP-1167 runtime via `vm.etch` (see `test/helpers/SafeSwapRealEnv.t.sol`). A
+> deploy script must produce the stub initcode and publish its codehash before mainnet.
+
+## Hook implementation (config-from-address, no per-clone storage)
+
+`SafeSwapHookImpl` holds `PoolManager`, `SafeSwapRouter`, and `SafeSwapNft` as immutables read from ChainConfig at deploy. The
+economics are decoded from `address(this)` (the clone) on every call — no per-clone storage, no constructor decode — so every
+clone shares one runtime codehash (what the registry approves). Gating:
+
+```
+beforeSwap                                  ⇒ sender == SafeSwapRouter
+beforeInitialize / before{Add,Remove}Liquidity ⇒ sender == SafeSwapNft
+all callbacks                               ⇒ msg.sender == PoolManager
 ```
 
-because:
-
-```text
-100 v4 fee units = 1 bps
-```
-
-## Hook Address Format
-
-Hook addresses are mined with CREATE2.
-
-Proposed address layout:
-
-```text
-0x55        SafeSwap magic byte
-8 bits      baseFeeBps
-4 bits      rebateProfile
-free bits   salt entropy
-14 bits     Uniswap v4 hook permission flags
-```
-
-`0x55` marks the address as a SafeSwap config hook.
-
-`baseFeeBps` is the normal LP fee:
-
-```text
-1   = 0.01%
-5   = 0.05%
-30  = 0.30%
-100 = 1.00%
-```
-
-`rebateProfile` is a coarse share of the repricing movement:
-
-```text
-0 = 0%
-1 = 10%
-2 = 20%
-3 = 30%
-4 = 40%
-5 = 50%
-6 = 60%
-7 = 70%
-8 = 80%
-9 = 90%
-```
-
-Profiles `10..15` are reserved.
-
-The low 14 bits must also satisfy the Uniswap v4 hook permission bitmap. For SafeSwap, the expected permissions are:
-
-```text
-beforeInitialize
-beforeAddLiquidity
-beforeRemoveLiquidity
-beforeSwap
-beforeDonate
-```
-
-The deployment tool mines a salt until both the SafeSwap prefix/config bits and the v4 permission suffix are correct.
-
-## Hook Constructor
-
-The hook constructor decodes its config from `address(this)`:
-
-```solidity
-uint160 self = uint160(address(this));
-```
-
-It validates:
-
-```text
-magic == 0x55
-baseFeeBps is supported
-rebateProfile <= 9
-low 14 bits match required SafeSwap hook permissions
-PoolManager address is valid
-SafeSwapRouter address is valid
-SafeSwapNft address is valid
-```
-
-It stores decoded config in normal storage:
-
-```solidity
-uint8 public baseFeeBps;
-uint8 public rebateProfile;
-```
-
-Do not use immutables for these config values. If the values are immutables, runtime bytecode changes per config. Keeping them in storage lets every config instance share the same runtime bytecode, which makes runtime-codehash authorization useful.
-
-## Hook Registration
-
-Deployment is permissionless, but usage is registry-gated.
-
-After deployment, the hook calls:
-
-```solidity
-function initialize_once() external {
-    SAFE_SWAP_ROUTER.register_hook(baseFeeBps, rebateProfile);
-}
-```
-
-The router registers `msg.sender` only if all checks pass:
-
-```text
-msg.sender has an approved SafeSwap hook runtime codehash
-address magic/config bits match submitted baseFeeBps and rebateProfile
-address low bits match required v4 hook permissions
-profile is allowed
-registry entry is empty or already msg.sender
-```
-
-Registry shape:
-
-```solidity
-mapping(uint16 => address) public hookByConfig;
-mapping(address => bool) public registeredHook;
-```
-
-Config key:
-
-```solidity
-uint16 key = (uint16(baseFeeBps) << 4) | uint16(rebateProfile);
-```
-
-Registration sketch:
-
-```solidity
-function register_hook(uint8 baseFeeBps, uint8 rebateProfile) external {
-    _requireApprovedHookRuntime(msg.sender);
-    _requireAddressConfigMatches(msg.sender, baseFeeBps, rebateProfile);
-    _requireHookPermissions(msg.sender);
-
-    uint16 key = _hookConfigKey(baseFeeBps, rebateProfile);
-    address existing = hookByConfig[key];
-
-    if (existing != address(0) && existing != msg.sender) {
-        revert HookConfigAlreadyRegistered(key, existing);
-    }
-
-    hookByConfig[key] = msg.sender;
-    registeredHook[msg.sender] = true;
-}
-```
-
-The router is the canonical resolver:
-
-```solidity
-function get_hook(uint8 baseFeeBps, uint8 rebateProfile) external view returns (address hook);
-```
-
-Normal users pass `baseFeeBps` and `rebateProfile`, not hook addresses.
-
-## Codehash Authentication
-
-Do not authorize callers through interface self-identification:
-
-```solidity
-ISafeSwapHook(msg.sender).isSafeSwapHook()
-```
-
-An EIP-7702 delegated EOA can execute delegated hook code and return hook-like answers.
-
-The authorization primitive is exact runtime codehash of `msg.sender`:
-
-```solidity
-function _requireApprovedHookRuntime(address caller) internal view {
-    bytes32 codehash;
-    assembly {
-        codehash := extcodehash(caller)
-    }
-
-    if (!approvedHookRuntimeCodehash[codehash]) {
-        revert UnauthorizedHookCode(caller, codehash);
-    }
-}
-```
-
-For an EIP-7702 delegated EOA, account code is a delegation designator:
-
-```text
-0xef0100 || delegate_address
-```
-
-So `EXTCODEHASH` of the EOA is the hash of that short designator, not the hook runtime codehash. Exact codehash authorization rejects it.
-
-Do not use `tx.origin != msg.sender` as the security boundary. The boundary is exact local code authentication of `msg.sender`.
-
-## Router ABI
-
-The router should be the public protocol interface.
-
-Suggested ABI:
-
-```solidity
-contract SafeSwapRouter is BondRouteProtected {
-    function create_position(CreatePositionParams calldata params) external returns (uint256 tokenId);
-    function add_liquidity(AddLiquidityParams calldata params) external;
-    function remove_liquidity(RemoveLiquidityParams calldata params) external;
-    function collect_fees(CollectFeesParams calldata params) external;
-
-    function swap_exact_input(ExactInputSwapParams calldata params) external;
-    function swap_exact_output(ExactOutputSwapParams calldata params) external;
-    function donate(DonateParams calldata params) external;
-
-    function register_hook(uint8 baseFeeBps, uint8 rebateProfile) external;
-    function get_hook(uint8 baseFeeBps, uint8 rebateProfile) external view returns (address hook);
-}
-```
-
-Create params stay user-readable:
-
-```solidity
-struct CreatePositionParams {
-    IERC20 token_a;
-    IERC20 token_b;
-    uint8 base_fee_bps;
-    uint8 rebate_profile;
-    int24 tick_spacing;
-    int24 tick_lower;
-    int24 tick_upper;
-    uint128 liquidity;
-    uint160 sqrt_price_x96;
-    TokenAmount minimum_deposited_a;
-    TokenAmount minimum_deposited_b;
-}
-```
-
-The router resolves the hook:
-
-```solidity
-address hook = hookByConfig[_hookConfigKey(params.base_fee_bps, params.rebate_profile)];
-if (hook == address(0)) {
-    revert HookConfigNotRegistered(params.base_fee_bps, params.rebate_profile);
-}
-```
-
-Then it builds the pool key:
-
-```solidity
-PoolKey({
-    currency0: Currency.wrap(address(token0)),
-    currency1: Currency.wrap(address(token1)),
-    fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
-    tickSpacing: params.tick_spacing,
-    hooks: IHooks(hook)
-});
-```
-
-Follow-up LP actions should be token-id based:
-
-```solidity
-struct AddLiquidityParams {
-    uint256 token_id;
-    uint128 liquidity;
-    TokenAmount minimum_deposited_a;
-    TokenAmount minimum_deposited_b;
-}
-
-struct RemoveLiquidityParams {
-    uint256 token_id;
-    uint128 liquidity;
-    TokenAmount minimum_received_a;
-    TokenAmount minimum_received_b;
-}
-
-struct CollectFeesParams {
-    uint256 token_id;
-    TokenAmount minimum_received_a;
-    TokenAmount minimum_received_b;
-}
-```
-
-The router loads the NFT metadata for token-id actions and reconstructs the `PoolKey`.
-
-## NFT ABI
-
-The NFT should be a registry, not the main UX surface.
-
-Suggested ABI:
-
-```solidity
-contract SafeSwapNft is ERC721 {
-    function mint_position(address owner, SafeSwapPositionInfo calldata info) external returns (uint256 tokenId);
-    function get_lp_position(uint256 tokenId) external view returns (SafeSwapPositionInfo memory info);
-    function is_position_authorized(uint256 tokenId, address user) external view returns (bool);
-}
-```
-
-The clean default is:
-
-```text
-only the canonical router mints
-only the canonical router mutates v4 liquidity for token-id actions
-NFT checks ownership/approval
-```
-
-If hooks ever call the NFT directly, the NFT must use the same exact runtime-codehash checks as the router. Prefer avoiding that unless implementation constraints require it.
-
-## Position Metadata
-
-The NFT must store hook identity because hook identity is part of the pool.
-
-Recommended metadata:
+A `_require_clone_context()` guard reverts if `address(this) == IMPLEMENTATION_SELF`, so direct calls to the implementation
+(which carry no valid F/C config) are rejected; the impl is non-upgradeable and non-`selfdestruct`, so the clones' hardcoded
+target is permanent.
+
+## V4 position ownership & NFT metadata
+
+The user owns the NFT `tokenId`; `SafeSwapNft` executes the V4 liquidity actions and owns the V4 position with `salt =
+bytes32(tokenId)`. This keeps all positions under one canonical executor rather than spread across hook addresses. Metadata
+stored per position (immutable, cheap to render and verify):
 
 ```solidity
 struct SafeSwapPositionInfo {
-    address hook;
-    IERC20 token0;
-    IERC20 token1;
-    uint8 base_fee_bps;
-    uint8 rebate_profile;
-    int24 tick_spacing;
-    int24 tick_lower;
-    int24 tick_upper;
+    address hook; IERC20 token0; IERC20 token1;
+    uint16 base_fee_bps; uint8 rebate_percent;     // derivable from hook; stored for cheap display/verification
+    int24 tick_spacing; int24 tick_lower; int24 tick_upper;
 }
 ```
 
-`base_fee_bps` and `rebate_profile` are derivable from `hook`, but storing them makes metadata immutable, cheap to render, and easy to verify.
+## Permissionless deployment flow
 
-The NFT can display:
-
-```text
-Pair: TOKEN0/TOKEN1
-Base fee: 0.30%
-Repricing rebate: 50%
-Tick spacing: 60
-Hook: 0x55...
+```
+1. Choose base_fee_bps and capture_percent.
+2. GPU-mine a CREATE2 salt for a clone address with the F/d/d/d/C/r config nibbles and REQUIRED_PERMISSIONS low bits.
+3. CREATE2-deploy the EIP-1167 clone of the audited SafeSwapHookImpl.
+4. Call clone.initialize_once() → router.register_hook(base_fee_bps, capture_percent).
+5. Router validates codehash + address config + permissions, then records the clone.
+6. Users create positions and swap via (base_fee_bps, capture_percent) through the router/NFT.
 ```
 
-## V4 Position Ownership
+## Security rules
 
-Target invariant:
-
-```text
-SafeSwap user owns NFT tokenId
-SafeSwap router executes v4 liquidity actions
-v4 position salt is derived from tokenId
-NFT metadata records the hook/config/pool parameters
-```
-
-Recommended salt:
-
-```solidity
-bytes32 salt = bytes32(tokenId);
-```
-
-This keeps v4 positions under one canonical executor instead of spreading position ownership across many hook config addresses.
-
-If implementation later requires the NFT to be the direct `PoolManager.modifyLiquidity` caller, that is still compatible with the model. The important part is that hooks should not become the user-facing LP position owner by default.
-
-## Permissionless Deployment Flow
-
-1. Choose:
-
-```text
-baseFeeBps
-rebateProfile
-required hook permission flags
-```
-
-2. Mine a CREATE2 salt for an address satisfying:
-
-```text
-0x55 SafeSwap magic
-encoded baseFeeBps
-encoded rebateProfile
-required v4 hook low bits
-```
-
-3. Deploy the standard audited SafeSwap hook initcode.
-
-4. Constructor decodes and stores config from `address(this)`.
-
-5. Call:
-
-```solidity
-hook.initialize_once();
-```
-
-6. Hook calls router registration.
-
-7. Router validates codehash, address config, and v4 hook flags.
-
-8. Users can create positions using `(baseFeeBps, rebateProfile)` through the router.
-
-## Security Rules
-
-Required:
-
-```text
-runtime-codehash allowlist for hook registration
-address config validation
-v4 hook permission validation
-router-owned public workflow
-NFT ownership/approval checks for token-id actions
-```
-
-Do not authorize hooks by:
-
-```text
-tx.origin
-interface self-identification
-address prefix alone
-delegate target
-user-supplied hook address alone
-```
-
-Address bits prove config. Runtime codehash proves behavior. The router registry binds both.
-
-## Open Questions
-
-1. Should v4 liquidity actions be executed by the router or by the NFT?
-
-2. Should approved runtime hashes live directly in the router, or be read from `ChainConfig`?
-
-3. Should `baseFeeBps` be an allowlist of known values or any nonzero `uint8`?
-
-4. Should `rebateProfile = 10` eventually mean 100%, or remain reserved?
-
-5. How should exact-output swap quoting handle dynamic repricing fees before execution?
-
-## Summary
-
-SafeSwap should use address-configured hook instances plus a router registry.
-
-The hook address selects the economic profile and creates a unique v4 `PoolId`. The router resolves configs, enforces code authenticity, and remains the normal user interface. The NFT stores the durable LP position record across all pools and configs.
-
-This gives configurable repricing rebates without tick-spacing abuse, per-position fee bookkeeping, or deploying many protocol frontends.
+Required: runtime-codehash allowlist for registration; address-config validation; V4 permission validation; router/NFT-owned
+public workflow; NFT ownership/approval checks for tokenId actions. Never authorize by `tx.origin`, interface
+self-identification, address prefix alone, delegate target, or a user-supplied hook address alone. **Address bits prove
+config; runtime codehash proves behavior; the registry binds both.**

@@ -57,10 +57,10 @@ interface ISafeSwapCommonTests {
     function test_base_fee_units_accepts_zero_base_fee() external;
     function test_base_fee_units_accepts_maximum_bcd_base_fee() external;
 
-    // ─── Repricing Fee Math ──────────────────────────────────────────────────────
-    function test_compute_repricing_fee_pips_returns_base_fee_when_tick_movement_is_zero() external;
-    function test_compute_repricing_fee_pips_charges_capture_percent_of_tick_movement() external;
-    function test_compute_repricing_fee_pips_uses_absolute_tick_movement() external;
+    // ─── Repricing Fee Math (surplus-based) ──────────────────────────────────────
+    function test_compute_repricing_fee_pips_returns_base_fee_when_no_surplus() external;
+    function test_compute_repricing_fee_pips_charges_capture_percent_of_surplus() external;
+    function test_compute_repricing_fee_pips_is_symmetric_across_swap_direction() external;
     function test_compute_repricing_fee_pips_caps_repricing_component() external;
     function test_compute_repricing_fee_pips_caps_total_swap_fee() external;
     function test_compute_repricing_fee_pips_allows_zero_capture_percent() external;

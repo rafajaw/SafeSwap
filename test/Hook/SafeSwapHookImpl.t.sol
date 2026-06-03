@@ -408,7 +408,7 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
 
         uint24 fee  =  _before_swap_fee( expensive_hook, -100_000 ether, _DEFAULT_TICK );
         uint24 fee_without_flag  =  fee & LPFeeLibrary.REMOVE_OVERRIDE_MASK;
-        uint24 maximum_fee_from_repricing_cap  =  SafeSwapCommon.base_fee_units( 999 ) + uint24(MAX_REPRICING_REBATE_BPS * PIPS_PER_BPS);
+        uint24 maximum_fee_from_repricing_cap  =  SafeSwapCommon.base_fee_units( 999 ) + MAX_REPRICING_FEE_PIPS;
 
         assertEq( fee_without_flag, maximum_fee_from_repricing_cap, "repricing component cap should bind before the total-fee hard ceiling." );
         assertLt( fee_without_flag, LPFeeLibrary.MAX_LP_FEE, "total fee should stay below Uniswap's max swap fee." );

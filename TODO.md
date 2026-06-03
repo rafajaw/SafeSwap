@@ -1,5 +1,14 @@
 # SafeSwap Test Suite Implementation TODO
 
+## Design docs & mechanism
+- [x] Rewrite the design docs to the surplus framing (capture% = share of repricing surplus, not a rate on displacement):
+      `LVR_DETERRENCE.md`, `REPRICING_REBATE_ADDRESS_CONFIG.md`, `DYNAMIC_FEE_REBATE_PLAN.md` (binding), `CLAUDE.md`.
+- [x] Fix the displacement-rate fee in code → surplus-based: rewrote `SafeSwapCommon.compute_repricing_fee_pips`
+      (`+ swap_legs`, FullMath surplus valuation), swapped `MAX_REPRICING_REBATE_BPS` → `MAX_REPRICING_FEE_PIPS`, updated
+      `SafeSwapHookImpl.beforeSwap` + both `User.sol` quoters, and rewrote the unit tests (capture% of surplus + symmetry +
+      caps). 148 Common/Hook/Nft tests green.
+
+## Test suite
 - [x] Move stale legacy tests out of Foundry's active `test/` tree without deleting them.
 - [x] Add shared test helpers under `test/helpers`.
 - [x] Implement `test/Common/HookAddress.t.sol`.
