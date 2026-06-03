@@ -14,8 +14,8 @@
 - [x] Implement `test/Common/HookAddress.t.sol`.
 - [x] Implement `test/Common/SafeSwapCommon.t.sol`.
 - [x] Implement `test/Common/PoolManagerIntegration.t.sol`.
-- [ ] Implement `test/Common/SwapSimulator.t.sol` (read-only V4 swap simulation — the dynamic-fee pivot depends on it; manifest references it but it does not exist yet).
-- [x] Verify implemented Common suite with `forge test --match-path 'test/Common/*.t.sol'` (HookAddress + SafeSwapCommon + PoolManagerIntegration; SwapSimulator still pending).
+- [x] Implement `test/Common/SwapSimulator.t.sol` (validates the library against real V4 swaps: exact-in/out, both directions, single/multi tick crossings, zero liquidity, extsload-failure bubbling; force-compiles V4's test routers via `ForceCompileV4.sol`).
+- [x] Verify Common suite with `forge test --match-path 'test/Common/*.t.sol'` (HookAddress + SafeSwapCommon + PoolManagerIntegration + SwapSimulator).
 - [x] Implement `test/Hook/SafeSwapHookImpl.t.sol`.
 - [x] Build the shared real-environment harness (`test/helpers/SafeSwapRealEnv.t.sol`, `TestERC20.t.sol`,
       `ForceCompileV4.sol`): real V4 PoolManager + router + NFT + etched hook clone + real BondRoute. Reused by all suites.
@@ -32,6 +32,7 @@
 - [ ] Implement `test/Router/UserSwap.t.sol`.
 - [ ] Implement `test/Router/PathFairness.t.sol`.
 - [ ] Implement focused mocks under `test/mocks` only where real dependencies are impractical for the edge case.
-- [ ] Run each suite subset independently. Common (implemented files), Hook, and Nft (both tiers) are green — 148 tests. Router suites + Common/SwapSimulator still to come.
+- [ ] Run each suite subset independently. Common (incl. SwapSimulator), Hook, and Nft (both tiers) are green. Router suites still to come.
+      NOTE: `forge test --match-path` cold-compiles sparsely and skips the string-referenced `ForceCompileV4.sol` (deployCode); run a full `forge test` or `forge build` first for suites that deploy real V4.
 - [ ] Run the full active test suite.
 - [ ] Use archived legacy tests as a final coverage checklist.
