@@ -11,6 +11,7 @@ pragma solidity =0.8.26;
 import { PoolManager } from "@UniswapV4Core/PoolManager.sol";
 import { PoolSwapTest } from "@UniswapV4Core/test/PoolSwapTest.sol";
 import { PoolModifyLiquidityTest } from "@UniswapV4Core/test/PoolModifyLiquidityTest.sol";
+import { PoolDonateTest } from "@UniswapV4Core/test/PoolDonateTest.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 
 contract PoolManagerDeployer {
@@ -29,5 +30,10 @@ contract V4TestRouterDeployer {
     function deploy_modify_liquidity_router( address manager ) external returns ( address )
     {
         return address( new PoolModifyLiquidityTest( IPoolManager(manager) ) );
+    }
+
+    function deploy_donate_router( address manager ) external returns ( address )
+    {
+        return address( new PoolDonateTest( IPoolManager(manager) ) );
     }
 }

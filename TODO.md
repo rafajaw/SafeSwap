@@ -32,9 +32,11 @@
 - [ ] Implement `test/Router/HookRegistry.t.sol`.
 - [ ] Implement `test/Router/SafeSwapRouter.t.sol`.
 - [x] Implement `test/Router/UserSwap.t.sol` (Tier 1 — full-workflow swaps: surplus fee applied live, quote == execution, protocol-fee accounting, graceful slippage revert, exact-output exactness). Tier-2 `test/Router/User.t.sol` (internal/edge per `IUserSwapTests`) still pending.
-- [ ] Implement `test/Router/PathFairness.t.sol`.
+- [x] Implement `test/Router/PathFairness.t.sol` (real adjacent ranges: dynamic fee increases feeGrowthInside for crossed
+      and final liquidity, fee growth follows served path length, both swap directions, raw V4 donate snapshot contrast).
 - [ ] Implement focused mocks under `test/mocks` only where real dependencies are impractical for the edge case.
-- [ ] Run each suite subset independently. Common (incl. SwapSimulator), Hook, and Nft (both tiers) are green. Router suites still to come.
+- [ ] Run each suite subset independently. Common (incl. SwapSimulator), Hook, Nft (both tiers), and Router workflow
+      suites (UserSwap + PathFairness) are green. Router HookRegistry / SafeSwapRouter / User Tier 2 still to come.
       NOTE: `forge test --match-path` cold-compiles sparsely and skips the string-referenced `ForceCompileV4.sol` (deployCode); run a full `forge test` or `forge build` first for suites that deploy real V4.
 - [ ] Run the full active test suite.
 - [ ] Use archived legacy tests as a final coverage checklist.
