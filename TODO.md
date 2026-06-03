@@ -29,7 +29,7 @@
       balance/`StateLibrary` assertions, salt = tokenId, graceful PROTOCOL_REVERTED on unauthorized action).
 - [ ] Implement `test/Router/HookRegistry.t.sol`.
 - [ ] Implement `test/Router/SafeSwapRouter.t.sol`.
-- [ ] Implement `test/Router/UserSwap.t.sol`.
+- [x] Implement `test/Router/UserSwap.t.sol` (Tier 1 — full-workflow swaps: surplus fee applied live, quote == execution, protocol-fee accounting, graceful slippage revert, exact-output exactness). Tier-2 `test/Router/User.t.sol` (internal/edge per `IUserSwapTests`) still pending.
 - [ ] Implement `test/Router/PathFairness.t.sol`.
 - [ ] Implement focused mocks under `test/mocks` only where real dependencies are impractical for the edge case.
 - [ ] Run each suite subset independently. Common (incl. SwapSimulator), Hook, and Nft (both tiers) are green. Router suites still to come.

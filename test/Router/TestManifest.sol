@@ -134,6 +134,22 @@ interface IUserSwapTests {
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// USER.SOL / SWAP LIBRARIES - Full-workflow (Tier 1): real swaps through BondRoute + router + hook + a real V4 pool,
+//   asserting the surplus repricing fee is applied live, quote == execution, protocol-fee accounting, and graceful
+//   bond settlement on slippage. Internal-behavior / edge branches stay in the Tier-2 IUserSwapTests interface above.
+// Implemented in: test/Router/UserSwap.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface IUserSwapWorkflowTests {
+    function test_swap_exact_input_pays_user_the_quoted_net_output() external;
+    function test_swap_exact_input_takes_protocol_fee_to_the_router_treasury() external;
+    function test_swap_exact_input_applies_a_repricing_fee_above_the_base_fee() external;
+    function test_swap_exact_input_reverts_on_slippage_as_graceful_bond_settlement() external;
+    function test_swap_exact_output_delivers_the_exact_net_output() external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // END TO END - Real-pool dynamic fee path fairness.
 // Implemented in: test/Router/PathFairness.t.sol
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
