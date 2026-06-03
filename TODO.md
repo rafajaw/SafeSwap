@@ -33,12 +33,13 @@
       BCD/config/permission validation, duplicate config handling, event emission, registered-hook lookup).
 - [x] Implement `test/Router/SafeSwapRouter.t.sol` (constructor config reads/reverts, native receive policy, protocol-fee
       recipient, ERC20/native treasury withdrawals, one-wei retention, transfer failures, two-step treasury transfer).
-- [x] Implement `test/Router/UserSwap.t.sol` (Tier 1 — full-workflow swaps: surplus fee applied live, quote == execution, protocol-fee accounting, graceful slippage revert, exact-output exactness). Tier-2 `test/Router/User.t.sol` (internal/edge per `IUserSwapTests`) still pending.
+- [x] Implement `test/Router/UserSwap.t.sol` (Tier 1 — full-workflow swaps: surplus fee applied live, quote == execution, protocol-fee accounting, graceful slippage revert, exact-output exactness).
+- [x] Implement `test/Router/User.t.sol` (Tier 2 — exact-input/output edge behavior, quoter, pool id, and BondRoute integration per `IUserSwapTests`).
 - [x] Implement `test/Router/PathFairness.t.sol` (real adjacent ranges: dynamic fee increases feeGrowthInside for crossed
       and final liquidity, fee growth follows served path length, both swap directions, raw V4 donate snapshot contrast).
 - [ ] Implement focused mocks under `test/mocks` only where real dependencies are impractical for the edge case.
 - [ ] Run each suite subset independently. Common (incl. SwapSimulator), Hook, Nft (both tiers), and Router
-      HookRegistry / SafeSwapRouter / workflow suites (UserSwap + PathFairness) are green. Router User Tier 2 still to come.
+      HookRegistry / SafeSwapRouter / User Tier 2 / workflow suites (UserSwap + PathFairness) are green.
       NOTE: `forge test --match-path` cold-compiles sparsely and skips the string-referenced `ForceCompileV4.sol` (deployCode); run a full `forge test` or `forge build` first for suites that deploy real V4.
 - [ ] Run the full active test suite.
 - [ ] Use archived legacy tests as a final coverage checklist.
