@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "./TestBase.t.sol";
-import { PROTOCOL_FEE_DIVISOR } from "@SafeSwap/Definitions.sol";
+import { PROTOCOL_FEE_DIVISOR } from "@SafeSwapRouter/Definitions.sol";
 
 
 /// @dev Handler contract for invariant testing.

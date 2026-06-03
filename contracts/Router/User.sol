@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "@SafeSwap/UniswapHook.sol";
+import "@SafeSwapRouter/Orchestrator.sol";
+import "@SafeSwapRouter/HookRegistry.sol";
 import "@BondRouteProtected/BondRouteProtected.sol";
 import "@SafeSwapNft/ISafeSwapNft.sol";
 import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
+import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 
@@ -21,14 +23,14 @@ error PoolInitializationPriceMismatch( PoolId pool_id, uint160 current_sqrt_pric
 
 /**
  * @title User
- * @notice User-facing SafeSwap operations and position helper functions.
+ * @notice User-facing SafeSwap operations and position helper functions, executed by the canonical router.
  */
-abstract contract User is UniswapHook, BondRouteProtected {
+abstract contract User is Orchestrator, HookRegistry, BondRouteProtected {
 
     ISafeSwapNft internal immutable SafeSwapNft;
 
     constructor( )
-    UniswapHook( )
+    Orchestrator( )
     BondRouteProtected( SAFESWAP_PROTOCOL_NAME, SAFESWAP_PROTOCOL_DESCRIPTION )
     {
         address safeswap_nft  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_NFT_KEY );
@@ -37,32 +39,28 @@ abstract contract User is UniswapHook, BondRouteProtected {
         SafeSwapNft  =  ISafeSwapNft(safeswap_nft);
     }
 
-    // ━━━━  USER FUNCTIONS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  USER FUNCTIONS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
      * @notice Execute an exact-input Uniswap V4 swap through BondRoute.
-     * @param params Swap output token, minimum net output, and pool configuration.
+     * @param params Swap output token, minimum net output, and pool configuration (base fee, rebate profile, tick spacing).
      *
      * @dev BONDROUTE EXECUTION:
      *      - Callable only through a valid BondRoute bond.
      *      - Input token and input amount come from the bond fundings, not from `params`.
      *      - Stake is quoted as `SWAP_STAKE_PERCENTAGE` of the committed input amount.
      *
-     * @dev POOL COMPATIBILITY:
-     *      - Inherits Uniswap V4 PoolManager token compatibility; SafeSwap adds BondRoute gating, not custom token accounting.
-     *      - Dynamic-fee pools are not supported.
-     *
-     * @dev ERROR CODES:
-     *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
-     *      - `SlippageExceeded(uint256 amount_received, uint256 minimum_required)` if net output is below `minimum_output_amount`.
-     *      - `UnsupportedFeeTier(uint24 fee)` if the target pool uses dynamic fees.
+     * @dev The pool's LP repricing rebate is measured from the swap's real tick movement and donated to LPs; the user's
+     *      net output is reduced by the protocol fee and the rebate, and checked against `minimum_output_amount`.
      */
     function swap_exact_input( ExactInputSwapParams calldata params )
     external
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        bytes memory data  =  bytes.concat( bytes1(uint8(Action.ExactInputSwap)), abi.encode( context, params ) );
+        address hook  =  _resolve_hook( params.pool_info.rebate_profile );
+
+        bytes memory data  =  bytes.concat( bytes1(uint8(Action.ExactInputSwap)), abi.encode( context, params, hook ) );
         PoolManager.unlock( data );
     }
 
@@ -73,23 +71,19 @@ abstract contract User is UniswapHook, BondRouteProtected {
      * @dev BONDROUTE EXECUTION:
      *      - Callable only through a valid BondRoute bond.
      *      - Input token and maximum input amount come from the bond fundings, not from `params`.
-     *      - SafeSwap grosses up the pool output so the user receives `amount_out` after protocol fee.
+     *      - SafeSwap grosses up the pool output so the user receives `exact_output_amount` after protocol fee.
      *
-     * @dev POOL COMPATIBILITY:
-     *      - Inherits Uniswap V4 PoolManager token compatibility; SafeSwap adds BondRoute gating, not custom token accounting.
-     *      - Dynamic-fee pools are not supported.
-     *
-     * @dev ERROR CODES:
-     *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
-     *      - `SlippageExceeded(uint256 amount_received, uint256 minimum_required)` if required input exceeds the committed maximum.
-     *      - `UnsupportedFeeTier(uint24 fee)` if the target pool uses dynamic fees.
+     * @dev Because the output is fixed, the LP repricing rebate is charged on the input side and counts against the
+     *      committed maximum input.
      */
     function swap_exact_output( ExactOutputSwapParams calldata params )
     external
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        bytes memory data  =  bytes.concat( bytes1(uint8(Action.ExactOutputSwap)), abi.encode( context, params ) );
+        address hook  =  _resolve_hook( params.pool_info.rebate_profile );
+
+        bytes memory data  =  bytes.concat( bytes1(uint8(Action.ExactOutputSwap)), abi.encode( context, params, hook ) );
         PoolManager.unlock( data );
     }
 
@@ -156,52 +150,44 @@ abstract contract User is UniswapHook, BondRouteProtected {
     }
 
     /**
-     * @notice Donate tokens to a Uniswap V4 pool through BondRoute.
+     * @notice Donate tokens to a SafeSwap Uniswap V4 pool through BondRoute.
      * @param params Pool configuration.
      *
-     * @dev BONDROUTE EXECUTION:
-     *      - Callable only through a valid BondRoute bond.
-     *      - Token0, token1, and donation amounts come from the two bond fundings, not from `params`.
-     *      - Stake is quoted as `LIQUIDITY_STAKE_PERCENTAGE` of total normalized value, denominated in token0.
-     *
-     * @dev POOL COMPATIBILITY:
-     *      - Inherits Uniswap V4 PoolManager token compatibility; SafeSwap adds BondRoute gating, not custom token accounting.
-     *      - Dynamic-fee pools are not supported.
-     *
-     * @dev ERROR CODES:
-     *      - `Unauthorized(address caller, address expected)` if called outside BondRoute.
-     *      - `UnsupportedFeeTier(uint24 fee)` if the target pool uses dynamic fees.
+     * @dev Token0, token1, and donation amounts come from the two bond fundings, not from `params`. A direct donation
+     *      carries no repricing rebate.
      */
     function donate( DonateParams calldata params )
     external
     {
         BondContext memory context  =  BondRoute_initialize( );
 
-        bytes memory data  =  bytes.concat( bytes1(uint8(Action.Donate)), abi.encode( context, params ) );
+        address hook  =  _resolve_hook( params.pool_info.rebate_profile );
+
+        bytes memory data  =  bytes.concat( bytes1(uint8(Action.Donate)), abi.encode( context, params, hook ) );
         PoolManager.unlock( data );
     }
 
 
-    // ━━━━  POSITION GETTERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  OFF-CHAIN GETTERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
      * @notice Compute the Uniswap V4 pool id for a SafeSwap pool.
      * @param token_a First pool token.
      * @param token_b Second pool token.
-     * @param pool_info Pool fee and tick spacing.
-     * @return pool_id Uniswap V4 pool identifier for this hook.
-     *
-     * @dev Standard V4 pool id with `hooks = address(this)`.
+     * @param pool_info Base fee, rebate profile, and tick spacing.
+     * @return pool_id Uniswap V4 pool identifier for this configuration's hook.
      */
     function __OFF_CHAIN__get_pool_id( IERC20 token_a, IERC20 token_b, PoolInfo calldata pool_info )
     external  view returns ( PoolId pool_id )
     {
+        address hook  =  _resolve_hook( pool_info.rebate_profile );
+
         PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key(
             token_a,
             token_b,
-            pool_info.fee,
+            SafeSwapCommon.base_fee_units( pool_info.base_fee_bps ),
             pool_info.tick_spacing,
-            address(this)
+            hook
         );
 
         pool_id  =  pool_key.toId( );
@@ -231,8 +217,25 @@ abstract contract User is UniswapHook, BondRouteProtected {
         );
     }
 
+    /**
+     * @notice Preview the LP repricing rebate for a hypothetical swap, given the tick movement an integrator simulated.
+     * @param rebate_profile Pool's LP repricing rebate profile.
+     * @param charged_amount Amount the rebate is charged against (output for exact-input, input for exact-output).
+     * @param tick_before Pool tick before the swap.
+     * @param tick_after Pool tick after the swap (from an off-chain swap simulation).
+     * @return rebate_amount Amount that would be donated to LPs.
+     * @return movement_bps Approximate price movement in basis points.
+     *
+     * @dev Execution uses the swap's real measured movement; integrators obtain `tick_after` from a V4 swap quote.
+     */
+    function __OFF_CHAIN__preview_repricing_rebate( uint8 rebate_profile, uint256 charged_amount, int24 tick_before, int24 tick_after )
+    external  pure returns ( uint256 rebate_amount, uint256 movement_bps )
+    {
+        ( rebate_amount, movement_bps )  =  SafeSwapCommon.compute_repricing_rebate( tick_before, tick_after, rebate_profile, charged_amount );
+    }
 
-    // ━━━━  INTERNAL HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    // ━━━━  INTERNAL HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function _prepare_create_position( BondContext memory context, CreatePositionParams memory params )
     internal returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
@@ -244,16 +247,18 @@ abstract contract User is UniswapHook, BondRouteProtected {
 
         ( IERC20 token0, , IERC20 token1, )  =  SafeSwapCommon.sort_token_amount_pair( context.fundings[ 0 ], context.fundings[ 1 ] );
 
-        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token0, token1, params.pool_info.fee, params.pool_info.tick_spacing, address(this) );
+        address hook       =  _resolve_hook( params.pool_info.rebate_profile );
+        uint24 fee_units   =  SafeSwapCommon.base_fee_units( params.pool_info.base_fee_bps );
+
+        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token0, token1, fee_units, params.pool_info.tick_spacing, hook );
         PoolId pool_id           =  pool_key.toId( );
 
         ( uint160 current_sqrt_price_x96, , , )  =  PoolManager.getSlot0( pool_id );
         if(  current_sqrt_price_x96 == 0  )
         {
-            // *SECURITY*  -  Permissionless V4 initialization would let anyone set the first price for this hooked pool.
-            _allow_pool_initialization( pool_key, params.sqrt_price_x96 );
-            PoolManager.initialize( pool_key, params.sqrt_price_x96 );
-            _clear_pool_initialization_allowance( );
+            // *SECURITY*  -  Permissionless V4 initialization would let anyone set the first price for this hooked pool, but
+            //                the SafeSwap hook rejects any initialization whose sender is not this router, so this is the only path.
+            _initialize_pool( pool_key, params.sqrt_price_x96 );
         }
         else if(  current_sqrt_price_x96 != params.sqrt_price_x96  )
         {
@@ -261,12 +266,14 @@ abstract contract User is UniswapHook, BondRouteProtected {
         }
 
         SafeSwapPositionInfo memory new_position_info  =  SafeSwapPositionInfo({
-            token0:        token0,
-            token1:        token1,
-            fee:           params.pool_info.fee,
-            tick_spacing:  params.pool_info.tick_spacing,
-            tick_lower:    params.tick_lower,
-            tick_upper:    params.tick_upper
+            hook:           hook,
+            token0:         token0,
+            token1:         token1,
+            base_fee_bps:   params.pool_info.base_fee_bps,
+            rebate_profile: params.pool_info.rebate_profile,
+            tick_spacing:   params.pool_info.tick_spacing,
+            tick_lower:     params.tick_lower,
+            tick_upper:     params.tick_upper
         });
 
         uint256 token_id  =  SafeSwapNft.mint_position( context.user, new_position_info );
@@ -292,7 +299,7 @@ abstract contract User is UniswapHook, BondRouteProtected {
 
         executable_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
-            pool_info:          PoolInfo({ fee: position_info.fee, tick_spacing: position_info.tick_spacing }),
+            pool_info:          _pool_info_from_position( position_info ),
             tick_lower:         position_info.tick_lower,
             tick_upper:         position_info.tick_upper,
             liquidity_delta:    _positive_liquidity_delta( params.token_id, params.liquidity ),
@@ -309,7 +316,7 @@ abstract contract User is UniswapHook, BondRouteProtected {
 
         executable_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
-            pool_info:          PoolInfo({ fee: position_info.fee, tick_spacing: position_info.tick_spacing }),
+            pool_info:          _pool_info_from_position( position_info ),
             tick_lower:         position_info.tick_lower,
             tick_upper:         position_info.tick_upper,
             liquidity_delta:    -_positive_liquidity_delta( params.token_id, params.liquidity ),
@@ -326,12 +333,21 @@ abstract contract User is UniswapHook, BondRouteProtected {
 
         executable_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
-            pool_info:          PoolInfo({ fee: position_info.fee, tick_spacing: position_info.tick_spacing }),
+            pool_info:          _pool_info_from_position( position_info ),
             tick_lower:         position_info.tick_lower,
             tick_upper:         position_info.tick_upper,
             liquidity_delta:    0,
             minimum_amount_a:   params.minimum_received_a,
             minimum_amount_b:   params.minimum_received_b
+        });
+    }
+
+    function _pool_info_from_position( SafeSwapPositionInfo memory position_info ) internal pure returns ( PoolInfo memory )
+    {
+        return PoolInfo({
+            base_fee_bps:   position_info.base_fee_bps,
+            rebate_profile: position_info.rebate_profile,
+            tick_spacing:   position_info.tick_spacing
         });
     }
 

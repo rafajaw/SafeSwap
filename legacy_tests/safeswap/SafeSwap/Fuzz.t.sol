@@ -5,7 +5,7 @@ import "./TestBase.t.sol";
 import {
     PROTOCOL_FEE_DIVISOR as SAFESWAP_PROTOCOL_FEE_DIVISOR,
     MIN_PROTOCOL_FEE_RATE as SAFESWAP_MIN_PROTOCOL_FEE_RATE
-} from "@SafeSwap/Definitions.sol";
+} from "@SafeSwapRouter/Definitions.sol";
 
 
 contract FuzzTest is SafeSwapTestBase {

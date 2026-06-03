@@ -2,10 +2,10 @@
 pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
-import "@SafeSwap/SafeSwap.sol";
+import "@SafeSwapRouter/SafeSwap.sol";
 import "@SafeSwapNft/SafeSwapNft.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
-import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, SAFESWAP_NFT_KEY } from "@SafeSwap/Definitions.sol";
+import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, SAFESWAP_NFT_KEY } from "@SafeSwapRouter/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";

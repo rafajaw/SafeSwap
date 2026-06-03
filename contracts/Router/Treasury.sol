@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "@SafeSwap/Definitions.sol";
+import "@SafeSwapRouter/Definitions.sol";
 import "@BondRouteProtected/BondRouteProtected.sol";
 import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
 import { SafeERC20 } from "@OpenZeppelin/token/ERC20/utils/SafeERC20.sol";

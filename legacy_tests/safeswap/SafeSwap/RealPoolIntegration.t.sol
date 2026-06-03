@@ -2,15 +2,15 @@
 pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
-import "@SafeSwap/SafeSwap.sol";
-import "@SafeSwap/libraries/SafeSwapCommon.sol";
-import "@SafeSwap/libraries/ExactInputSwapLib.sol";
-import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
-import "@SafeSwap/libraries/ModifyLiquidityLib.sol";
-import "@SafeSwap/libraries/DonateLib.sol";
+import "@SafeSwapRouter/SafeSwap.sol";
+import "@SafeSwapRouter/libraries/SafeSwapCommon.sol";
+import "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
+import "@SafeSwapRouter/libraries/ExactOutputSwapLib.sol";
+import "@SafeSwapRouter/libraries/ModifyLiquidityLib.sol";
+import "@SafeSwapRouter/libraries/DonateLib.sol";
 import "@SafeSwapNft/SafeSwapNft.sol";
 import "@SafeSwapNft/ISafeSwapNft.sol";
-import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, SAFESWAP_NFT_KEY } from "@SafeSwap/Definitions.sol";
+import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, SAFESWAP_NFT_KEY } from "@SafeSwapRouter/Definitions.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";

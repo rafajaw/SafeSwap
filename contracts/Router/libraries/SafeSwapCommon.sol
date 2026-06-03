@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "@BondRouteProtected/BondRouteProtected.sol";
-import "@SafeSwap/Definitions.sol";
+import "@SafeSwapRouter/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -14,12 +14,14 @@ import { FixedPoint96 } from "@UniswapV4Core/libraries/FixedPoint96.sol";
 // ━━━━  DATA STRUCTURES  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * @notice Uniswap V4 pool configuration shared by all SafeSwap actions.
- * @param fee Pool LP fee in Uniswap V4 units. Dynamic-fee pools are not supported.
+ * @notice SafeSwap pool configuration shared by all SafeSwap actions.
+ * @param base_fee_bps Base LP fee in basis points (1 bps = 0.01%). Stored in PoolKey.fee as `base_fee_bps * 100` v4 units.
+ * @param rebate_profile LP repricing rebate profile (0..MAX_REBATE_PROFILE). Selects the config hook and the rebate share.
  * @param tick_spacing Pool tick spacing.
  */
 struct PoolInfo {
-    uint24 fee;
+    uint8 base_fee_bps;
+    uint8 rebate_profile;
     int24 tick_spacing;
 }
 
@@ -28,51 +30,61 @@ struct PoolInfo {
 
 error SlippageExceeded( uint256 amount_received, uint256 minimum_required );
 error OneSidedDepositMismatch( address expected_token, uint256 minimum_required );
-error UnsupportedFeeTier( uint24 fee );
+error InvalidRebateProfile( uint8 rebate_profile );
+
+
+// ━━━━  EVENTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * @notice Emitted when a swap moves the pool price and the LP repricing rebate is charged and donated to LPs.
+ * @param pool_id Uniswap V4 pool identifier.
+ * @param user Bonded user whose swap repriced the pool.
+ * @param tick_before Pool tick before the swap.
+ * @param tick_after Pool tick after the swap.
+ * @param tick_delta Absolute tick movement.
+ * @param movement_bps Approximate price movement in basis points.
+ * @param rebate_profile LP repricing rebate profile of the pool.
+ * @param rebate_amount Amount donated to LPs, denominated in `rebate_currency`.
+ * @param rebate_currency Currency the rebate was donated in (output for exact-input, input for exact-output).
+ */
+event RepricingRebateCharged(
+    bytes32 indexed pool_id,
+    address indexed user,
+    int24 tick_before,
+    int24 tick_after,
+    uint256 tick_delta,
+    uint256 movement_bps,
+    uint8 rebate_profile,
+    uint256 rebate_amount,
+    address rebate_currency
+);
 
 
 /**
  * @title SafeSwapCommon
- * @notice Shared utilities for SafeSwap action libraries
- * @dev Contains constants, pool key building, stake calculation, protocol fee math, and settlement logic
+ * @notice Shared utilities for SafeSwap action libraries.
+ * @dev Constants, pool key building, stake calculation, protocol fee math, LP repricing rebate math, and settlement logic.
  */
 library SafeSwapCommon {
     using FundingsLib for BondContext;
 
-    // ━━━━  CONSTANTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
     // EIP-712 type hashes shared across action libs.
-    bytes32 constant POOL_INFO_TYPEHASH     =  keccak256( "PoolInfo(uint24 fee,int24 tick_spacing)" );
+    bytes32 constant POOL_INFO_TYPEHASH     =  keccak256( "PoolInfo(uint8 base_fee_bps,uint8 rebate_profile,int24 tick_spacing)" );
     bytes32 constant TOKEN_AMOUNT_TYPEHASH  =  keccak256( "TokenAmount(address token,uint256 amount)" );
 
 
     // ━━━━  EIP-712 HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    // EIP-712 encodes each atomic member into a full 32-byte word: uint8 zero-padded, int24 sign-extended. `abi.encode`
+    // produces exactly that layout, so we hash it directly rather than hand-rolling assembly for this off-chain signing path.
     function hash_pool_info( PoolInfo memory pool_info ) internal pure returns ( bytes32 result )
     {
-        bytes32 typehash  =  POOL_INFO_TYPEHASH;
-
-        assembly ("memory-safe")
-        {
-            let saved_free_memory_pointer  :=  mload( 0x40 )
-
-            // EIP-712 encodes signed integers sign-extended into a full 32-byte word.
-            // signextend( 2, x )  treats the low 3 bytes (= 24 bits = int24) of x as a signed value
-            // and fills the upper 29 bytes with the sign bit, so a negative tick_spacing hashes
-            // with 0xFF padding instead of 0x00.
-            let tick_spacing_signed_word  :=  signextend( 2, mload( add( pool_info, 0x20 ) ) )
-
-            // Lay out  typehash || fee || tick_spacing  across the 96 bytes spanning the scratch
-            // space (0x00-0x3f) and the free-memory-pointer slot (0x40-0x5f). This leaves no
-            // garbage above the free memory pointer.
-            mstore( 0x00, typehash )
-            mstore( 0x20, mload( pool_info ) )
-            mstore( 0x40, tick_spacing_signed_word )
-
-            result  :=  keccak256( 0x00, 0x60 )
-
-            mstore( 0x40, saved_free_memory_pointer )    // *SECURITY*  -  Restore the free memory pointer we just clobbered.
-        }
+        result  =  keccak256( abi.encode(
+            POOL_INFO_TYPEHASH,
+            pool_info.base_fee_bps,
+            pool_info.rebate_profile,
+            pool_info.tick_spacing
+        ));
     }
 
     function hash_token_amount( TokenAmount memory token_amount ) internal pure returns ( bytes32 result )
@@ -98,7 +110,26 @@ library SafeSwapCommon {
     }
 
 
-    // ━━━━  TOKEN AMOUNT HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  POOL CONFIG HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /**
+     * @notice Convert a base LP fee in basis points into Uniswap V4 fee units.
+     * @dev 100 v4 fee units = 1 bps. E.g. 30 bps (0.30%) → 3000 v4 units.
+     */
+    function base_fee_units( uint8 base_fee_bps ) internal pure returns ( uint24 )
+    {
+        return uint24(base_fee_bps) * 100;
+    }
+
+    function rebate_bps_for_profile( uint8 rebate_profile ) internal pure returns ( uint256 )
+    {
+        if(  rebate_profile > MAX_REBATE_PROFILE  )  revert InvalidRebateProfile({ rebate_profile: rebate_profile });
+
+        return uint256(rebate_profile) * REBATE_PROFILE_BPS_STEP;
+    }
+
+
+    // ━━━━  TOKEN AMOUNT HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
      * @notice Sort a two-element TokenAmount pair into Uniswap V4 pool currency order.
@@ -115,7 +146,7 @@ library SafeSwapCommon {
     }
 
 
-    // ━━━━  POOL KEY BUILDER  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  POOL KEY BUILDER  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function build_pool_key( IERC20 token_in, IERC20 token_out, uint24 fee, int24 tick_spacing, address hook_address )
     internal pure returns ( PoolKey memory )
@@ -201,7 +232,8 @@ library SafeSwapCommon {
         amount0_in_token1_units   =  FullMath.mulDiv( intermediate, sqrtPriceX96, FixedPoint96.Q96 );
     }
 
-    // ━━━━  PROTOCOL FEE CALCULATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    // ━━━━  PROTOCOL FEE CALCULATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     function calculate_protocol_fee( uint256 amount_out, uint24 pool_fee ) internal pure returns ( uint256 protocol_fee, uint256 user_amount )
     {
@@ -211,10 +243,62 @@ library SafeSwapCommon {
     }
 
 
+    // ━━━━  LP REPRICING REBATE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /**
+     * @notice Compute the LP repricing rebate for a swap from its real tick movement.
+     * @param tick_before Pool tick before the swap.
+     * @param tick_after Pool tick after the swap.
+     * @param rebate_profile LP repricing rebate profile (0..MAX_REBATE_PROFILE).
+     * @param charged_amount Amount the rebate is charged against (output for exact-input, input for exact-output).
+     * @return rebate_amount Amount of `charged_amount` rebated to LPs.
+     * @return movement_bps Approximate pool price movement of the swap, in basis points.
+     *
+     * @dev Linear v1 approximation: 1 tick ≈ 1 bps of price movement. The effective extra-fee share is capped at
+     *      `MAX_REPRICING_REBATE_BPS` of `charged_amount` to bound UX on violent repricing.
+     */
+    function compute_repricing_rebate( int24 tick_before, int24 tick_after, uint8 rebate_profile, uint256 charged_amount )
+    internal pure returns ( uint256 rebate_amount, uint256 movement_bps )
+    {
+        movement_bps  =  _abs_tick_delta( tick_before, tick_after );
+
+        uint256 effective_bps  =  movement_bps * rebate_bps_for_profile( rebate_profile ) / BPS_DENOMINATOR;
+        if(  effective_bps > MAX_REPRICING_REBATE_BPS  )  effective_bps  =  MAX_REPRICING_REBATE_BPS;
+
+        rebate_amount  =  charged_amount * effective_bps / BPS_DENOMINATOR;
+    }
+
+    function _abs_tick_delta( int24 tick_before, int24 tick_after ) private pure returns ( uint256 )
+    {
+        int256 delta  =  int256(tick_after) - int256(tick_before);
+
+        return delta < 0  ?  uint256(-delta)  :  uint256(delta);
+    }
+
+    /**
+     * @notice Donate the repricing rebate, denominated in `rebate_currency`, back to the pool's in-range LPs.
+     * @dev No-op when `rebate_amount` is zero. The caller must guarantee the pool has in-range liquidity, otherwise
+     *      Uniswap V4 `donate` reverts (swap libs skip the rebate when liquidity is zero).
+     */
+    function donate_rebate( IPoolManager pool_manager, PoolKey memory pool_key, Currency rebate_currency, uint256 rebate_amount ) internal
+    {
+        if(  rebate_amount == 0  )  return;
+
+        if(  Currency.unwrap(rebate_currency) == Currency.unwrap(pool_key.currency0)  )
+        {
+            pool_manager.donate( pool_key, rebate_amount, 0, "" );
+        }
+        else
+        {
+            pool_manager.donate( pool_key, 0, rebate_amount, "" );
+        }
+    }
+
+
     // ━━━━  SETTLEMENT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     // *NATIVE*  -  V4 PoolManager has no receive(); native ETH cannot be transferred to it separately and then settled.
-    //              It must arrive bundled with `settle{value:}()`. So for native we pull ETH to the hook (which has
+    //              It must arrive bundled with `settle{value:}()`. So for native we pull ETH to the router (which has
     //              receive()) and forward via msg.value on settle. For ERC20 we keep the direct user→PM path.
     function settle_input( IPoolManager pool_manager, BondContext memory context, IERC20 token, uint256 amount ) internal
     {
@@ -234,6 +318,10 @@ library SafeSwapCommon {
         }
     }
 
+    /**
+     * @notice Settle the swap input, send the user their net output, and take the protocol fee.
+     * @param fee_recipient SafeSwap router address that receives the protocol fee (held for the treasury).
+     */
     function settle_and_take(
         IPoolManager pool_manager,
         BondContext memory context,
@@ -242,7 +330,7 @@ library SafeSwapCommon {
         uint256 amount_in,
         uint256 user_output,
         uint256 protocol_fee,
-        address hook_address
+        address fee_recipient
     ) internal
     {
         Currency currency_out  =  Currency.wrap( address(token_out) );
@@ -250,6 +338,6 @@ library SafeSwapCommon {
         settle_input( pool_manager, context, token_in, amount_in );
 
         pool_manager.take( currency_out, context.user, user_output );
-        pool_manager.take( currency_out, hook_address, protocol_fee );
+        pool_manager.take( currency_out, fee_recipient, protocol_fee );
     }
 }

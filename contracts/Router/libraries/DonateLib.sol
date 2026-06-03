@@ -2,12 +2,11 @@
 pragma solidity ^0.8.30;
 
 import "@BondRouteProtected/BondRouteProtected.sol";
-import "@SafeSwap/libraries/SafeSwapCommon.sol";
-import "@SafeSwap/Definitions.sol";
+import "@SafeSwapRouter/libraries/SafeSwapCommon.sol";
+import "@SafeSwapRouter/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
-import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 import { PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
@@ -18,7 +17,7 @@ import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 
 /**
  * @notice Donation parameters signed by the user.
- * @param pool_info Target Uniswap V4 pool configuration.
+ * @param pool_info Target SafeSwap pool configuration.
  *
  * @dev Token0, token1, and donation amounts come from the two bond fundings, not from this struct.
  */
@@ -29,11 +28,12 @@ struct DonateParams {
 
 /**
  * @title DonateLib
- * @notice Library for BondRoute-protected Uniswap V4 donation operations
+ * @notice BondRoute-protected Uniswap V4 donation operations. A direct donation carries no repricing rebate.
  */
 library DonateLib {
     using FundingsLib for BondContext;
     using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
 
     // ━━━━  EIP-712 SIGNING  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -41,15 +41,15 @@ library DonateLib {
     string constant EIP712_TYPE_STRING  =
         "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,Donate call)"
         "Donate(PoolInfo pool_info)"
-        "PoolInfo(uint24 fee,int24 tick_spacing)"
+        "PoolInfo(uint8 base_fee_bps,uint8 rebate_profile,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)";
 
     bytes32 constant EIP712_TYPEHASH  =  keccak256(
         "Donate(PoolInfo pool_info)"
-        "PoolInfo(uint24 fee,int24 tick_spacing)"
+        "PoolInfo(uint8 base_fee_bps,uint8 rebate_profile,int24 tick_spacing)"
     );
 
-    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  162;
+    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  191;
 
     function get_signing_info( DonateParams memory params )
     internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
@@ -72,26 +72,20 @@ library DonateLib {
         IERC20 preferred_stake_token,
         TokenAmount[] memory preferred_fundings,
         IPoolManager pool_manager,
-        address hook_address
+        address hook
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )   revert UnsupportedFeeTier({ fee: params.pool_info.fee });
-        if(  preferred_fundings.length != 2  )                          revert( DONATE_REQUIRES_TWO_FUNDINGS );
+        if(  params.pool_info.rebate_profile > MAX_REBATE_PROFILE  )   revert InvalidRebateProfile({ rebate_profile: params.pool_info.rebate_profile });
+        if(  preferred_fundings.length != 2  )                         revert( DONATE_REQUIRES_TWO_FUNDINGS );
 
         ( IERC20 token0, uint256 amount0, IERC20 token1, uint256 amount1 )  =  SafeSwapCommon.sort_token_amount_pair(
             preferred_fundings[ 0 ],
             preferred_fundings[ 1 ]
         );
 
-        PoolKey memory pool_key  =  PoolKey({
-            currency0: Currency.wrap( address(token0) ),
-            currency1: Currency.wrap( address(token1) ),
-            fee: params.pool_info.fee,
-            tickSpacing: params.pool_info.tick_spacing,
-            hooks: IHooks(hook_address)
-        });
+        PoolKey memory pool_key  =  _build_pool_key( params, token0, token1, hook );
 
-        ( uint160 sqrtPriceX96, , , )  =  StateLibrary.getSlot0( pool_manager, pool_key.toId( ) );
+        ( uint160 sqrtPriceX96, , , )  =  pool_manager.getSlot0( pool_key.toId( ) );
 
         constraints.min_stake                       =  SafeSwapCommon.calculate_normalized_liquidity_stake(
             sqrtPriceX96,
@@ -110,20 +104,14 @@ library DonateLib {
 
     // ━━━━  EXECUTE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function execute( BondContext memory context, DonateParams memory params, IPoolManager pool_manager, address hook_address ) internal
+    function execute( BondContext memory context, DonateParams memory params, IPoolManager pool_manager, address hook ) public
     {
         ( IERC20 token0, uint256 amount0, IERC20 token1, uint256 amount1 )  =  SafeSwapCommon.sort_token_amount_pair(
             context.fundings[ 0 ],
             context.fundings[ 1 ]
         );
 
-        PoolKey memory pool_key  =  PoolKey({
-            currency0: Currency.wrap( address(token0) ),
-            currency1: Currency.wrap( address(token1) ),
-            fee: params.pool_info.fee,
-            tickSpacing: params.pool_info.tick_spacing,
-            hooks: IHooks(hook_address)
-        });
+        PoolKey memory pool_key  =  _build_pool_key( params, token0, token1, hook );
 
         BalanceDelta delta  =  pool_manager.donate( pool_key, amount0, amount1, "" );
 
@@ -134,5 +122,17 @@ library DonateLib {
 
         if(  delta0 < 0  )  SafeSwapCommon.settle_input( pool_manager, context, token0, uint256(uint128(-delta0)) );
         if(  delta1 < 0  )  SafeSwapCommon.settle_input( pool_manager, context, token1, uint256(uint128(-delta1)) );
+    }
+
+    function _build_pool_key( DonateParams memory params, IERC20 token0, IERC20 token1, address hook )
+    private pure returns ( PoolKey memory )
+    {
+        return PoolKey({
+            currency0: Currency.wrap( address(token0) ),
+            currency1: Currency.wrap( address(token1) ),
+            fee: SafeSwapCommon.base_fee_units( params.pool_info.base_fee_bps ),
+            tickSpacing: params.pool_info.tick_spacing,
+            hooks: IHooks(hook)
+        });
     }
 }

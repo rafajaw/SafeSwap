@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import { IERC721 } from "@OpenZeppelin/token/ERC721/IERC721.sol";
 import { IERC20 } from "@BondRouteProtected/BondRouteProtected.sol";
 
@@ -10,17 +9,21 @@ import { IERC20 } from "@BondRouteProtected/BondRouteProtected.sol";
 
 /**
  * @notice Immutable metadata for a SafeSwap NFT-backed Uniswap V4 position.
+ * @param hook SafeSwap config hook that identifies the pool's repricing rebate profile.
  * @param token0 Pool currency0.
  * @param token1 Pool currency1.
- * @param fee Pool LP fee in Uniswap V4 units.
+ * @param base_fee_bps Base LP fee in basis points (1 bps = 0.01%). Derivable from `hook`, stored for cheap rendering and verification.
+ * @param rebate_profile LP repricing rebate profile. Derivable from `hook`, stored for cheap rendering and verification.
  * @param tick_spacing Pool tick spacing.
  * @param tick_lower Lower tick of the position.
  * @param tick_upper Upper tick of the position.
  */
 struct SafeSwapPositionInfo {
+    address hook;
     IERC20 token0;
     IERC20 token1;
-    uint24 fee;
+    uint8 base_fee_bps;
+    uint8 rebate_profile;
     int24 tick_spacing;
     int24 tick_lower;
     int24 tick_upper;

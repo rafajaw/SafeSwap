@@ -3,12 +3,11 @@ pragma solidity ^0.8.30;
 
 import "@BondRouteProtected/BondRouteProtected.sol";
 import "@SafeSwapNft/ISafeSwapNft.sol";
-import "@SafeSwap/libraries/SafeSwapCommon.sol";
-import "@SafeSwap/Definitions.sol";
+import "@SafeSwapRouter/libraries/SafeSwapCommon.sol";
+import "@SafeSwapRouter/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
-import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 import { PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
@@ -29,7 +28,7 @@ error ModifyLiquidityTokensMismatch( address token0, address token1, address amo
 /**
  * @notice Modify-liquidity parameters signed by the user.
  * @param token_id SafeSwap LP NFT id. Use zero only when creating a new position.
- * @param pool_info Target Uniswap V4 pool configuration.
+ * @param pool_info Target SafeSwap pool configuration.
  * @param tick_lower Lower tick of the liquidity position.
  * @param tick_upper Upper tick of the liquidity position.
  * @param liquidity_delta Single sign-encoded carrier for all four liquidity operations, mirroring
@@ -37,7 +36,7 @@ error ModifyLiquidityTokensMismatch( address token0, address token1, address amo
  *          - `> 0`  → create position / add liquidity (settle the deposited tokens)
  *          - `< 0`  → remove liquidity (take the released tokens)
  *          - `== 0` → collect fees (take only accrued fees)
- *        Keeping one carrier (rather than per-op structs) is deliberate: the deployed hook is at the
+ *        Keeping one carrier (rather than per-op structs) is deliberate: the deployed router is at the
  *        EIP-170 limit, and per-op `unlockCallback` decode paths would overflow it. Per-op clarity
  *        lives in the user-facing functions and EIP-712 signing structs instead.
  * @param minimum_amount_a Minimum actual amount for one of the pool tokens. Token field identifies which token.
@@ -58,7 +57,7 @@ struct ModifyLiquidityParams {
 
 /**
  * @notice Create-position parameters signed by the user.
- * @param pool_info Target Uniswap V4 pool configuration.
+ * @param pool_info Target SafeSwap pool configuration.
  * @param tick_lower Lower tick of the liquidity position.
  * @param tick_upper Upper tick of the liquidity position.
  * @param liquidity Liquidity amount to create.
@@ -119,11 +118,13 @@ struct CollectFeesParams {
 
 /**
  * @title ModifyLiquidityLib
- * @notice Library for NFT-backed SafeSwap liquidity modification through Uniswap V4 core.
+ * @notice NFT-backed SafeSwap liquidity modification through Uniswap V4 core. Positions are owned by the router
+ *         (salt = tokenId); the pool key's hook is the position's config hook. No repricing rebate on liquidity actions.
  */
 library ModifyLiquidityLib {
     using FundingsLib for BondContext;
     using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
 
     // ━━━━  EIP-712 SIGNING  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -131,16 +132,16 @@ library ModifyLiquidityLib {
     string constant CREATE_POSITION_EIP712_TYPE_STRING  =
         "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,CreatePosition call)"
         "CreatePosition(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,uint160 sqrt_price_x96,TokenAmount minimum_deposited_a,TokenAmount minimum_deposited_b)"
-        "PoolInfo(uint24 fee,int24 tick_spacing)"
+        "PoolInfo(uint8 base_fee_bps,uint8 rebate_profile,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)";
 
     bytes32 constant CREATE_POSITION_EIP712_TYPEHASH  =  keccak256(
         "CreatePosition(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,uint160 sqrt_price_x96,TokenAmount minimum_deposited_a,TokenAmount minimum_deposited_b)"
-        "PoolInfo(uint24 fee,int24 tick_spacing)"
+        "PoolInfo(uint8 base_fee_bps,uint8 rebate_profile,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)"
     );
 
-    uint256 constant CREATE_POSITION_EIP712_TOKEN_AMOUNT_OFFSET  =  317;
+    uint256 constant CREATE_POSITION_EIP712_TOKEN_AMOUNT_OFFSET  =  346;
 
     string constant ADD_POSITION_LIQUIDITY_EIP712_TYPE_STRING  =
         "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,AddLiquidity call)"
@@ -252,13 +253,14 @@ library ModifyLiquidityLib {
         IERC20 preferred_stake_token,
         TokenAmount[] memory preferred_fundings,
         IPoolManager pool_manager,
-        address hook_address,
         SafeSwapPositionInfo memory stored_position_info
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier({ fee: params.pool_info.fee });
+        if(  params.pool_info.rebate_profile > MAX_REBATE_PROFILE  )  revert InvalidRebateProfile({ rebate_profile: params.pool_info.rebate_profile });
 
-        PoolKey memory pool_key  =  _build_pool_key( params, preferred_fundings, hook_address, stored_position_info );
+        _validate_existing_position_mode( params, preferred_fundings.length, stored_position_info );
+
+        PoolKey memory pool_key  =  _pool_key_from_position( stored_position_info );
 
         constraints.min_stake                       =  _calculate_stake( params, preferred_stake_token, preferred_fundings, pool_manager, pool_key );
         constraints.min_fundings                    =  preferred_fundings;
@@ -273,7 +275,7 @@ library ModifyLiquidityLib {
         TokenAmount[] memory preferred_fundings
     ) internal pure returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.fee == LPFeeLibrary.DYNAMIC_FEE_FLAG  )  revert UnsupportedFeeTier({ fee: params.pool_info.fee });
+        if(  params.pool_info.rebate_profile > MAX_REBATE_PROFILE  )  revert InvalidRebateProfile({ rebate_profile: params.pool_info.rebate_profile });
         if(  params.liquidity == 0  ||  preferred_fundings.length != 2  )
         {
             int128 bounded_liquidity  =  params.liquidity > uint128(type(int128).max)  ?  type(int128).max  :  int128(params.liquidity);
@@ -300,7 +302,7 @@ library ModifyLiquidityLib {
 
     // ━━━━  EXECUTE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function execute( BondContext memory context, ModifyLiquidityParams memory params, IPoolManager pool_manager, address hook_address, SafeSwapPositionInfo memory position_info ) internal
+    function execute( BondContext memory context, ModifyLiquidityParams memory params, IPoolManager pool_manager, SafeSwapPositionInfo memory position_info ) public
     {
         ( uint256 amount0_minimum, uint256 amount1_minimum )  =  _validate_minimum_tokens(
             position_info.token0,
@@ -309,13 +311,7 @@ library ModifyLiquidityLib {
             params.minimum_amount_b
         );
 
-        PoolKey memory pool_key  =  PoolKey({
-            currency0: Currency.wrap( address(position_info.token0) ),
-            currency1: Currency.wrap( address(position_info.token1) ),
-            fee: params.pool_info.fee,
-            tickSpacing: params.pool_info.tick_spacing,
-            hooks: IHooks(hook_address)
-        });
+        PoolKey memory pool_key  =  _pool_key_from_position( position_info );
 
         IPoolManager.ModifyLiquidityParams memory mod_params  =  IPoolManager.ModifyLiquidityParams({
             tickLower: params.tick_lower,
@@ -339,40 +335,14 @@ library ModifyLiquidityLib {
 
     // ━━━━  INTERNAL HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _build_pool_key(
-        ModifyLiquidityParams memory params,
-        TokenAmount[] memory preferred_fundings,
-        address hook_address,
-        SafeSwapPositionInfo memory stored_position_info
-    ) private pure returns ( PoolKey memory pool_key )
+    function _pool_key_from_position( SafeSwapPositionInfo memory position_info ) private pure returns ( PoolKey memory )
     {
-        if(  params.token_id == 0  )
-        {
-            if(  params.liquidity_delta <= 0  ||  preferred_fundings.length != 2  )
-            {
-                revert InvalidLiquidityModification({ token_id: params.token_id, liquidity_delta: params.liquidity_delta, funding_count: preferred_fundings.length });
-            }
-
-            ( IERC20 token0, , IERC20 token1, )  =  SafeSwapCommon.sort_token_amount_pair( preferred_fundings[ 0 ], preferred_fundings[ 1 ] );
-            _validate_minimum_tokens( token0, token1, params.minimum_amount_a, params.minimum_amount_b );
-
-            return PoolKey({
-                currency0: Currency.wrap( address(token0) ),
-                currency1: Currency.wrap( address(token1) ),
-                fee: params.pool_info.fee,
-                tickSpacing: params.pool_info.tick_spacing,
-                hooks: IHooks(hook_address)
-            });
-        }
-
-        _validate_existing_position_mode( params, preferred_fundings.length, stored_position_info );
-
-        pool_key  =  PoolKey({
-            currency0: Currency.wrap( address(stored_position_info.token0) ),
-            currency1: Currency.wrap( address(stored_position_info.token1) ),
-            fee: params.pool_info.fee,
-            tickSpacing: params.pool_info.tick_spacing,
-            hooks: IHooks(hook_address)
+        return PoolKey({
+            currency0: Currency.wrap( address(position_info.token0) ),
+            currency1: Currency.wrap( address(position_info.token1) ),
+            fee: SafeSwapCommon.base_fee_units( position_info.base_fee_bps ),
+            tickSpacing: position_info.tick_spacing,
+            hooks: IHooks(position_info.hook)
         });
     }
 
@@ -384,7 +354,7 @@ library ModifyLiquidityLib {
         PoolKey memory pool_key
     ) private view returns ( TokenAmount memory stake )
     {
-        ( uint160 sqrt_price_x96, , , )  =  StateLibrary.getSlot0( pool_manager, pool_key.toId( ) );
+        ( uint160 sqrt_price_x96, , , )  =  pool_manager.getSlot0( pool_key.toId( ) );
 
         if(  params.liquidity_delta > 0  )
         {
@@ -413,7 +383,9 @@ library ModifyLiquidityLib {
             revert InvalidLiquidityModification({ token_id: params.token_id, liquidity_delta: params.liquidity_delta, funding_count: funding_count });
         }
 
-        bool pool_info_matches  =  params.pool_info.fee == position_info.fee  &&  params.pool_info.tick_spacing == position_info.tick_spacing;
+        bool pool_info_matches  =  params.pool_info.base_fee_bps == position_info.base_fee_bps
+                                   &&  params.pool_info.rebate_profile == position_info.rebate_profile
+                                   &&  params.pool_info.tick_spacing == position_info.tick_spacing;
         bool ticks_match        =  params.tick_lower == position_info.tick_lower  &&  params.tick_upper == position_info.tick_upper;
         if(  pool_info_matches == false  ||  ticks_match == false  )  revert PositionInfoMismatch({ token_id: params.token_id });
 
@@ -476,7 +448,6 @@ library ModifyLiquidityLib {
         {
             revert OneSidedDepositMismatch({ expected_token: address(position_info.token1), minimum_required: amount1_minimum });
         }
-
     }
 
     function _take_removed_liquidity_or_fees(
