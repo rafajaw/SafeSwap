@@ -19,6 +19,7 @@ remappings = [
     "@BondRoute=lib/BondRoute/src/",
     "@BondRouteProtected=lib/BondRoute/src/integrations/",
     "@ChainConfig=lib/ChainConfig/src/integrations/",
+    "@ChainConfigCore=lib/ChainConfig/src/",
     "@UniswapV4Core=lib/v4-core/src/",
     "@uniswap/v4-core/=lib/v4-core/",
     "@OpenZeppelin=lib/openzeppelin-contracts/contracts/",

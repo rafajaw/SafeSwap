@@ -106,3 +106,20 @@ interface ISafeSwapNftTests {
     function test_bondroute_signing_info_reverts_for_unsupported_call() external;
     function test_bondroute_signing_info_reverts_for_short_call_data() external;
 }
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SAFESWAPNFT.SOL - Full-workflow (Tier 1): real BondRoute + real V4 PoolManager + real hook clone, asserting
+//   on real on-chain effects (user balances, V4 position liquidity by salt = tokenId). Focused/edge branches that
+//   need injected state stay in the Tier-2 interface above (test/Nft/SafeSwapNft.t.sol).
+// Implemented in: test/Nft/SafeSwapNftWorkflow.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface ISafeSwapNftWorkflowTests {
+    function test_create_position_initializes_pool_deposits_liquidity_and_mints() external;
+    function test_create_position_uses_incrementing_token_ids() external;
+    function test_add_liquidity_increases_the_v4_position() external;
+    function test_remove_liquidity_returns_tokens_and_reduces_the_position() external;
+    function test_collect_fees_executes_with_no_accrued_fees_and_leaves_liquidity() external;
+    function test_remove_by_non_owner_is_protocol_reverted_and_position_is_untouched() external;
+}
