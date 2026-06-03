@@ -7,6 +7,8 @@
       (`+ swap_legs`, FullMath surplus valuation), swapped `MAX_REPRICING_REBATE_BPS` → `MAX_REPRICING_FEE_PIPS`, updated
       `SafeSwapHookImpl.beforeSwap` + both `User.sol` quoters, and rewrote the unit tests (capture% of surplus + symmetry +
       caps). 148 Common/Hook/Nft tests green.
+- [ ] Decide whether to rename/split `SlippageExceeded` or adjust NatSpec for exact-output swaps: `ExactOutputSwapLib`
+      currently reuses `amount_received` / `minimum_required` fields to report `amount_in > maximum_amount_in`.
 
 ## Test suite
 - [x] Move stale legacy tests out of Foundry's active `test/` tree without deleting them.
