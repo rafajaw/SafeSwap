@@ -29,48 +29,30 @@ uint256 constant MIN_PROTOCOL_FEE_RATE              =   1000;       // 0.01% flo
 
 // ━━━━  LP REPRICING REBATE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// When a swap moves the pool price, SafeSwap charges an additional fee proportional to that price movement and rebates it to
-// the LPs of the pool. The fee is measured from the REAL tick movement of the executed swap and donated back to in-range LPs.
+// When a swap moves the pool price, the pool charges an additional LP fee proportional to that movement and pays it to the
+// LPs the swap crossed. It is a native Uniswap V4 dynamic fee that accrues per swap step, so it compensates LPs in proportion
+// to the volume they served across the move. The hook estimates the movement before the swap and returns an override fee:
 //
-//     repricing rebate fee = pool price movement caused by the swap × rebate share
+//     swap fee (bps)       = base LP fee + repricing fee
+//     repricing fee (bps)  = min( price movement (bps) × capture share, MAX_REPRICING_REBATE_BPS )
 //
-// The rebate share is selected by a discrete profile. Each profile maps to a share in basis points:
-//
-//     rebate_bps = rebate_profile × REBATE_PROFILE_BPS_STEP    →    0%, 10%, 20%, … 100%
-//
+// The capture share is the part of the displacement the LPs capture; it is read from the hook address (see layout below).
 
-uint256 constant BPS_DENOMINATOR              =   10_000;
-uint8   constant MAX_REBATE_PROFILE           =   10;       // Profile 10 = 100%. Profiles 11..15 are reserved (4-bit field).
-uint256 constant REBATE_PROFILE_BPS_STEP      =   1000;     // profile × 1000 bps  →  profile 5 = 5000 bps = 50%.
+uint256 constant BPS_DENOMINATOR            =   10_000;
+uint256 constant PERCENT_DENOMINATOR        =   100;        // Capture is a percent of the movement, so divide by 100.
+uint256 constant PIPS_PER_BPS               =   100;        // Uniswap V4 fee units: 1_000_000 = 100%, so 1 bps = 100 pips.
 
-// *NOTE*  -  Upper bound on the extra fee charged for a single swap, as a share of the swapped amount. Bounds UX and edge-case
-//            risk on violent repricing. Tunable per the LVR playbook; a single global cap is intentional for v1 simplicity.
-uint256 constant MAX_REPRICING_REBATE_BPS     =   1000;     // 10% of the swapped amount.
+// *NOTE*  -  Upper bound on the repricing component of the swap fee, as a share of the swapped amount. Bounds UX and
+//            edge-case risk on violent repricing. Tunable; a single global cap is intentional for v1 simplicity.
+uint256 constant MAX_REPRICING_REBATE_BPS   =   1000;       // 10% of the swapped amount.
+
+// *SECURITY*  -  Hard ceiling on the total override fee. Must stay below Uniswap V4's MAX_SWAP_FEE (1_000_000), otherwise a
+//                100% fee would make exact-output swaps impossible (the input is entirely consumed by the fee).
+uint24  constant MAX_TOTAL_FEE_PIPS         =   500_000;    // 50%.
 
 
-// ━━━━  SAFESWAP HOOK ADDRESS CONFIG  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-//
-// Each rebate profile is served by its own permissionlessly-deployed SafeSwapHook instance. The economic profile is encoded in
-// the hook's CREATE2 address so that each profile yields a distinct Uniswap V4 PoolId for otherwise-identical pool parameters.
-//
-// Address bit layout (160 bits):
-//     bits [152..159]  magic byte (0x55)            marks the address as a SafeSwap config hook
-//     bits [148..151]  rebate_profile (4 bits)      coarse repricing rebate share
-//     bits [ 14..147]  free salt entropy
-//     bits [  0.. 13]  Uniswap V4 hook permission bitmap
-//
-// The base LP fee is NOT encoded in the hook address: SafeSwap pools are static-fee, so the base fee lives in PoolKey.fee and
-// a single hook instance per rebate profile serves every base-fee tier.
-
-uint8   constant SAFESWAP_HOOK_ADDRESS_MAGIC          =   0x55;
-uint256 constant HOOK_ADDRESS_MAGIC_SHIFT             =   152;
-uint256 constant HOOK_ADDRESS_REBATE_PROFILE_SHIFT    =   148;
-uint160 constant HOOK_ADDRESS_REBATE_PROFILE_MASK     =   0xF;
-uint160 constant HOOK_PERMISSIONS_MASK                =   0x3FFF;     // (1 << 14) - 1, matches Hooks.ALL_HOOK_MASK.
-
-// beforeInitialize | beforeAddLiquidity | beforeRemoveLiquidity | beforeSwap | beforeDonate
-//   = (1<<13) | (1<<11) | (1<<9) | (1<<7) | (1<<5)
-uint160 constant REQUIRED_HOOK_PERMISSIONS            =   0x2AA0;
+// *NOTE*  -  The hook address encoding (base fee + capture markers, shifts, permission bits) and its decoder live in the
+//            hook-specific `HookAddress` library (contracts/Hook/HookAddress.sol), not here.
 
 
 // ━━━━  BONDROUTE EXECUTION POLICY  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -84,6 +66,9 @@ uint256 constant MAX_BOND_EXECUTION_DELAY_IN_SECONDS  =   1 hours;      // Caps 
 
 string constant SAFESWAP_PROTOCOL_NAME                  =  "SafeSwap";
 string constant SAFESWAP_PROTOCOL_DESCRIPTION           =  "Trustless MEV-protected Uniswap pools with LP repricing rebates";
+
+string constant SAFESWAP_POSITIONS_NAME                 =  "SafeSwap Positions";
+string constant SAFESWAP_POSITIONS_DESCRIPTION          =  "Trustless MEV-protected Uniswap LP positions";
 
 string constant SWAPS_REQUIRE_EXACTLY_ONE_FUNDING       =  "Swaps require exactly 1 funding";
 string constant ADD_LIQUIDITY_REQUIRES_TWO_FUNDINGS     =  "Add liquidity requires exactly 2 fundings";

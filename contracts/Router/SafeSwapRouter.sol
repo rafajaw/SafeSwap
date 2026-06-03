@@ -19,29 +19,30 @@ import "@SafeSwapRouter/Treasury.sol";
 
 /**
  * @title SafeSwapRouter
- * @notice Canonical, BondRoute-protected user entrypoint for SafeSwap: swaps, NFT-backed liquidity, donations, the
- *         repricing-rebate engine, the hook config registry, and the protocol treasury.
- * @dev SafeSwap pools are static-fee Uniswap V4 pools whose hook is a permissionlessly-deployed SafeSwapHook config
- *      instance (one per LP repricing rebate profile). The router is the only contract that may route actions through
- *      those pools; every swap that moves the pool price pays LPs a rebate proportional to the real tick movement.
+ * @notice Canonical, BondRoute-protected SwapRouter for SafeSwap: swaps, the swap quoter, the hook config registry, and the
+ *         protocol treasury. LP positions live in the separate PositionManager NFT.
+ * @dev SafeSwap pools are dynamic-fee Uniswap V4 pools whose hook is a permissionlessly-deployed clone (one per
+ *      `(base fee, capture)` config). The router is the only address allowed to route swaps through those pools; the hook
+ *      charges `base + repricing` as the LP fee on each swap, accruing path-fairly to the LPs the swap crosses.
  *
  * Inheritance Chain (base → derived):
- *   Orchestrator, HookRegistry, BondRouteProtected → User → BondRouteIntegration → SafeSwapRouter
+ *   PoolManagerIntegration → Orchestrator, HookRegistry, BondRouteProtected → User → BondRouteIntegration → SafeSwapRouter
  *   Treasury → SafeSwapRouter
  *
- *   Orchestrator         - PoolManager integration: pool init + unlock-callback dispatch
- *   HookRegistry         - permissionless hook registration + config resolution (codehash + address-bit auth)
- *   BondRouteProtected   - commit-reveal bond mechanism
- *   User                 - user functions (swap, NFT-backed liquidity, donate) + off-chain getters
- *   BondRouteIntegration - BondRoute selectors, quote, validation, signing-info dispatch
- *   Treasury             - protocol-fee withdrawal + treasury role transfer
- *   SafeSwapRouter       - final composition + receive()
+ *   PoolManagerIntegration - resolves + shape-validates the PoolManager
+ *   Orchestrator           - swap unlock-callback dispatch
+ *   HookRegistry           - permissionless hook registration + config resolution (codehash + address-bit auth)
+ *   BondRouteProtected     - commit-reveal bond mechanism
+ *   User                   - swap functions + off-chain quote/getters
+ *   BondRouteIntegration   - BondRoute selectors, quote, signing-info dispatch (swaps)
+ *   Treasury               - protocol-fee withdrawal + treasury role transfer
+ *   SafeSwapRouter         - final composition + receive()
  */
 contract SafeSwapRouter is BondRouteIntegration, Treasury {
 
     /**
-     * @notice Deploy the SafeSwap router and initialize PoolManager, BondRoute, position NFT, and treasury configuration.
-     * @dev Constructor reads deployment configuration from ChainConfig and reverts with string errors for human-facing deployment failures.
+     * @notice Deploy the SafeSwap router and initialize PoolManager, BondRoute, and treasury configuration from ChainConfig.
+     * @dev Reverts with string errors for human-facing deployment failures.
      */
     constructor( )
     BondRouteIntegration( )
@@ -49,10 +50,10 @@ contract SafeSwapRouter is BondRouteIntegration, Treasury {
 
     /**
      * @notice Receive native token from PoolManager (protocol fees on native swaps) or BondRoute (native funding pulls).
-     * @dev Reverts on any other sender — SafeSwap has no donation surface.
+     * @dev Reverts on any other sender — the router has no donation surface.
      */
     receive( )
-    external  payable
+    external  payable  override
     {
         if(  msg.sender != address(PoolManager)  &&  msg.sender != BONDROUTE_ADDRESS  )  revert( "Direct transfers not allowed" );
     }

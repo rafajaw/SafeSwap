@@ -53,6 +53,25 @@ This is a new system — no backwards compatibility required.
 6. **`BondRoute_quote_call` is unchanged in spirit** — stake (% of input), fundings, timing; no simulator. Fee/output
    preview is the separate `__OFF_CHAIN__quote_swap`.
 
+## Topology (decided: Option B — split) — supersedes any single-router wording below
+
+Two BondRoute-protected contracts, because V4 position ownership = the `modifyLiquidity` caller, so the whole position
+lifecycle must live in one contract:
+
+- **SwapRouter** (`BondRouteProtected` #1): `swap_exact_input`, `swap_exact_output`, `register_hook`/`get_hook`, treasury,
+  `__OFF_CHAIN__quote_swap`/`get_pool_id`. Owns no positions. The dynamic-fee quoter (`SwapSimulator`) fits here because
+  the position lifecycle is no longer in this contract.
+- **PositionManagerNFT** (`BondRouteProtected` #2): `create_position`, `add_liquidity`, `remove_liquidity`, `collect_fees`,
+  ERC721, position getters. **Owns the V4 positions** (it is the `modifyLiquidity` caller; salt = tokenId) and has its own
+  unlock-callback + settlement (sharing the action libraries). Resolves the hook via `router.get_hook(...)`.
+
+**`donate` is removed** (not relabeled): the rebate is a native dynamic fee, so a bonded donate is gone, and the hook drops
+the `beforeDonate` permission (`REQUIRED_PERMISSIONS = 0x2A80`). Pools still accept *permissionless* `PoolManager.donate`
+(a harmless v4 primitive crediting in-range LPs), so external incentives can still tip LPs — SafeSwap just doesn't mediate it.
+
+**Hook gating:** `beforeSwap` ⇒ `sender == ROUTER`; `beforeInitialize`/`beforeAddLiquidity`/`beforeRemoveLiquidity` ⇒
+`sender == NFT`. The hook reads both `ROUTER` and `NFT` from ChainConfig. `DonateLib` is deleted.
+
 ## Mechanism
 
 ```

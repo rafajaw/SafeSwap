@@ -55,9 +55,10 @@ library SwapSimulator {
      * @return tick_before Pool tick before the swap.
      * @return tick_after Estimated pool tick after the swap.
      * @return sqrt_price_after_x96 Estimated post-swap sqrt price.
+     * @return amount_calculated Counterpart amount at `fee_pips`: total output for exact-input, total input for exact-output.
      */
     function simulate( IPoolManager manager, PoolKey memory key, bool zero_for_one, int256 amount_specified, uint24 fee_pips )
-    internal view returns ( int24 tick_before, int24 tick_after, uint160 sqrt_price_after_x96 )
+    internal view returns ( int24 tick_before, int24 tick_after, uint160 sqrt_price_after_x96, uint256 amount_calculated )
     {
         bytes32 state_slot     =  _pool_state_slot( key.toId( ) );
         bytes32 ticks_mapping  =  bytes32( uint256(state_slot) + TICKS_OFFSET );
@@ -80,6 +81,7 @@ library SwapSimulator {
         int24 tick_spacing  =  key.tickSpacing;
         int256 remaining    =  amount_specified;
         uint160 price_limit =  zero_for_one  ?  TickMath.MIN_SQRT_PRICE + 1  :  TickMath.MAX_SQRT_PRICE - 1;
+        amount_calculated   =  0;
 
         unchecked
         {
@@ -107,11 +109,13 @@ library SwapSimulator {
 
                 if(  amount_specified > 0  )
                 {
-                    remaining  -=  int256(amount_out);
+                    remaining          -=  int256(amount_out);
+                    amount_calculated  +=  amount_in + fee_amount;     // exact-output: accumulate the required input.
                 }
                 else
                 {
-                    remaining  +=  int256(amount_in + fee_amount);
+                    remaining          +=  int256(amount_in + fee_amount);
+                    amount_calculated  +=  amount_out;                 // exact-input: accumulate the produced output.
                 }
 
                 if(  sqrt_price_x96 == sqrt_price_next_x96  )

@@ -1,99 +1,113 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "@SafeSwapRouter/Definitions.sol";
+import "@SafeSwapCommon/Definitions.sol";
+import { HookAddress } from "@SafeSwapCommon/HookAddress.sol";
 import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
 
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 error UnauthorizedHookCode( address caller, bytes32 codehash );
-error HookAddressConfigMismatch( address hook, uint8 magic, uint8 encoded_rebate_profile, uint8 submitted_rebate_profile );
-error HookPermissionsMismatch( address hook, uint160 permission_bits, uint160 required_permission_bits );
-error HookConfigAlreadyRegistered( uint8 rebate_profile, address existing_hook );
-error HookConfigNotRegistered( uint8 rebate_profile );
+error HookConfigMismatch( address hook, uint16 decoded_base_fee_bps, uint8 decoded_rebate_percent, uint16 submitted_base_fee_bps, uint8 submitted_rebate_percent );
+error HookPermissionsMismatch( address hook );
+error HookConfigAlreadyRegistered( uint16 base_fee_bps, uint8 rebate_percent, address existing_hook );
+error HookConfigNotRegistered( uint16 base_fee_bps, uint8 rebate_percent );
 
 
 // ━━━━  EVENTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-event HookRegistered( uint8 indexed rebate_profile, address indexed hook );
+event HookRegistered( uint16 indexed base_fee_bps, uint8 indexed rebate_percent, address indexed hook );
 
 
 /**
  * @title HookRegistry
- * @notice Permissionless-deployment registry binding each LP repricing rebate profile to its SafeSwap config hook.
+ * @notice Permissionless-deployment registry binding each `(base fee, capture)` config to its SafeSwap hook clone.
  *
- * @dev Hooks are deployed permissionlessly but registered under three independent proofs:
- *      - exact runtime codehash allowlist  → proves the hook runs the audited SafeSwap hook bytecode (proves behavior);
- *      - address-bit config validation     → proves the hook's CREATE2 address encodes the claimed rebate profile;
- *      - Uniswap V4 permission validation   → proves the hook address carries exactly the required hook permission bits.
- *
- *      The approved runtime codehash is published in ChainConfig by the protocol config signer and read lazily so the
- *      router can be deployed before the audited hook bytecode hash is finalized.
+ * @dev Hooks are deployed permissionlessly as EIP-1167 clones of the audited implementation but registered under three
+ *      independent proofs: exact runtime codehash (the clone stub, with the audited impl address baked in — proves the
+ *      clone delegatecalls the audited code); address-bit config (the `HookAddress` BCD must decode to the submitted
+ *      config); and the Uniswap V4 permission bits. The approved stub codehash is published in ChainConfig and read lazily
+ *      so the router can deploy before the audited bytecode hash is finalized.
  */
 abstract contract HookRegistry {
 
-    mapping( uint8 => address ) public hookByProfile;
+    mapping( uint256 => address ) public hookByConfig;
     mapping( address => bool ) public registeredHook;
 
 
     // ━━━━  REGISTRATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
-     * @notice Register the calling SafeSwap config hook for its rebate profile. Called once by the hook itself after deploy.
-     * @param rebate_profile LP repricing rebate profile the caller claims to serve. Must match the caller's address bits.
+     * @notice Register the calling hook clone for its `(base_fee_bps, rebate_percent)` config. Called once by the clone.
      *
      * @dev EMITTED EVENTS:
-     *      - `HookRegistered(rebate_profile, hook)` on success.
+     *      - `HookRegistered(base_fee_bps, rebate_percent, hook)` on success.
      *
      * @dev ERROR CODES:
-     *      - `UnauthorizedHookCode(caller, codehash)` if the caller's runtime codehash is not the approved SafeSwap hook code.
-     *      - `HookAddressConfigMismatch(...)` if the caller's address bits do not encode the SafeSwap magic and `rebate_profile`.
-     *      - `HookPermissionsMismatch(...)` if the caller's address does not carry exactly the required V4 hook permissions.
-     *      - `HookConfigAlreadyRegistered(rebate_profile, existing)` if a different hook already serves this profile.
+     *      - `UnauthorizedHookCode(caller, codehash)` if the caller's runtime codehash is not the approved clone stub.
+     *      - `HookConfigMismatch(...)` if the caller's address does not decode to the submitted config.
+     *      - `HookPermissionsMismatch(hook)` if the caller's address lacks the required V4 hook permissions.
+     *      - `HookConfigAlreadyRegistered(...)` if a different hook already serves this config.
      */
-    function register_hook( uint8 rebate_profile )
+    function register_hook( uint16 base_fee_bps, uint8 rebate_percent )
     external
     {
         _require_approved_hook_runtime( msg.sender );
-        _require_address_config_matches( msg.sender, rebate_profile );
-        _require_hook_permissions( msg.sender );
 
-        address existing  =  hookByProfile[ rebate_profile ];
-        if(  existing != address(0)  &&  existing != msg.sender  )  revert HookConfigAlreadyRegistered({ rebate_profile: rebate_profile, existing_hook: existing });
+        ( uint16 decoded_base_fee_bps, uint8 decoded_rebate_percent )  =  HookAddress.decode( msg.sender );
+        if(  decoded_base_fee_bps != base_fee_bps  ||  decoded_rebate_percent != rebate_percent  )
+        {
+            revert HookConfigMismatch({
+                hook: msg.sender,
+                decoded_base_fee_bps: decoded_base_fee_bps,
+                decoded_rebate_percent: decoded_rebate_percent,
+                submitted_base_fee_bps: base_fee_bps,
+                submitted_rebate_percent: rebate_percent
+            });
+        }
 
-        hookByProfile[ rebate_profile ]  =  msg.sender;
-        registeredHook[ msg.sender ]     =  true;
+        if(  HookAddress.has_required_permissions( msg.sender ) == false  )  revert HookPermissionsMismatch({ hook: msg.sender });
 
-        emit HookRegistered( rebate_profile, msg.sender );
+        uint256 key       =  _config_key( base_fee_bps, rebate_percent );
+        address existing  =  hookByConfig[ key ];
+        if(  existing != address(0)  &&  existing != msg.sender  )  revert HookConfigAlreadyRegistered({ base_fee_bps: base_fee_bps, rebate_percent: rebate_percent, existing_hook: existing });
+
+        hookByConfig[ key ]           =  msg.sender;
+        registeredHook[ msg.sender ]  =  true;
+
+        emit HookRegistered( base_fee_bps, rebate_percent, msg.sender );
     }
 
 
     // ━━━━  RESOLUTION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
-     * @notice Resolve the registered SafeSwap config hook for a rebate profile.
-     * @param rebate_profile LP repricing rebate profile.
-     * @return hook Registered config hook address. Reverts if no hook is registered for the profile.
+     * @notice Resolve the registered hook clone for a `(base_fee_bps, rebate_percent)` config. Reverts if none is registered.
      */
-    function get_hook( uint8 rebate_profile )
+    function get_hook( uint16 base_fee_bps, uint8 rebate_percent )
     external  view returns ( address hook )
     {
-        hook  =  _resolve_hook( rebate_profile );
+        hook  =  _resolve_hook( base_fee_bps, rebate_percent );
     }
 
-    function _resolve_hook( uint8 rebate_profile ) internal view returns ( address hook )
+    function _resolve_hook( uint16 base_fee_bps, uint8 rebate_percent ) internal view returns ( address hook )
     {
-        hook  =  hookByProfile[ rebate_profile ];
-        if(  hook == address(0)  )  revert HookConfigNotRegistered({ rebate_profile: rebate_profile });
+        hook  =  hookByConfig[ _config_key( base_fee_bps, rebate_percent ) ];
+        if(  hook == address(0)  )  revert HookConfigNotRegistered({ base_fee_bps: base_fee_bps, rebate_percent: rebate_percent });
+    }
+
+    function _config_key( uint16 base_fee_bps, uint8 rebate_percent ) private pure returns ( uint256 )
+    {
+        return ( uint256(base_fee_bps) << 8 ) | uint256(rebate_percent);
     }
 
 
     // ━━━━  VALIDATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    // *SECURITY*  -  Authorize the hook by EXACT local runtime codehash, never by interface self-identification or tx.origin.
-    //                An EIP-7702 delegated EOA's code is the `0xef0100 || delegate` designator, whose hash never equals the
-    //                audited hook runtime codehash, so this rejects delegated EOAs impersonating a hook.
+    // *SECURITY*  -  Authorize the clone by EXACT runtime codehash (the EIP-1167 stub with the audited impl address baked in),
+    //                never by interface self-identification or tx.origin. An EIP-7702 delegated EOA's code is the
+    //                `0xef0100 || delegate` designator, whose hash never equals the stub codehash, so this rejects it.
     function _require_approved_hook_runtime( address account ) internal view
     {
         bytes32 approved_codehash  =  ChainConfig.read_bytes32( CONFIG_SIGNER, SAFESWAP_HOOK_CODEHASH_KEY );
@@ -102,30 +116,5 @@ abstract contract HookRegistry {
         assembly { codehash := extcodehash( account ) }
 
         if(  codehash != approved_codehash  )  revert UnauthorizedHookCode({ caller: account, codehash: codehash });
-    }
-
-    function _require_address_config_matches( address hook, uint8 rebate_profile ) internal pure
-    {
-        uint160 hook_bits        =  uint160(hook);
-        uint8 magic              =  uint8(hook_bits >> HOOK_ADDRESS_MAGIC_SHIFT);
-        uint8 encoded_profile    =  uint8((hook_bits >> HOOK_ADDRESS_REBATE_PROFILE_SHIFT) & HOOK_ADDRESS_REBATE_PROFILE_MASK);
-
-        bool magic_matches    =  magic == SAFESWAP_HOOK_ADDRESS_MAGIC;
-        bool profile_matches  =  encoded_profile == rebate_profile  &&  rebate_profile <= MAX_REBATE_PROFILE;
-
-        if(  magic_matches == false  ||  profile_matches == false  )
-        {
-            revert HookAddressConfigMismatch({ hook: hook, magic: magic, encoded_rebate_profile: encoded_profile, submitted_rebate_profile: rebate_profile });
-        }
-    }
-
-    function _require_hook_permissions( address hook ) internal pure
-    {
-        uint160 permission_bits  =  uint160(hook) & HOOK_PERMISSIONS_MASK;
-
-        if(  permission_bits != REQUIRED_HOOK_PERMISSIONS  )
-        {
-            revert HookPermissionsMismatch({ hook: hook, permission_bits: permission_bits, required_permission_bits: REQUIRED_HOOK_PERMISSIONS });
-        }
     }
 }

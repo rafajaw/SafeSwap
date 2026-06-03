@@ -43,7 +43,7 @@ contract SimHarness is IUnlockCallback {
     function simulate( PoolKey memory key, bool zero_for_one, int256 amount_specified, uint24 fee_pips )
     external view returns ( int24 tick_before, int24 tick_after, uint160 sqrt_price_after )
     {
-        return SwapSimulator.simulate( pm, key, zero_for_one, amount_specified, fee_pips );
+        ( tick_before, tick_after, sqrt_price_after, )  =  SwapSimulator.simulate( pm, key, zero_for_one, amount_specified, fee_pips );
     }
 
     function unlockCallback( bytes calldata data ) external returns ( bytes memory )

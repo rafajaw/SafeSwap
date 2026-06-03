@@ -2,7 +2,8 @@
 pragma solidity ^0.8.30;
 
 import "@BondRouteProtected/BondRouteProtected.sol";
-import "@SafeSwapRouter/Definitions.sol";
+import "@SafeSwapCommon/Definitions.sol";
+import "@SafeSwapCommon/Types.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -11,65 +12,22 @@ import { FullMath } from "@UniswapV4Core/libraries/FullMath.sol";
 import { FixedPoint96 } from "@UniswapV4Core/libraries/FixedPoint96.sol";
 
 
-// ━━━━  DATA STRUCTURES  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * @notice SafeSwap pool configuration shared by all SafeSwap actions.
- * @param base_fee_bps Base LP fee in basis points (1 bps = 0.01%). Stored in PoolKey.fee as `base_fee_bps * 100` v4 units.
- * @param rebate_profile LP repricing rebate profile (0..MAX_REBATE_PROFILE). Selects the config hook and the rebate share.
- * @param tick_spacing Pool tick spacing.
- */
-struct PoolInfo {
-    uint8 base_fee_bps;
-    uint8 rebate_profile;
-    int24 tick_spacing;
-}
-
-
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 error SlippageExceeded( uint256 amount_received, uint256 minimum_required );
 error OneSidedDepositMismatch( address expected_token, uint256 minimum_required );
-error InvalidRebateProfile( uint8 rebate_profile );
-
-
-// ━━━━  EVENTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * @notice Emitted when a swap moves the pool price and the LP repricing rebate is charged and donated to LPs.
- * @param pool_id Uniswap V4 pool identifier.
- * @param user Bonded user whose swap repriced the pool.
- * @param tick_before Pool tick before the swap.
- * @param tick_after Pool tick after the swap.
- * @param tick_delta Absolute tick movement.
- * @param movement_bps Approximate price movement in basis points.
- * @param rebate_profile LP repricing rebate profile of the pool.
- * @param rebate_amount Amount donated to LPs, denominated in `rebate_currency`.
- * @param rebate_currency Currency the rebate was donated in (output for exact-input, input for exact-output).
- */
-event RepricingRebateCharged(
-    bytes32 indexed pool_id,
-    address indexed user,
-    int24 tick_before,
-    int24 tick_after,
-    uint256 tick_delta,
-    uint256 movement_bps,
-    uint8 rebate_profile,
-    uint256 rebate_amount,
-    address rebate_currency
-);
 
 
 /**
  * @title SafeSwapCommon
  * @notice Shared utilities for SafeSwap action libraries.
- * @dev Constants, pool key building, stake calculation, protocol fee math, LP repricing rebate math, and settlement logic.
+ * @dev Constants, pool key building, stake calculation, protocol fee math, repricing-fee math, and settlement logic.
  */
 library SafeSwapCommon {
     using FundingsLib for BondContext;
 
     // EIP-712 type hashes shared across action libs.
-    bytes32 constant POOL_INFO_TYPEHASH     =  keccak256( "PoolInfo(uint8 base_fee_bps,uint8 rebate_profile,int24 tick_spacing)" );
+    bytes32 constant POOL_INFO_TYPEHASH     =  keccak256( "PoolInfo(uint16 base_fee_bps,uint8 rebate_percent,int24 tick_spacing)" );
     bytes32 constant TOKEN_AMOUNT_TYPEHASH  =  keccak256( "TokenAmount(address token,uint256 amount)" );
 
 
@@ -82,7 +40,7 @@ library SafeSwapCommon {
         result  =  keccak256( abi.encode(
             POOL_INFO_TYPEHASH,
             pool_info.base_fee_bps,
-            pool_info.rebate_profile,
+            pool_info.rebate_percent,
             pool_info.tick_spacing
         ));
     }
@@ -113,19 +71,12 @@ library SafeSwapCommon {
     // ━━━━  POOL CONFIG HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
-     * @notice Convert a base LP fee in basis points into Uniswap V4 fee units.
-     * @dev 100 v4 fee units = 1 bps. E.g. 30 bps (0.30%) → 3000 v4 units.
+     * @notice Convert a base LP fee in basis points into Uniswap V4 fee units (pips).
+     * @dev 100 v4 pips = 1 bps. E.g. 30 bps (0.30%) → 3000 pips.
      */
-    function base_fee_units( uint8 base_fee_bps ) internal pure returns ( uint24 )
+    function base_fee_units( uint16 base_fee_bps ) internal pure returns ( uint24 )
     {
-        return uint24(base_fee_bps) * 100;
-    }
-
-    function rebate_bps_for_profile( uint8 rebate_profile ) internal pure returns ( uint256 )
-    {
-        if(  rebate_profile > MAX_REBATE_PROFILE  )  revert InvalidRebateProfile({ rebate_profile: rebate_profile });
-
-        return uint256(rebate_profile) * REBATE_PROFILE_BPS_STEP;
+        return uint24(base_fee_bps) * uint24(PIPS_PER_BPS);
     }
 
 
@@ -243,29 +194,30 @@ library SafeSwapCommon {
     }
 
 
-    // ━━━━  LP REPRICING REBATE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  REPRICING FEE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
-     * @notice Compute the LP repricing rebate for a swap from its real tick movement.
+     * @notice Compute the total swap fee (in Uniswap V4 pips) for a swap from its estimated tick movement.
      * @param tick_before Pool tick before the swap.
-     * @param tick_after Pool tick after the swap.
-     * @param rebate_profile LP repricing rebate profile (0..MAX_REBATE_PROFILE).
-     * @param charged_amount Amount the rebate is charged against (output for exact-input, input for exact-output).
-     * @return rebate_amount Amount of `charged_amount` rebated to LPs.
-     * @return movement_bps Approximate pool price movement of the swap, in basis points.
+     * @param tick_after Estimated pool tick after the swap.
+     * @param rebate_percent LP capture share in percent (0..90).
+     * @param base_fee_pips Base LP fee in v4 pips.
+     * @return swap_fee_pips Base fee plus the capped repricing fee, in v4 pips, to be returned as the dynamic-fee override.
      *
-     * @dev Linear v1 approximation: 1 tick ≈ 1 bps of price movement. The effective extra-fee share is capped at
-     *      `MAX_REPRICING_REBATE_BPS` of `charged_amount` to bound UX on violent repricing.
+     * @dev Linear v1 approximation: 1 tick ≈ 1 bps of price movement. The repricing fee is `capture% × movement`, capped at
+     *      `MAX_REPRICING_REBATE_BPS`; the total is capped at `MAX_TOTAL_FEE_PIPS` so exact-output swaps stay feasible.
      */
-    function compute_repricing_rebate( int24 tick_before, int24 tick_after, uint8 rebate_profile, uint256 charged_amount )
-    internal pure returns ( uint256 rebate_amount, uint256 movement_bps )
+    function compute_repricing_fee_pips( int24 tick_before, int24 tick_after, uint8 rebate_percent, uint24 base_fee_pips )
+    internal pure returns ( uint24 swap_fee_pips )
     {
-        movement_bps  =  _abs_tick_delta( tick_before, tick_after );
+        uint256 movement_bps   =  _abs_tick_delta( tick_before, tick_after );
+        uint256 repricing_bps  =  movement_bps * rebate_percent / PERCENT_DENOMINATOR;
+        if(  repricing_bps > MAX_REPRICING_REBATE_BPS  )  repricing_bps  =  MAX_REPRICING_REBATE_BPS;
 
-        uint256 effective_bps  =  movement_bps * rebate_bps_for_profile( rebate_profile ) / BPS_DENOMINATOR;
-        if(  effective_bps > MAX_REPRICING_REBATE_BPS  )  effective_bps  =  MAX_REPRICING_REBATE_BPS;
+        uint256 total_pips  =  uint256(base_fee_pips) + repricing_bps * PIPS_PER_BPS;
+        if(  total_pips > MAX_TOTAL_FEE_PIPS  )  total_pips  =  MAX_TOTAL_FEE_PIPS;
 
-        rebate_amount  =  charged_amount * effective_bps / BPS_DENOMINATOR;
+        swap_fee_pips  =  uint24(total_pips);
     }
 
     function _abs_tick_delta( int24 tick_before, int24 tick_after ) private pure returns ( uint256 )
@@ -273,25 +225,6 @@ library SafeSwapCommon {
         int256 delta  =  int256(tick_after) - int256(tick_before);
 
         return delta < 0  ?  uint256(-delta)  :  uint256(delta);
-    }
-
-    /**
-     * @notice Donate the repricing rebate, denominated in `rebate_currency`, back to the pool's in-range LPs.
-     * @dev No-op when `rebate_amount` is zero. The caller must guarantee the pool has in-range liquidity, otherwise
-     *      Uniswap V4 `donate` reverts (swap libs skip the rebate when liquidity is zero).
-     */
-    function donate_rebate( IPoolManager pool_manager, PoolKey memory pool_key, Currency rebate_currency, uint256 rebate_amount ) internal
-    {
-        if(  rebate_amount == 0  )  return;
-
-        if(  Currency.unwrap(rebate_currency) == Currency.unwrap(pool_key.currency0)  )
-        {
-            pool_manager.donate( pool_key, rebate_amount, 0, "" );
-        }
-        else
-        {
-            pool_manager.donate( pool_key, 0, rebate_amount, "" );
-        }
     }
 
 

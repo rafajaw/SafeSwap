@@ -2,9 +2,9 @@
 pragma solidity ^0.8.30;
 
 import "@BondRouteProtected/BondRouteProtected.sol";
-import "@SafeSwapNft/ISafeSwapNft.sol";
-import "@SafeSwapRouter/libraries/SafeSwapCommon.sol";
-import "@SafeSwapRouter/Definitions.sol";
+import "@SafeSwapCommon/Types.sol";
+import "@SafeSwapCommon/SafeSwapCommon.sol";
+import "@SafeSwapCommon/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -14,6 +14,7 @@ import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { SqrtPriceMath } from "@UniswapV4Core/libraries/SqrtPriceMath.sol";
+import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -132,16 +133,16 @@ library ModifyLiquidityLib {
     string constant CREATE_POSITION_EIP712_TYPE_STRING  =
         "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,CreatePosition call)"
         "CreatePosition(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,uint160 sqrt_price_x96,TokenAmount minimum_deposited_a,TokenAmount minimum_deposited_b)"
-        "PoolInfo(uint8 base_fee_bps,uint8 rebate_profile,int24 tick_spacing)"
+        "PoolInfo(uint16 base_fee_bps,uint8 rebate_percent,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)";
 
     bytes32 constant CREATE_POSITION_EIP712_TYPEHASH  =  keccak256(
         "CreatePosition(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,uint160 sqrt_price_x96,TokenAmount minimum_deposited_a,TokenAmount minimum_deposited_b)"
-        "PoolInfo(uint8 base_fee_bps,uint8 rebate_profile,int24 tick_spacing)"
+        "PoolInfo(uint16 base_fee_bps,uint8 rebate_percent,int24 tick_spacing)"
         "TokenAmount(address token,uint256 amount)"
     );
 
-    uint256 constant CREATE_POSITION_EIP712_TOKEN_AMOUNT_OFFSET  =  346;
+    uint256 constant CREATE_POSITION_EIP712_TOKEN_AMOUNT_OFFSET  =  347;
 
     string constant ADD_POSITION_LIQUIDITY_EIP712_TYPE_STRING  =
         "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,AddLiquidity call)"
@@ -256,7 +257,6 @@ library ModifyLiquidityLib {
         SafeSwapPositionInfo memory stored_position_info
     ) internal view returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.rebate_profile > MAX_REBATE_PROFILE  )  revert InvalidRebateProfile({ rebate_profile: params.pool_info.rebate_profile });
 
         _validate_existing_position_mode( params, preferred_fundings.length, stored_position_info );
 
@@ -275,7 +275,6 @@ library ModifyLiquidityLib {
         TokenAmount[] memory preferred_fundings
     ) internal pure returns ( BondConstraints memory constraints )
     {
-        if(  params.pool_info.rebate_profile > MAX_REBATE_PROFILE  )  revert InvalidRebateProfile({ rebate_profile: params.pool_info.rebate_profile });
         if(  params.liquidity == 0  ||  preferred_fundings.length != 2  )
         {
             int128 bounded_liquidity  =  params.liquidity > uint128(type(int128).max)  ?  type(int128).max  :  int128(params.liquidity);
@@ -340,7 +339,7 @@ library ModifyLiquidityLib {
         return PoolKey({
             currency0: Currency.wrap( address(position_info.token0) ),
             currency1: Currency.wrap( address(position_info.token1) ),
-            fee: SafeSwapCommon.base_fee_units( position_info.base_fee_bps ),
+            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: position_info.tick_spacing,
             hooks: IHooks(position_info.hook)
         });
@@ -384,7 +383,7 @@ library ModifyLiquidityLib {
         }
 
         bool pool_info_matches  =  params.pool_info.base_fee_bps == position_info.base_fee_bps
-                                   &&  params.pool_info.rebate_profile == position_info.rebate_profile
+                                   &&  params.pool_info.rebate_percent == position_info.rebate_percent
                                    &&  params.pool_info.tick_spacing == position_info.tick_spacing;
         bool ticks_match        =  params.tick_lower == position_info.tick_lower  &&  params.tick_upper == position_info.tick_upper;
         if(  pool_info_matches == false  ||  ticks_match == false  )  revert PositionInfoMismatch({ token_id: params.token_id });
