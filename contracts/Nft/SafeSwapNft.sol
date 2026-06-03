@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "@SafeSwapNft/ISafeSwapPositionNft.sol";
+import "@SafeSwapNft/ISafeSwapNft.sol";
 import { CONFIG_SIGNER, SAFESWAP_HOOK_KEY } from "@SafeSwap/Definitions.sol";
 import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
 import { ERC721 } from "@OpenZeppelin/token/ERC721/ERC721.sol";
@@ -13,10 +13,10 @@ error OnlySafeSwapHook( address caller, address expected_hook );
 
 
 /**
- * @title SafeSwapPositionNft
+ * @title SafeSwapNft
  * @notice ERC721 ownership layer for SafeSwap LP positions.
  */
-contract SafeSwapPositionNft is ERC721, ISafeSwapPositionNft {
+contract SafeSwapNft is ERC721, ISafeSwapNft {
 
     address public immutable SafeSwapHook;
 
@@ -28,7 +28,7 @@ contract SafeSwapPositionNft is ERC721, ISafeSwapPositionNft {
     ERC721( "SafeSwap LP Positions", "SSWAP-LP" )
     {
         address safeswap_hook  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY );
-        if(  safeswap_hook == address(0)  )  revert( "SafeSwapPositionNft: Invalid safeswap_hook" );
+        if(  safeswap_hook == address(0)  )  revert( "SafeSwapNft: Invalid safeswap_hook" );
 
         SafeSwapHook    =  safeswap_hook;
         _next_token_id  =  1;

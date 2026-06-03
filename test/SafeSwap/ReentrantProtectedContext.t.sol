@@ -3,9 +3,9 @@ pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
 import "@SafeSwap/SafeSwap.sol";
-import "@SafeSwapNft/SafeSwapPositionNft.sol";
+import "@SafeSwapNft/SafeSwapNft.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
-import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, POSITION_NFT_KEY } from "@SafeSwap/Definitions.sol";
+import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, SAFESWAP_NFT_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -229,8 +229,8 @@ contract ReentrantProtectedContextTest is Test {
         address hook_target  =  address(uint160(0x2AA0));
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY, hook_target );
 
-        SafeSwapPositionNft position_nft  =  new SafeSwapPositionNft( );
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POSITION_NFT_KEY, address(position_nft) );
+        SafeSwapNft safeswap_nft  =  new SafeSwapNft( );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_NFT_KEY, address(safeswap_nft) );
 
         deployCodeTo( "ReentrantProtectedContext.t.sol:ReentryPoolTestHook", hook_target );
         hook  =  ReentryPoolTestHook(payable(hook_target));

@@ -16,19 +16,21 @@ contract NftTest is SafeSwapTestBase {
 
         _execute_bondroute_call( _encode_create_position_calldata( params ), context );
 
-        assertEq( position_nft.ownerOf( 1 ), user, "User should own the minted LP NFT." );
-        assertEq( position_nft.balanceOf( user ), 1, "User should hold exactly one LP NFT." );
+        assertEq( safeswap_nft.ownerOf( 1 ), user, "User should own the minted LP NFT." );
+        assertEq( safeswap_nft.balanceOf( user ), 1, "User should hold exactly one LP NFT." );
         assertEq( pool_manager.last_modify_salt( ), bytes32(uint256(1)), "V4 position salt should be the LP NFT token id." );
 
-        SafeSwapPositionInfo memory position_info  =  position_nft.get_lp_position( 1 );
+        SafeSwapPositionInfo memory position_info  =  safeswap_nft.get_lp_position( 1 );
 
         assertEq( address(position_info.token0), address(token0), "NFT metadata should store token0." );
         assertEq( address(position_info.token1), address(token1), "NFT metadata should store token1." );
+        assertEq( position_info.fee, params.pool_info.fee, "NFT metadata should store pool fee." );
+        assertEq( position_info.tick_spacing, params.pool_info.tick_spacing, "NFT metadata should store tick spacing." );
         assertEq( position_info.tick_lower, params.tick_lower, "NFT metadata should store lower tick." );
         assertEq( position_info.tick_upper, params.tick_upper, "NFT metadata should store upper tick." );
     }
 
-    function test_position_nft_transfer_moves_position_authority( ) external
+    function test_safeswap_nft_transfer_moves_position_authority( ) external
     {
         CreatePositionParams memory create_params   =  _create_create_position_params( );
         BondContext memory create_context           =  _create_bond_context_two_fundings( user, 100 ether, 100 ether );
@@ -39,7 +41,7 @@ contract NftTest is SafeSwapTestBase {
         _execute_bondroute_call( _encode_create_position_calldata( create_params ), create_context );
 
         vm.prank( user );
-        position_nft.transferFrom( user, other_user, 1 );
+        safeswap_nft.transferFrom( user, other_user, 1 );
 
         RemovePositionLiquidityParams memory remove_params  =  _create_remove_liquidity_params( 1, 50 ether );
         BondContext memory old_owner_context                =  _create_modify_liquidity_no_funding_context( user );
@@ -73,7 +75,7 @@ contract NftTest is SafeSwapTestBase {
         uint256 token_id  =  _create_position_owned_by( user );
 
         vm.prank( user );
-        position_nft.approve( other_user, token_id );
+        safeswap_nft.approve( other_user, token_id );
 
         RemovePositionLiquidityParams memory remove_params  =  _create_remove_liquidity_params( token_id, 50 ether );
         BondContext memory approved_context                 =  _create_modify_liquidity_no_funding_context( other_user );
@@ -91,7 +93,7 @@ contract NftTest is SafeSwapTestBase {
         uint256 token_id  =  _create_position_owned_by( user );
 
         vm.prank( user );
-        position_nft.setApprovalForAll( other_user, true );
+        safeswap_nft.setApprovalForAll( other_user, true );
 
         RemovePositionLiquidityParams memory remove_params  =  _create_remove_liquidity_params( token_id, 50 ether );
         BondContext memory operator_context                 =  _create_modify_liquidity_no_funding_context( other_user );
@@ -110,23 +112,23 @@ contract NftTest is SafeSwapTestBase {
     function test_mint_position_reverts_for_non_hook_caller( ) external
     {
         SafeSwapPositionInfo memory position_info  =  SafeSwapPositionInfo({
-            pool_id:      PoolId.wrap( bytes32(uint256(1)) ),
-            token0:       token0,
-            token1:       token1,
-            pool_info:    _default_pool_info( ),
-            tick_lower:   DEFAULT_TICK_LOWER,
-            tick_upper:   DEFAULT_TICK_UPPER
+            token0:        token0,
+            token1:        token1,
+            fee:           _default_pool_info( ).fee,
+            tick_spacing:  _default_pool_info( ).tick_spacing,
+            tick_lower:    DEFAULT_TICK_LOWER,
+            tick_upper:    DEFAULT_TICK_UPPER
         });
 
         // Only the configured SafeSwap hook may mint LP positions.
         vm.expectRevert( abi.encodeWithSelector( OnlySafeSwapHook.selector, address(this), address(hook) ) );
-        position_nft.mint_position( user, position_info );
+        safeswap_nft.mint_position( user, position_info );
     }
 
     function test_get_lp_position_reverts_for_nonexistent_token( ) external
     {
         vm.expectRevert( abi.encodeWithSignature( "ERC721NonexistentToken(uint256)", uint256(999) ) );
-        position_nft.get_lp_position( 999 );
+        safeswap_nft.get_lp_position( 999 );
     }
 
 

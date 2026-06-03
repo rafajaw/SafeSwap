@@ -51,12 +51,12 @@ contract ConstructorTest is SafeSwapTestBase {
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, treasury );
     }
 
-    function test_position_nft_constructor_reverts_if_hook_not_set( ) external
+    function test_safeswap_nft_constructor_reverts_if_hook_not_set( ) external
     {
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY, address(0) );
 
-        vm.expectRevert( bytes("SafeSwapPositionNft: Invalid safeswap_hook") );
-        new SafeSwapPositionNft( );
+        vm.expectRevert( bytes("SafeSwapNft: Invalid safeswap_hook") );
+        new SafeSwapNft( );
 
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY, HOOK_TARGET );
     }

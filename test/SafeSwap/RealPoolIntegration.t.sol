@@ -8,9 +8,9 @@ import "@SafeSwap/libraries/ExactInputSwapLib.sol";
 import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/ModifyLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
-import "@SafeSwapNft/SafeSwapPositionNft.sol";
-import "@SafeSwapNft/ISafeSwapPositionNft.sol";
-import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, POSITION_NFT_KEY } from "@SafeSwap/Definitions.sol";
+import "@SafeSwapNft/SafeSwapNft.sol";
+import "@SafeSwapNft/ISafeSwapNft.sol";
+import { PROTOCOL_FEE_DIVISOR, CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, SAFESWAP_NFT_KEY } from "@SafeSwap/Definitions.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
@@ -134,18 +134,16 @@ contract RealPoolTestHook is SafeSwap {
             TokenAmount({ token: token_b, amount: 0 })
         );
 
-        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token0, token1, pool_info.fee, pool_info.tick_spacing, address(this) );
-
         SafeSwapPositionInfo memory position_info  =  SafeSwapPositionInfo({
-            pool_id:      pool_key.toId( ),
-            token0:       token0,
-            token1:       token1,
-            pool_info:    pool_info,
-            tick_lower:   tick_lower,
-            tick_upper:   tick_upper
+            token0:        token0,
+            token1:        token1,
+            fee:           pool_info.fee,
+            tick_spacing:  pool_info.tick_spacing,
+            tick_lower:    tick_lower,
+            tick_upper:    tick_upper
         });
 
-        token_id  =  PositionNft.mint_position( owner, position_info );
+        token_id  =  SafeSwapNft.mint_position( owner, position_info );
     }
 
     function harness_hook_callback_allowed( ) external view returns ( bool )
@@ -297,8 +295,8 @@ contract RealPoolIntegrationTest is Test {
         address hook_target  =  address(uint160(0x2AA0));
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY, hook_target );
 
-        SafeSwapPositionNft position_nft  =  new SafeSwapPositionNft( );
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POSITION_NFT_KEY, address(position_nft) );
+        SafeSwapNft safeswap_nft  =  new SafeSwapNft( );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_NFT_KEY, address(safeswap_nft) );
 
         deployCodeTo( "RealPoolIntegration.t.sol:RealPoolTestHook", hook_target );
         hook  =  RealPoolTestHook(payable(hook_target));

@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import "@SafeSwap/UniswapHook.sol";
 import "@BondRouteProtected/BondRouteProtected.sol";
-import "@SafeSwapNft/ISafeSwapPositionNft.sol";
+import "@SafeSwapNft/ISafeSwapNft.sol";
 import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
@@ -25,16 +25,16 @@ error PoolInitializationPriceMismatch( PoolId pool_id, uint160 current_sqrt_pric
  */
 abstract contract User is UniswapHook, BondRouteProtected {
 
-    ISafeSwapPositionNft internal immutable PositionNft;
+    ISafeSwapNft internal immutable SafeSwapNft;
 
     constructor( )
     UniswapHook( )
     BondRouteProtected( SAFESWAP_PROTOCOL_NAME, SAFESWAP_PROTOCOL_DESCRIPTION )
     {
-        address position_nft  =  ChainConfig.read_address( CONFIG_SIGNER, POSITION_NFT_KEY );
-        if(  position_nft.code.length == 0  )  revert( "SafeSwap: Invalid position_nft" );
+        address safeswap_nft  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_NFT_KEY );
+        if(  safeswap_nft.code.length == 0  )  revert( "SafeSwap: Invalid position" );
 
-        PositionNft  =  ISafeSwapPositionNft(position_nft);
+        SafeSwapNft  =  ISafeSwapNft(safeswap_nft);
     }
 
     // ━━━━  USER FUNCTIONS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -261,15 +261,15 @@ abstract contract User is UniswapHook, BondRouteProtected {
         }
 
         SafeSwapPositionInfo memory new_position_info  =  SafeSwapPositionInfo({
-            pool_id:      pool_id,
-            token0:       token0,
-            token1:       token1,
-            pool_info:    params.pool_info,
-            tick_lower:   params.tick_lower,
-            tick_upper:   params.tick_upper
+            token0:        token0,
+            token1:        token1,
+            fee:           params.pool_info.fee,
+            tick_spacing:  params.pool_info.tick_spacing,
+            tick_lower:    params.tick_lower,
+            tick_upper:    params.tick_upper
         });
 
-        uint256 token_id  =  PositionNft.mint_position( context.user, new_position_info );
+        uint256 token_id  =  SafeSwapNft.mint_position( context.user, new_position_info );
 
         executable_params  =  ModifyLiquidityParams({
             token_id:           token_id,
@@ -281,18 +281,18 @@ abstract contract User is UniswapHook, BondRouteProtected {
             minimum_amount_b:   params.minimum_deposited_b
         });
 
-        position_info  =  PositionNft.get_lp_position( token_id );
+        position_info  =  SafeSwapNft.get_lp_position( token_id );
     }
 
     function _prepare_add_liquidity( BondContext memory context, AddPositionLiquidityParams memory params )
     internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
     {
         _require_lp_position_authority( params.token_id, context.user );
-        position_info  =  PositionNft.get_lp_position( params.token_id );
+        position_info  =  SafeSwapNft.get_lp_position( params.token_id );
 
         executable_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
-            pool_info:          position_info.pool_info,
+            pool_info:          PoolInfo({ fee: position_info.fee, tick_spacing: position_info.tick_spacing }),
             tick_lower:         position_info.tick_lower,
             tick_upper:         position_info.tick_upper,
             liquidity_delta:    _positive_liquidity_delta( params.token_id, params.liquidity ),
@@ -305,11 +305,11 @@ abstract contract User is UniswapHook, BondRouteProtected {
     internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
     {
         _require_lp_position_authority( params.token_id, context.user );
-        position_info  =  PositionNft.get_lp_position( params.token_id );
+        position_info  =  SafeSwapNft.get_lp_position( params.token_id );
 
         executable_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
-            pool_info:          position_info.pool_info,
+            pool_info:          PoolInfo({ fee: position_info.fee, tick_spacing: position_info.tick_spacing }),
             tick_lower:         position_info.tick_lower,
             tick_upper:         position_info.tick_upper,
             liquidity_delta:    -_positive_liquidity_delta( params.token_id, params.liquidity ),
@@ -322,11 +322,11 @@ abstract contract User is UniswapHook, BondRouteProtected {
     internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
     {
         _require_lp_position_authority( params.token_id, context.user );
-        position_info  =  PositionNft.get_lp_position( params.token_id );
+        position_info  =  SafeSwapNft.get_lp_position( params.token_id );
 
         executable_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
-            pool_info:          position_info.pool_info,
+            pool_info:          PoolInfo({ fee: position_info.fee, tick_spacing: position_info.tick_spacing }),
             tick_lower:         position_info.tick_lower,
             tick_upper:         position_info.tick_upper,
             liquidity_delta:    0,
@@ -337,9 +337,9 @@ abstract contract User is UniswapHook, BondRouteProtected {
 
     function _require_lp_position_authority( uint256 token_id, address caller ) internal view
     {
-        address owner       =  PositionNft.ownerOf( token_id );
-        address approved    =  PositionNft.getApproved( token_id );
-        bool operator       =  PositionNft.isApprovedForAll( owner, caller );
+        address owner       =  SafeSwapNft.ownerOf( token_id );
+        address approved    =  SafeSwapNft.getApproved( token_id );
+        bool operator       =  SafeSwapNft.isApprovedForAll( owner, caller );
         bool is_authorized  =  caller == owner  ||  caller == approved  ||  operator;
 
         if(  is_authorized == false  )  revert PositionUnauthorized({ token_id: token_id, caller: caller, owner: owner });

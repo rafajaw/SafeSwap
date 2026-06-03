@@ -8,10 +8,10 @@ import "@SafeSwap/libraries/ExactInputSwapLib.sol";
 import "@SafeSwap/libraries/ExactOutputSwapLib.sol";
 import "@SafeSwap/libraries/ModifyLiquidityLib.sol";
 import "@SafeSwap/libraries/DonateLib.sol";
-import "@SafeSwapNft/SafeSwapPositionNft.sol";
-import "@SafeSwapNft/ISafeSwapPositionNft.sol";
+import "@SafeSwapNft/SafeSwapNft.sol";
+import "@SafeSwapNft/ISafeSwapNft.sol";
 import { CHAINCONFIG_ADDRESS } from "@ChainConfig/IChainConfig.sol";
-import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, POSITION_NFT_KEY } from "@SafeSwap/Definitions.sol";
+import { CONFIG_SIGNER, POOL_MANAGER_KEY, INITIAL_TREASURY_KEY, SAFESWAP_HOOK_KEY, SAFESWAP_NFT_KEY } from "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
@@ -392,18 +392,16 @@ contract TestableSafeSwap is SafeSwap {
             TokenAmount({ token: token_b, amount: 0 })
         );
 
-        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token0, token1, pool_info.fee, pool_info.tick_spacing, address(this) );
-
         SafeSwapPositionInfo memory position_info  =  SafeSwapPositionInfo({
-            pool_id:      pool_key.toId( ),
-            token0:       token0,
-            token1:       token1,
-            pool_info:    pool_info,
-            tick_lower:   tick_lower,
-            tick_upper:   tick_upper
+            token0:        token0,
+            token1:        token1,
+            fee:           pool_info.fee,
+            tick_spacing:  pool_info.tick_spacing,
+            tick_lower:    tick_lower,
+            tick_upper:    tick_upper
         });
 
-        token_id  =  PositionNft.mint_position( owner, position_info );
+        token_id  =  SafeSwapNft.mint_position( owner, position_info );
     }
 }
 
@@ -414,7 +412,7 @@ abstract contract SafeSwapTestBase is Test {
 
     // Contracts.
     TestableSafeSwap public hook;
-    SafeSwapPositionNft public position_nft;
+    SafeSwapNft public safeswap_nft;
     MockPoolManager public pool_manager;
     MockBondRoute public bond_route;
     MockChainConfig public chain_config;
@@ -468,8 +466,8 @@ abstract contract SafeSwapTestBase is Test {
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, INITIAL_TREASURY_KEY, treasury );
         MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_HOOK_KEY, HOOK_TARGET );
 
-        position_nft  =  new SafeSwapPositionNft( );
-        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, POSITION_NFT_KEY, address(position_nft) );
+        safeswap_nft  =  new SafeSwapNft( );
+        MockChainConfig(CHAINCONFIG_ADDRESS).set_address( CONFIG_SIGNER, SAFESWAP_NFT_KEY, address(safeswap_nft) );
 
         // Set skip_actual_transfer to true on the etched BondRoute.
         MockBondRoute(payable(BONDROUTE_ADDRESS)).set_skip_actual_transfer( true );
@@ -724,7 +722,7 @@ abstract contract SafeSwapTestBase is Test {
     internal returns ( uint256 token_id, SafeSwapPositionInfo memory position_info )
     {
         token_id       =  hook.harness_mint_lp_position( owner, token0, token1, _default_pool_info( ), DEFAULT_TICK_LOWER, DEFAULT_TICK_UPPER );
-        position_info  =  position_nft.get_lp_position( token_id );
+        position_info  =  safeswap_nft.get_lp_position( token_id );
     }
 
     /// @dev Build a unified ModifyLiquidityParams for the harness. Sign of `liquidity_delta` picks the op.

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "@BondRouteProtected/BondRouteProtected.sol";
-import "@SafeSwapNft/ISafeSwapPositionNft.sol";
+import "@SafeSwapNft/ISafeSwapNft.sol";
 import "@SafeSwap/libraries/SafeSwapCommon.sol";
 import "@SafeSwap/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
@@ -413,7 +413,7 @@ library ModifyLiquidityLib {
             revert InvalidLiquidityModification({ token_id: params.token_id, liquidity_delta: params.liquidity_delta, funding_count: funding_count });
         }
 
-        bool pool_info_matches  =  params.pool_info.fee == position_info.pool_info.fee  &&  params.pool_info.tick_spacing == position_info.pool_info.tick_spacing;
+        bool pool_info_matches  =  params.pool_info.fee == position_info.fee  &&  params.pool_info.tick_spacing == position_info.tick_spacing;
         bool ticks_match        =  params.tick_lower == position_info.tick_lower  &&  params.tick_upper == position_info.tick_upper;
         if(  pool_info_matches == false  ||  ticks_match == false  )  revert PositionInfoMismatch({ token_id: params.token_id });
 

@@ -11,7 +11,7 @@ address constant CONFIG_SIGNER  =  0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;  
 bytes32 constant POOL_MANAGER_KEY       =  bytes32("uniswap_v4/pool_manager");
 bytes32 constant INITIAL_TREASURY_KEY   =  bytes32("safeswap/initial_treasury");
 bytes32 constant SAFESWAP_HOOK_KEY      =  bytes32("safeswap/hook");
-bytes32 constant POSITION_NFT_KEY       =  bytes32("safeswap/position_nft");
+bytes32 constant SAFESWAP_NFT_KEY       =  bytes32("safeswap/nft");
 
 
 // ━━━━  SAFESWAP ECONOMICS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

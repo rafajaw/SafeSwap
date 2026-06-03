@@ -25,7 +25,7 @@ interface IConstructorTests {
     function test_constructor_reverts_if_pool_manager_not_set( ) external;
     function test_constructor_reverts_if_chain_config_points_to_non_pool_manager( ) external;
     function test_constructor_reverts_if_initial_treasury_not_set( ) external;
-    function test_position_nft_constructor_reverts_if_hook_not_set( ) external;
+    function test_safeswap_nft_constructor_reverts_if_hook_not_set( ) external;
     function test_constructor_reverts_if_hook_address_has_wrong_flags( ) external;
     function test_constructor_announces_protocol_to_bondroute( ) external;
 }
@@ -288,21 +288,21 @@ interface ILiquidityExecutionTests {
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// NFT-BACKED POSITIONS
+// POSITION-BACKED LIQUIDITY
 // Implemented in: test/SafeSwap/Nft.t.sol
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 interface INftTests {
-    // ─── Position Minting & Salt ────────────────────────────────────────────────────
+    // ─── SafeSwapNft Minting & Salt ────────────────────────────────────────────────────
     function test_create_position_mints_lp_nft_and_uses_token_id_salt( ) external;
     function test_create_position_reverts_on_pool_price_mismatch( ) external;
 
-    // ─── Position Authority (owner / approved / operator) ───────────────────────────
-    function test_position_nft_transfer_moves_position_authority( ) external;
+    // ─── SafeSwapNft Authority (owner / approved / operator) ───────────────────────────
+    function test_safeswap_nft_transfer_moves_position_authority( ) external;
     function test_position_approved_address_can_operate( ) external;
     function test_position_operator_can_operate( ) external;
 
-    // ─── Position NFT Contract Guards ───────────────────────────────────────────────
+    // ─── SafeSwapNft Contract Guards ───────────────────────────────────────────────
     function test_mint_position_reverts_for_non_hook_caller( ) external;
     function test_get_lp_position_reverts_for_nonexistent_token( ) external;
 }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "@SafeSwap/User.sol";
-import "@SafeSwapNft/ISafeSwapPositionNft.sol";
+import "@SafeSwapNft/ISafeSwapNft.sol";
 
 
 /**
@@ -73,21 +73,21 @@ abstract contract BondRouteIntegration is User {
         else if(  selector == this.add_liquidity.selector  )
         {
             AddPositionLiquidityParams memory params          =  abi.decode( call[ 4: ], (AddPositionLiquidityParams) );
-            SafeSwapPositionInfo memory position_info         =  PositionNft.get_lp_position( params.token_id );
+            SafeSwapPositionInfo memory position_info         =  SafeSwapNft.get_lp_position( params.token_id );
             ModifyLiquidityParams memory modify_params        =  _add_liquidity_modify_params( params, position_info );
             return ModifyLiquidityLib.get_constraints( modify_params, preferred_stake_token, preferred_fundings, PoolManager, address(this), position_info );
         }
         else if(  selector == this.remove_liquidity.selector  )
         {
             RemovePositionLiquidityParams memory params       =  abi.decode( call[ 4: ], (RemovePositionLiquidityParams) );
-            SafeSwapPositionInfo memory position_info         =  PositionNft.get_lp_position( params.token_id );
+            SafeSwapPositionInfo memory position_info         =  SafeSwapNft.get_lp_position( params.token_id );
             ModifyLiquidityParams memory modify_params        =  _remove_liquidity_modify_params( params, position_info );
             return ModifyLiquidityLib.get_constraints( modify_params, preferred_stake_token, preferred_fundings, PoolManager, address(this), position_info );
         }
         else if(  selector == this.collect_fees.selector  )
         {
             CollectFeesParams memory params                   =  abi.decode( call[ 4: ], (CollectFeesParams) );
-            SafeSwapPositionInfo memory position_info         =  PositionNft.get_lp_position( params.token_id );
+            SafeSwapPositionInfo memory position_info         =  SafeSwapNft.get_lp_position( params.token_id );
             ModifyLiquidityParams memory modify_params        =  _collect_fees_modify_params( params, position_info );
             return ModifyLiquidityLib.get_constraints( modify_params, preferred_stake_token, preferred_fundings, PoolManager, address(this), position_info );
         }
@@ -164,7 +164,7 @@ abstract contract BondRouteIntegration is User {
     {
         modify_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
-            pool_info:          position_info.pool_info,
+            pool_info:          PoolInfo({ fee: position_info.fee, tick_spacing: position_info.tick_spacing }),
             tick_lower:         position_info.tick_lower,
             tick_upper:         position_info.tick_upper,
             liquidity_delta:    _quote_positive_liquidity_delta( params.token_id, params.liquidity ),
@@ -178,7 +178,7 @@ abstract contract BondRouteIntegration is User {
     {
         modify_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
-            pool_info:          position_info.pool_info,
+            pool_info:          PoolInfo({ fee: position_info.fee, tick_spacing: position_info.tick_spacing }),
             tick_lower:         position_info.tick_lower,
             tick_upper:         position_info.tick_upper,
             liquidity_delta:    -_quote_positive_liquidity_delta( params.token_id, params.liquidity ),
@@ -192,7 +192,7 @@ abstract contract BondRouteIntegration is User {
     {
         modify_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
-            pool_info:          position_info.pool_info,
+            pool_info:          PoolInfo({ fee: position_info.fee, tick_spacing: position_info.tick_spacing }),
             tick_lower:         position_info.tick_lower,
             tick_upper:         position_info.tick_upper,
             liquidity_delta:    0,
