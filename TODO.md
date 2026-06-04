@@ -26,7 +26,7 @@
   - [x] Add-liquidity authorization and execution.
   - [x] Remove-liquidity and collect-fees execution.
   - [x] Fix funding-source fidelity: real `TestERC20`, mint to bond owners, BondRoute mock pulls via `transferFrom`.
-  - [ ] Existing-position quotes and off-chain views.
+  - [x] Existing-position quotes and off-chain views.
 - [x] Implement `test/Nft/SafeSwapNftWorkflow.t.sol` (Tier 1 — full workflow on real BondRoute + real V4; real
       balance/`StateLibrary` assertions, salt = tokenId, graceful PROTOCOL_REVERTED on unauthorized action).
 - [x] Implement `test/Router/HookRegistry.t.sol` (codehash authorization, unset codehash, EIP-7702 designator rejection,

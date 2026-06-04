@@ -37,6 +37,7 @@ import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
+import { Position } from "@UniswapV4Core/libraries/Position.sol";
 
 
 contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
@@ -120,6 +121,14 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         assertEq( sqrt_price_x96, _SQRT_PRICE_1_1, "NFT should read slot0 through the PoolManager published by ChainConfig." );
     }
 
+    function test_constructor_initializes_first_token_id_to_one( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        assertEq( _nft.ownerOf( 1 ), _USER, "first minted LP token id should be 1." );
+    }
+
     function test_inherits_bondroute_native_receive_for_native_fundings( )
     external
     {
@@ -187,21 +196,155 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         TokenAmount[] memory fundings  =  _two_fundings( 100 ether, 100 ether );
 
-        BondConstraints memory constraints  =  _nft.BondRoute_quote_call( abi.encodeCall( _nft.create_position, (_create_params()) ), IERC20(address(_token_a)), fundings );
+        BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
+            abi.encodeCall( _nft.create_position, (_create_params()) ),
+            IERC20(address(_token_a)),
+            fundings
+        );
 
         assertEq( address(constraints.min_stake.token), address(_token_a), "stake should use the preferred stake token when it is token0." );
         assertEq( constraints.min_stake.amount, 2 ether, "stake should be 1% of the normalized two-sided deposit value." );
         assertEq( constraints.min_fundings.length, 2, "create quote should preserve the two required fundings." );
     }
 
+    function test_bondroute_quote_add_requires_two_fundings( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        TokenAmount[] memory fundings  =  new TokenAmount[](1);
+        fundings[0]  =  TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether });
+
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, int128(1 ether), 1 ) );
+        _nft.BondRoute_quote_call( abi.encodeCall( _nft.add_liquidity, (_add_params(1, 1 ether)) ), IERC20(address(_token_a)), fundings );
+    }
+
+    function test_bondroute_quote_add_computes_normalized_liquidity_stake_from_current_pool_price( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
+            abi.encodeCall( _nft.add_liquidity, (_add_params(1, 1 ether)) ),
+            IERC20(address(_token_a)),
+            _two_fundings( 100 ether, 100 ether )
+        );
+
+        assertEq( address(constraints.min_stake.token), address(_token_a), "add quote should preserve preferred stake token." );
+        assertEq( constraints.min_stake.amount, 2 ether, "add quote should use current pool price for normalized stake." );
+        assertEq( constraints.min_fundings.length, 2, "add quote should preserve the required fundings." );
+    }
+
+    function test_bondroute_quote_remove_requires_no_fundings( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, -int128(1 ether), 2 ) );
+        _nft.BondRoute_quote_call(
+            abi.encodeCall( _nft.remove_liquidity, (_remove_params(1, 1 ether)) ),
+            IERC20(address(_token_a)),
+            _two_fundings( 100 ether, 100 ether )
+        );
+    }
+
+    function test_bondroute_quote_remove_computes_stake_from_removed_liquidity_value( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
+            abi.encodeCall( _nft.remove_liquidity, (_remove_params(1, 1 ether)) ),
+            IERC20(address(_token_a)),
+            new TokenAmount[](0)
+        );
+
+        assertEq( address(constraints.min_stake.token), address(_token_a), "remove quote should preserve preferred stake token." );
+        assertGt( constraints.min_stake.amount, 0, "remove quote should stake against the removed liquidity value." );
+        assertEq( constraints.min_fundings.length, 0, "remove quote should require no fundings." );
+    }
+
+    function test_bondroute_quote_collect_requires_no_fundings( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, int128(0), 2 ) );
+        _nft.BondRoute_quote_call(
+            abi.encodeCall( _nft.collect_fees, (_collect_params(1)) ),
+            IERC20(address(_token_a)),
+            _two_fundings( 100 ether, 100 ether )
+        );
+    }
+
+    function test_bondroute_quote_collect_computes_stake_from_one_unit_liquidity_value( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
+            abi.encodeCall( _nft.collect_fees, (_collect_params(1)) ),
+            IERC20(address(_token_a)),
+            new TokenAmount[](0)
+        );
+
+        assertEq( address(constraints.min_stake.token), address(_token_a), "collect quote should preserve preferred stake token." );
+        assertEq( constraints.min_stake.amount, 1, "collect quote should stake at least one wei for one unit of liquidity." );
+        assertEq( constraints.min_fundings.length, 0, "collect quote should require no fundings." );
+    }
+
+    function test_bondroute_signing_info_hashes_position_params_readably( )
+    external  view
+    {
+        ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
+            abi.encodeCall( _nft.add_liquidity, (_add_params(1, 1 ether)) )
+        );
+
+        assertGt( bytes(typed_string).length, 0, "signing info should expose a readable EIP-712 type string." );
+        assertNotEq( struct_hash, bytes32(0), "signing info should hash the position params." );
+        assertGt( token_amount_offset, 0, "signing info should include a TokenAmount offset." );
+    }
+
     function test_bondroute_signing_info_returns_create_position_offset( )
     external  view
     {
-        ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info( abi.encodeCall( _nft.create_position, (_create_params()) ) );
+        ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
+            abi.encodeCall( _nft.create_position, (_create_params()) )
+        );
 
         assertGt( bytes(typed_string).length, 0, "create signing info should return a readable EIP-712 type string." );
         assertNotEq( struct_hash, bytes32(0), "create signing info should hash the signed params." );
         assertEq( token_amount_offset, 347, "create signing info should return the TokenAmount type offset." );
+    }
+
+    function test_bondroute_signing_info_returns_add_liquidity_offset( )
+    external  view
+    {
+        ( , , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
+            abi.encodeCall( _nft.add_liquidity, (_add_params(1, 1 ether)) )
+        );
+
+        assertEq( token_amount_offset, 215, "add-liquidity signing info should return the TokenAmount type offset." );
+    }
+
+    function test_bondroute_signing_info_returns_remove_liquidity_offset( )
+    external  view
+    {
+        ( , , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
+            abi.encodeCall( _nft.remove_liquidity, (_remove_params(1, 1 ether)) )
+        );
+
+        assertEq( token_amount_offset, 219, "remove-liquidity signing info should return the TokenAmount type offset." );
+    }
+
+    function test_bondroute_signing_info_returns_collect_fees_offset( )
+    external  view
+    {
+        ( , , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
+            abi.encodeCall( _nft.collect_fees, (_collect_params(1)) )
+        );
+
+        assertEq( token_amount_offset, 193, "collect-fees signing info should return the TokenAmount type offset." );
     }
 
     function test_bondroute_signing_info_reverts_for_unsupported_call( )
@@ -514,6 +657,73 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_collect_fees_as( _USER, _collect_params( 1 ), _two_fundings( 100 ether, 100 ether ) );
     }
 
+    function test_get_lp_position_returns_stored_metadata_for_existing_token( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        SafeSwapPositionInfo memory position_info  =  _nft.get_lp_position( 1 );
+
+        assertEq( address(position_info.token0), Currency.unwrap(_pool_key().currency0), "position view should return stored token0." );
+        assertEq( address(position_info.token1), Currency.unwrap(_pool_key().currency1), "position view should return stored token1." );
+        assertEq( position_info.hook, _hook, "position view should return stored hook." );
+    }
+
+    function test_get_lp_position_reverts_for_missing_token( )
+    external
+    {
+        vm.expectRevert();
+        _nft.get_lp_position( 1 );
+    }
+
+    function test_off_chain_position_info_reads_v4_position_owned_by_nft( )
+    external
+    {
+        PoolKey memory key  =  _pool_key();
+        _seed_position_info( key.toId(), 1, -120, 120, 123 ether, 456, 789 );
+
+        ( uint128 liquidity, uint256 fee_growth_0, uint256 fee_growth_1 )  =  _nft.__OFF_CHAIN__get_position_info(
+            key.toId(),
+            1,
+            -120,
+            120
+        );
+
+        assertEq( liquidity, 123 ether, "off-chain position view should read V4 position liquidity." );
+        assertEq( fee_growth_0, 456, "off-chain position view should read token0 fee growth." );
+        assertEq( fee_growth_1, 789, "off-chain position view should read token1 fee growth." );
+    }
+
+    function test_unlock_callback_reverts_when_caller_is_not_pool_manager( )
+    external
+    {
+        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, address(this), address(_pool_manager) ) );
+        _nft.unlockCallback( "" );
+    }
+
+    function test_unlock_callback_executes_prepared_liquidity_modification( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+        _pool_manager.set_next_modify_liquidity_delta( -10 ether, -10 ether );
+
+        ModifyLiquidityParams memory params  =  ModifyLiquidityParams({
+            token_id: 1,
+            pool_info: PoolInfo({ base_fee_bps: 30, rebate_percent: 50, tick_spacing: 60 }),
+            tick_lower: -120,
+            tick_upper: 120,
+            liquidity_delta: int128(1 ether),
+            minimum_amount_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),
+            minimum_amount_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 0 })
+        });
+        SafeSwapPositionInfo memory position_info  =  _nft.get_lp_position( 1 );
+
+        vm.prank( address(_pool_manager) );
+        _nft.unlockCallback( abi.encode( _context(_two_fundings(100 ether, 100 ether)), params, position_info ) );
+
+        assertTrue( _pool_manager.modify_liquidity_called(), "unlock callback should execute the prepared liquidity change." );
+    }
+
     function _execute_create_position( CreatePositionParams memory params, TokenAmount[] memory fundings ) internal
     {
         BondContext memory context  =  _context( fundings );
@@ -647,6 +857,24 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _pool_manager.set_slot( state_slot, bytes32(uint256(sqrt_price_x96)) );
     }
 
+    function _seed_position_info(
+        PoolId pool_id,
+        uint256 token_id,
+        int24 tick_lower,
+        int24 tick_upper,
+        uint128 liquidity,
+        uint256 fee_growth_inside_0_last_x128,
+        uint256 fee_growth_inside_1_last_x128
+    ) internal
+    {
+        bytes32 position_key  =  Position.calculatePositionKey( address(_nft), tick_lower, tick_upper, bytes32(token_id) );
+        bytes32 position_slot =  _position_info_slot( pool_id, position_key );
+
+        _pool_manager.set_slot( position_slot, bytes32(uint256(liquidity)) );
+        _pool_manager.set_slot( bytes32(uint256(position_slot) + 1), bytes32(fee_growth_inside_0_last_x128) );
+        _pool_manager.set_slot( bytes32(uint256(position_slot) + 2), bytes32(fee_growth_inside_1_last_x128) );
+    }
+
     function _nft_pool_slot0( PoolKey memory key ) internal view returns ( uint160 sqrt_price_x96, int24 tick, uint24 protocol_fee, uint24 lp_fee )
     {
         bytes32 state_slot  =  _pool_state_slot( key.toId( ) );
@@ -666,5 +894,13 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
             mstore( 0x20, 6 )
             state_slot  :=  keccak256( 0x00, 0x40 )
         }
+    }
+
+    function _position_info_slot( PoolId pool_id, bytes32 position_key ) internal pure returns ( bytes32 position_slot )
+    {
+        bytes32 state_slot            =  _pool_state_slot( pool_id );
+        bytes32 position_mapping_slot =  bytes32(uint256(state_slot) + 6);
+
+        position_slot  =  keccak256( abi.encodePacked( position_key, position_mapping_slot ) );
     }
 }
