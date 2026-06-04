@@ -8,7 +8,7 @@ import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
 import "@SafeSwapCommon/Definitions.sol";
 import { HookAddress } from "@SafeSwapCommon/HookAddress.sol";
 import { PoolInfo } from "@SafeSwapCommon/Types.sol";
-import { SafeSwapCommon, SlippageExceeded } from "@SafeSwapCommon/SafeSwapCommon.sol";
+import { MaximumInputExceeded, SafeSwapCommon, SlippageExceeded } from "@SafeSwapCommon/SafeSwapCommon.sol";
 import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
 import { SafeSwapHookImpl } from "@SafeSwapHook/SafeSwapHookImpl.sol";
 import { SafeSwapRouter } from "@SafeSwapRouter/SafeSwapRouter.sol";
@@ -505,7 +505,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         _set_up_mock_env( );
         _set_exact_output_delta( IERC20(address(_token0)), IERC20(address(_token1)), _AMOUNT_IN + 1, 100 ether );
 
-        vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, _AMOUNT_IN + 1, _AMOUNT_IN ) );
+        vm.expectRevert( abi.encodeWithSelector( MaximumInputExceeded.selector, _AMOUNT_IN + 1, _AMOUNT_IN ) );
         _execute(
             abi.encodeCall(
                 _mock_router.swap_exact_output,

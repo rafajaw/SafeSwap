@@ -103,7 +103,13 @@ library ExactOutputSwapLib {
         // Truncating division: rounding dust on the gross-up is ≤1 wei per swap.
         uint256 grossed_up_pool_output  =  params.exact_output_amount * PROTOCOL_FEE_DIVISOR / fee_complement;
 
-        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token_in, params.token_out, LPFeeLibrary.DYNAMIC_FEE_FLAG, params.pool_info.tick_spacing, hook );
+        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key(
+            token_in,
+            params.token_out,
+            LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            params.pool_info.tick_spacing,
+            hook
+        );
 
         bool zero_for_one  =  address(token_in) < address(params.token_out);
 
@@ -118,7 +124,7 @@ library ExactOutputSwapLib {
         // *NOTE*  -  Input delta is negative (we owe the pool), and already includes the LP fee the hook charged on the input.
         uint256 amount_in  =  zero_for_one ? uint256(-int256(delta.amount0( ))) : uint256(-int256(delta.amount1( )));
 
-        if(  amount_in > maximum_amount_in  )  revert SlippageExceeded({ amount_received: amount_in, minimum_required: maximum_amount_in });
+        if(  amount_in > maximum_amount_in  )  revert MaximumInputExceeded({ required_input: amount_in, maximum_required: maximum_amount_in });
 
         uint256 user_output   =  params.exact_output_amount;
         uint256 protocol_fee  =  grossed_up_pool_output - params.exact_output_amount;

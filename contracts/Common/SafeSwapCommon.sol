@@ -15,6 +15,7 @@ import { FixedPoint96 } from "@UniswapV4Core/libraries/FixedPoint96.sol";
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 error SlippageExceeded( uint256 amount_received, uint256 minimum_required );
+error MaximumInputExceeded( uint256 required_input, uint256 maximum_required );
 error OneSidedDepositMismatch( address expected_token, uint256 minimum_required );
 
 
