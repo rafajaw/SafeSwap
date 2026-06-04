@@ -1,26 +1,17 @@
 {
   "lib/BondRoute": {
-    "rev": "2ed7e93dcb69371baa66b7f5548edb838cbaf75d"
+    "rev": "01940263cea30a473f3b8b8f9f8584df7b85d0c5"
   },
   "lib/ChainConfig": {
     "rev": "cfe664e89880f7af847ae9a027b38d7c6fa87626"
   },
   "lib/forge-std": {
-    "tag": {
-      "name": "v1.12.0",
-      "rev": "7117c90c8cf6c68e5acce4f09a6b24715cea4de6"
-    }
+    "rev": "7117c90c8cf6c68e5acce4f09a6b24715cea4de6"
   },
   "lib/openzeppelin-contracts": {
-    "tag": {
-      "name": "v5.5.0",
-      "rev": "fcbae5394ae8ad52d8e580a3477db99814b9d565"
-    }
+    "rev": "fcbae5394ae8ad52d8e580a3477db99814b9d565"
   },
   "lib/v4-core": {
-    "tag": {
-      "name": "v4.0.0",
-      "rev": "e50237c43811bd9b526eff40f26772152a42daba"
-    }
+    "rev": "e50237c43811bd9b526eff40f26772152a42daba"
   }
 }
