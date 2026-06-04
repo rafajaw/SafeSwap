@@ -1,8 +1,8 @@
 # SafeSwap
 
-**Trustless MEV-free swaps and liquidity on Uniswap V4.**
+**Trustless MEV-protected swaps and liquidity on Uniswap V4, with oracle-free LP repricing rebates.**
 
-SafeSwap is a Uniswap V4 hook that enforces every swap and liquidity operation through [BondRoute](https://bondroute.xyz)'s commit-reveal bond mechanism, eliminating MEV extraction at the protocol level.
+SafeSwap enforces every swap and liquidity operation through [BondRoute](https://bondroute.xyz)'s commit-reveal bond mechanism, eliminating MEV extraction at the protocol level. On top of that, when a swap moves the pool price, SafeSwap charges an extra fee proportional to the real tick movement and **rebates it to LPs** — turning repricing from arbitrageur extraction into LP revenue, without an oracle or trusted sequencer. See `LVR_DETERRENCE.md` and `REPRICING_REBATE_ADDRESS_CONFIG.md`.
 
 ## How it works
 
@@ -12,7 +12,7 @@ SafeSwap plugs into this:
 
 1. User creates a bond through BondRoute — posting only a commitment hash and a stake. Everything else (protocol, function, parameters, funded tokens, user address) is hidden inside the hash.
 2. After a minimum block delay, the user reveals and executes. BondRoute calls SafeSwap's protected function with the bond context.
-3. SafeSwap's `beforeSwap` / `beforeAddLiquidity` / `beforeRemoveLiquidity` hooks reject any call not originating from a valid bond execution.
+3. The `SafeSwapRouter` executes the action; the pool's `SafeSwapHook` rejects any V4 callback whose `sender` is not the canonical router, so only BondRoute-routed actions can touch SafeSwap pools.
 
 This gives two layers of protection:
 
@@ -25,32 +25,50 @@ No off-chain relayers. No trusted sequencers. No special permissions.
 
 ## Architecture
 
+A canonical router, a shared LP-position NFT, and many permissionlessly-deployed config hooks (one per rebate profile).
+
 ```
-BondRouteProtected, UniswapHook -> User -> BondRouteIntegration -> SafeSwap
-Collector -> SafeSwap
+Orchestrator, HookRegistry, BondRouteProtected -> User -> BondRouteIntegration -> SafeSwapRouter
+Treasury -> SafeSwapRouter
+SafeSwapHook (standalone, one instance per rebate profile)
+SafeSwapNft (standalone, shared)
 ```
 
 | Contract | Role |
 |---|---|
-| `SafeSwap.sol` | Final deployed composition + native receive guard |
+| `SafeSwapRouter.sol` | Canonical BondRoute-protected entrypoint: swaps, liquidity, donate, rebate engine, registry, treasury |
+| `SafeSwapHook.sol` | Per-profile Uniswap V4 config hook; gates pool actions to the router; rebate profile encoded in its address |
+| `SafeSwapNft.sol` | Shared ERC721 LP-position registry across all pools and profiles |
+| `Orchestrator.sol` | PoolManager integration: pool init + unlock-callback dispatch |
+| `HookRegistry.sol` | Permissionless hook registration + resolution (runtime-codehash + address-bit + V4-permission auth) |
 | `BondRouteIntegration.sol` | BondRoute selectors, quote, validation, and signing-info dispatch |
-| `User.sol` | User-facing functions (swap, liquidity) + off-chain getters |
-| `Collector.sol` | Fee withdrawal + role transfer |
-| `UniswapHook.sol` | PoolManager integration, V4 callbacks, protected context |
+| `User.sol` | User-facing functions + off-chain getters (incl. rebate preview) |
+| `Treasury.sol` | Protocol-fee withdrawal + role transfer |
 | `BondRouteProtected.sol` | Commit-reveal bond mechanism (inherited from BondRoute) |
 
-Libraries: `ExactInputSwapLib`, `ExactOutputSwapLib`, `AddLiquidityLib`, `RemoveLiquidityLib`, `DonateLib`, `SafeSwapCommon`
+Libraries (external, delegatecall-linked `execute`): `ExactInputSwapLib`, `ExactOutputSwapLib`, `ModifyLiquidityLib`, `DonateLib`, `SafeSwapCommon`
+
+### Pool identity & rebate profiles
+
+A SafeSwap pool is a static-fee Uniswap V4 pool whose hook is a `SafeSwapHook` config instance. The rebate profile is encoded in the hook's CREATE2 address (magic byte `0x55`, 4-bit profile, V4 permission bits), so each profile yields a distinct `PoolId` for otherwise-identical pool parameters. Users select a pool by `(base_fee_bps, rebate_profile, tick_spacing)`; the router resolves the hook from its registry.
+
+### LP repricing rebate
+
+`total fee = base LP fee + protocol fee + repricing rebate`, where `repricing rebate = pool price movement × rebate_profile × 1000 / 10_000` (capped). The rebate is measured from the swap's **real** tick movement and donated to in-range LPs (charged on the output for exact-input swaps, on the input for exact-output). Rebate profiles range `0..10` → `0%..100%`.
 
 ## Operations
 
 | Function | Description |
 |---|---|
-| `swap_exact_input` | Swap a known input amount for at least `minimum_amount_out` |
-| `swap_exact_output` | Swap up to the funded amount to receive exactly `amount_out` |
-| `add_liquidity` | Provide liquidity to a pool within a tick range |
-| `remove_liquidity` | Withdraw liquidity from a position |
+| `swap_exact_input` | Swap a known input amount for at least `minimum_output_amount` (net of protocol fee + rebate) |
+| `swap_exact_output` | Swap up to the funded amount to receive exactly `exact_output_amount` |
+| `create_position` | Open a new NFT-backed liquidity position (initializing the pool if needed) |
+| `add_liquidity` | Add liquidity to an existing position (by token id) |
+| `remove_liquidity` | Withdraw liquidity from a position (by token id) |
+| `collect_fees` | Collect accrued fees for a position (by token id) |
 | `donate` | Donate tokens to a pool's in-range liquidity providers |
-| `withdraw_fees` | Collector withdraws accumulated protocol fees |
+| `register_hook` / `get_hook` | Register a deployed config hook / resolve the hook for a rebate profile |
+| `withdraw_protocol_fees` | Treasury withdraws accumulated protocol fees |
 
 ## Protocol fee
 
