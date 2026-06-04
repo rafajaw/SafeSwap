@@ -82,7 +82,7 @@ contract UserSwapTest is IUserSwapWorkflowTests, SafeSwapRealEnv {
         ( , uint24 total_fee_pips, uint256 movement_bps )  =  router.__OFF_CHAIN__quote_swap_exact_input( IERC20(address(_token_a)), IERC20(address(_token_b)), _pool_info(), 1_000 ether );
 
         assertGt( movement_bps, 0, "a price-moving swap should report nonzero movement." );
-        assertGt( total_fee_pips, SafeSwapCommon.base_fee_units( _BASE_FEE_BPS ), "the swap fee should exceed the base fee by the repricing component." );
+        assertGt( total_fee_pips, SafeSwapCommon.compute_base_fee_pips( _BASE_FEE_BPS ), "the swap fee should exceed the base fee by the repricing component." );
     }
 
     function test_swap_exact_input_reverts_on_slippage_as_graceful_bond_settlement( )

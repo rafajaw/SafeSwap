@@ -13,6 +13,7 @@ bytes32 constant INITIAL_TREASURY_KEY    =  bytes32("safeswap/initial_treasury")
 bytes32 constant SAFESWAP_ROUTER_KEY     =  bytes32("safeswap/router");
 bytes32 constant SAFESWAP_NFT_KEY        =  bytes32("safeswap/nft");
 bytes32 constant SAFESWAP_HOOK_CODEHASH_KEY  =  bytes32("safeswap/hook_codehash");
+bytes32 constant SAFESWAP_POSITION_DESCRIPTOR_KEY  =  bytes32("safeswap/position_descriptor");
 
 
 // ━━━━  SAFESWAP ECONOMICS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

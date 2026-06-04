@@ -96,9 +96,9 @@ library ExactOutputSwapLib {
 
         // Gross up the requested output so the user nets `exact_output_amount` after the SafeSwap protocol fee. The LP fee
         // (base + repricing) is taken separately from the input by the pool, so it is not part of this gross-up.
-        uint256 effective_fee_rate      =  SafeSwapCommon.base_fee_units( params.pool_info.base_fee_bps ) < MIN_PROTOCOL_FEE_RATE
+        uint256 effective_fee_rate      =  SafeSwapCommon.compute_base_fee_pips( params.pool_info.base_fee_bps ) < MIN_PROTOCOL_FEE_RATE
                                             ? MIN_PROTOCOL_FEE_RATE
-                                            : SafeSwapCommon.base_fee_units( params.pool_info.base_fee_bps );
+                                            : SafeSwapCommon.compute_base_fee_pips( params.pool_info.base_fee_bps );
         uint256 fee_complement          =  PROTOCOL_FEE_DIVISOR - effective_fee_rate;
         // Truncating division: rounding dust on the gross-up is ≤1 wei per swap.
         uint256 grossed_up_pool_output  =  params.exact_output_amount * PROTOCOL_FEE_DIVISOR / fee_complement;

@@ -13,6 +13,7 @@ import "@SafeSwapCommon/Definitions.sol";
 import { HookAddress } from "@SafeSwapCommon/HookAddress.sol";
 import { OneSidedDepositMismatch } from "@SafeSwapCommon/SafeSwapCommon.sol";
 import { SafeSwapNft, PoolInitializationPriceMismatch, PositionUnauthorized } from "@SafeSwapNft/SafeSwapNft.sol";
+import { SafeSwapPositionDescriptor } from "@SafeSwapNft/SafeSwapPositionDescriptor.sol";
 import {
     AddPositionLiquidityParams,
     CollectFeesParams,
@@ -80,6 +81,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
 
         _publish_config_address( POOL_MANAGER_KEY, address(_pool_manager) );
         _publish_config_address( SAFESWAP_ROUTER_KEY, address(_router) );
+        _publish_config_address( SAFESWAP_POSITION_DESCRIPTOR_KEY, address(new SafeSwapPositionDescriptor()) );
 
         _nft  =  new SafeSwapNft();
     }
@@ -107,6 +109,15 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _publish_config_address( SAFESWAP_ROUTER_KEY, _ADDRESS_WITHOUT_CODE );
 
         vm.expectRevert( bytes("SafeSwapNft: Invalid router") );
+        new SafeSwapNft();
+    }
+
+    function test_constructor_reverts_when_descriptor_has_no_code( )
+    external
+    {
+        _publish_config_address( SAFESWAP_POSITION_DESCRIPTOR_KEY, _ADDRESS_WITHOUT_CODE );
+
+        vm.expectRevert( bytes("SafeSwapNft: Invalid descriptor") );
         new SafeSwapNft();
     }
 

@@ -73,30 +73,33 @@
       replaces the verb-less getters and reverts on the impl. No separate `SafeSwapHookProxy` artifact needed; the parity
       test (`test_clone_deploys_exact_canonical_eip1167_runtime_bytecode`) proves the deployed runtime is byte-exact EIP-1167
       so clones pass the registry `extcodehash` gate. The impl's clone runtime codehash is published once to ChainConfig
-      (`SAFESWAP_HOOK_CODEHASH_KEY`) after the impl is deployed — authorizing the bytecode, not addresses.
-  - [ ] Swap the real-env harness off `vm.etch` onto real `deploy_hook` (needs a mined salt — gated on the deploy tooling).
+      (`SAFESWAP_HOOK_CODEHASH_KEY`) after the impl is deployed — authorizing the bytecode, not addresses. The real-env test
+      harness intentionally keeps synthesizing clones via `vm.etch` — it gives the most flexibility for testing.
 - [ ] Deploy tooling: `script/` is empty. Needs the off-chain salt miner (BCD config + exact V4 permission bits, ~2^38 per
       profile), the per-profile `deploy_hook` call, publishing the impl's clone runtime codehash to ChainConfig, and
       router / NFT / treasury wiring from ChainConfig. Also the home for `deploy_hook`'s success / `CONFIG_MISMATCH` /
       `PERMISSIONS` paths that the unit suite can't mine (see `test/Hook/TestManifest.sol` note).
 - [ ] Replace the `CONFIG_SIGNER` placeholder (`0xDeaDbeef…`, flagged in `AUDIT_REPORT.md` / `Definitions.sol`) and publish
       per-chain ChainConfig: V4 PoolManager address + signer for each target chain. (Standing deploy blocker.)
-- [ ] Remove `legacy_tests/` (`safeswap`, `stale_dynamic_fee_rewrite_SafeSwap`) once fully mined for coverage — already
-      cross-checked as a checklist; delete the obsolete pre-rewrite suite.
+- [x] Remove `legacy_tests/` — deleted after the coverage cross-check.
 - [ ] Decide quoter precision (1-pass exact-fee vs 2-pass exact-output) and confirm the final `MAX_REPRICING_FEE_PIPS` /
       `MAX_TOTAL_FEE_PIPS` values.
+- [ ] Re-tune `[profile.deploy] optimizer_runs` (currently 50_000) so `SafeSwapNft` fits EIP-170. The tokenURI/contractURI
+      wiring pushed it ~258 B over the 24,576 limit at 50k runs (24,834 B); it builds fine under the default 200 runs. Lower
+      the deploy runs (global) until it fits before mainnet — trades a little runtime gas on router/hook for deployability.
 
 ## NFT presentation
 
-- [ ] Implement `tokenURI`: build on-chain metadata via an external `SafeSwapPositionDescriptor` (keeps `SafeSwapNft` under
-      EIP-170 — it is the size-bound contract). `tokenURI` returns `data:application/json;base64,<json>` whose `image` is a
-      live `data:image/svg+xml;base64,<svg>` card built from `get_lp_position` + V4 position state (liquidity / current tick /
-      in-range), plus an `attributes` array (token0/1 symbols, base_fee_bps, rebate_percent, tick range, in_range). On
-      `SafeSwapNft`: 3-line `tokenURI` override delegating to the descriptor + descriptor address wiring. DECIDE: descriptor
-      address immutable (from ChainConfig) vs treasury-settable (art v2). Defer SSTORE2/3 for static art blobs unless the
-      descriptor's own bytecode nears the limit.
-- [ ] Add `contractURI()` (OpenSea collection-level metadata: name / description / banner / external link / royalty
-      recipient). Format/hosting TBD — decide later.
+- [x] Implement `tokenURI` via an external `SafeSwapPositionDescriptor` (keeps `SafeSwapNft` off the EIP-170 cliff — it only
+      forwards). `tokenURI` returns `data:application/json;base64,<json>` whose `image` is a fully on-chain
+      `data:image/svg+xml;base64,<svg>` card built from `get_lp_position` + live V4 state (current tick / position liquidity /
+      in-range), plus an `attributes` array (token0/1 symbols, base fee %, rebate %, tick range, liquidity, status). NFT side
+      is a 3-line `tokenURI`/`contractURI` delegating to the descriptor. DECIDED: descriptor address is **immutable** from
+      ChainConfig (`SAFESWAP_POSITION_DESCRIPTOR_KEY`); treasury-settable art v2 deferred. Symbols are read defensively
+      (native → "ETH", non-conforming `symbol()` → short address) and sanitized to an alphanumeric subset (no XML/JSON
+      injection). Verified end-to-end by base64-decoding the URIs in `test/Nft/SafeSwapPositionDescriptor.t.sol`.
+- [x] Add `contractURI()` — collection name + description, on-chain base64 JSON. Banner / external link / royalty fields
+      deferred (hosting TBD); v1 ships name + description.
 
 ## Review
 

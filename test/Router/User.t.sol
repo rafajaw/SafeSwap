@@ -344,7 +344,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
 
         _execute_exact_input( IERC20(address(_token0)), IERC20(address(_token1)), 0 );
 
-        ( uint256 protocol_fee, )  =  SafeSwapCommon.calculate_protocol_fee( _POOL_OUTPUT, SafeSwapCommon.base_fee_units(_BASE_FEE_BPS) );
+        ( uint256 protocol_fee, )  =  SafeSwapCommon.calculate_protocol_fee( _POOL_OUTPUT, SafeSwapCommon.compute_base_fee_pips(_BASE_FEE_BPS) );
 
         assertEq( _mock_pool_manager.take_amount_by_recipient(address(_mock_router)), protocol_fee, "router should receive the protocol fee." );
     }
@@ -356,7 +356,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
 
         _execute_exact_input( IERC20(address(_token0)), IERC20(address(_token1)), 0 );
 
-        ( , uint256 user_output )  =  SafeSwapCommon.calculate_protocol_fee( _POOL_OUTPUT, SafeSwapCommon.base_fee_units(_BASE_FEE_BPS) );
+        ( , uint256 user_output )  =  SafeSwapCommon.calculate_protocol_fee( _POOL_OUTPUT, SafeSwapCommon.compute_base_fee_pips(_BASE_FEE_BPS) );
 
         assertEq( _mock_pool_manager.take_amount_by_recipient(_USER), user_output, "user should receive net output." );
     }
@@ -366,7 +366,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     {
         _set_up_mock_env( );
 
-        ( , uint256 user_output )  =  SafeSwapCommon.calculate_protocol_fee( _POOL_OUTPUT, SafeSwapCommon.base_fee_units(_BASE_FEE_BPS) );
+        ( , uint256 user_output )  =  SafeSwapCommon.calculate_protocol_fee( _POOL_OUTPUT, SafeSwapCommon.compute_base_fee_pips(_BASE_FEE_BPS) );
 
         _set_exact_input_delta( IERC20(address(_token0)), IERC20(address(_token1)), _AMOUNT_IN, _POOL_OUTPUT );
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, user_output, user_output + 1 ) );
@@ -605,7 +605,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         );
 
         assertGt( net_output, 0, "exact-input quote should return net output." );
-        assertGt( total_fee_pips, SafeSwapCommon.base_fee_units(_BASE_FEE_BPS), "price movement should add a repricing fee." );
+        assertGt( total_fee_pips, SafeSwapCommon.compute_base_fee_pips(_BASE_FEE_BPS), "price movement should add a repricing fee." );
         assertGt( movement_bps, 0, "price-moving exact-input quote should report movement." );
     }
 
@@ -1190,7 +1190,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
 
     function _grossed_up_output( uint256 exact_output ) internal pure returns ( uint256 )
     {
-        uint256 base_fee_pips       =  SafeSwapCommon.base_fee_units( _BASE_FEE_BPS );
+        uint256 base_fee_pips       =  SafeSwapCommon.compute_base_fee_pips( _BASE_FEE_BPS );
         uint256 effective_fee_rate  =  base_fee_pips < MIN_PROTOCOL_FEE_RATE  ?  MIN_PROTOCOL_FEE_RATE  :  base_fee_pips;
 
         return exact_output * PROTOCOL_FEE_DIVISOR / ( PROTOCOL_FEE_DIVISOR - effective_fee_rate );

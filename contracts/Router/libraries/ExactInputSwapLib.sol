@@ -110,7 +110,7 @@ library ExactInputSwapLib {
         //            protocol fee is taken on top of that; the LP base + repricing fee already accrued to LPs in the pool.
         uint256 pool_output  =  zero_for_one ? uint256(int256(delta.amount1( ))) : uint256(int256(delta.amount0( )));
 
-        ( uint256 protocol_fee, uint256 user_output )  =  SafeSwapCommon.calculate_protocol_fee( pool_output, SafeSwapCommon.base_fee_units( params.pool_info.base_fee_bps ) );
+        ( uint256 protocol_fee, uint256 user_output )  =  SafeSwapCommon.calculate_protocol_fee( pool_output, SafeSwapCommon.compute_base_fee_pips( params.pool_info.base_fee_bps ) );
 
         if(  user_output < params.minimum_output_amount  )  revert SlippageExceeded({ amount_received: user_output, minimum_required: params.minimum_output_amount });
 

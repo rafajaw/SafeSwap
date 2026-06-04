@@ -17,6 +17,7 @@ interface ISafeSwapNftTests {
     // ─── Deployment And Configuration ────────────────────────────────────────────
     function test_constructor_reads_canonical_router_from_chain_config() external;
     function test_constructor_reverts_when_router_has_no_code() external;
+    function test_constructor_reverts_when_descriptor_has_no_code() external;
     function test_constructor_initializes_first_token_id_to_one() external;
     function test_constructor_uses_shared_pool_manager_from_chain_config() external;
     function test_inherits_bondroute_native_receive_for_native_fundings() external;
@@ -122,4 +123,19 @@ interface ISafeSwapNftWorkflowTests {
     function test_remove_liquidity_returns_tokens_and_reduces_the_position() external;
     function test_collect_fees_executes_with_no_accrued_fees_and_leaves_liquidity() external;
     function test_remove_by_non_owner_is_protocol_reverted_and_position_is_untouched() external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SAFESWAPPOSITIONDESCRIPTOR.SOL - On-chain metadata renderer: tokenURI / contractURI return base64 data URIs whose
+//   JSON and SVG are built fully on-chain. Verified against a real created position (real V4 PoolManager) by base64-
+//   decoding the URIs and inspecting the JSON fields, attributes, and embedded SVG.
+// Implemented in: test/Nft/SafeSwapPositionDescriptor.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface ISafeSwapPositionDescriptorTests {
+    function test_token_uri_returns_base64_json_with_name_description_and_attributes() external;
+    function test_token_uri_image_is_a_fully_on_chain_svg() external;
+    function test_contract_uri_returns_collection_metadata() external;
+    function test_token_uri_reverts_for_nonexistent_token() external;
 }

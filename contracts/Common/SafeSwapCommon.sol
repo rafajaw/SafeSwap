@@ -75,7 +75,7 @@ library SafeSwapCommon {
      * @notice Convert a base LP fee in basis points into Uniswap V4 fee units (pips).
      * @dev 100 v4 pips = 1 bps. E.g. 30 bps (0.30%) → 3000 pips.
      */
-    function base_fee_units( uint16 base_fee_bps ) internal pure returns ( uint24 )
+    function compute_base_fee_pips( uint16 base_fee_bps ) internal pure returns ( uint24 )
     {
         return uint24(base_fee_bps) * uint24(PIPS_PER_BPS);
     }
@@ -234,7 +234,7 @@ library SafeSwapCommon {
      * @notice Split the Uniswap V4 swap-amount convention into `(amount_in, amount_out)` given the simulator's counterpart.
      * @dev `amount_specified < 0` is exact-input (amount_in = |specified|, amount_out = counterpart); `> 0` is exact-output.
      */
-    function swap_legs( int256 amount_specified, uint256 counterpart ) internal pure returns ( uint256 amount_in, uint256 amount_out )
+    function compute_swap_amounts( int256 amount_specified, uint256 counterpart ) internal pure returns ( uint256 amount_in, uint256 amount_out )
     {
         if(  amount_specified < 0  )
         {

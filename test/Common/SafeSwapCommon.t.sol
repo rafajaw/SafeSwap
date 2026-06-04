@@ -38,9 +38,9 @@ contract SafeSwapCommonHarness {
         pointer_restored  =  pointer_before == pointer_after;
     }
 
-    function base_fee_units( uint16 base_fee_bps ) external pure returns ( uint24 )
+    function compute_base_fee_pips( uint16 base_fee_bps ) external pure returns ( uint24 )
     {
-        return SafeSwapCommon.base_fee_units( base_fee_bps );
+        return SafeSwapCommon.compute_base_fee_pips( base_fee_bps );
     }
 
     function compute_repricing_fee_pips( uint256 amount_in, uint256 amount_out, uint160 sqrt_price_after_x96, bool zero_for_one, uint8 capture_percent, uint24 base_fee_pips ) external pure returns ( uint24 )
@@ -314,19 +314,19 @@ contract SafeSwapCommonTest is ISafeSwapCommonTests, SafeSwapTestHelper {
     function test_base_fee_units_converts_basis_points_to_v4_pips( )
     external  view
     {
-        assertEq( harness.base_fee_units( 30 ), 3000, "30 bps should convert to 3000 v4 pips." );
+        assertEq( harness.compute_base_fee_pips( 30 ), 3000, "30 bps should convert to 3000 v4 pips." );
     }
 
     function test_base_fee_units_accepts_zero_base_fee( )
     external  view
     {
-        assertEq( harness.base_fee_units( 0 ), 0, "Zero bps should convert to zero pips." );
+        assertEq( harness.compute_base_fee_pips( 0 ), 0, "Zero bps should convert to zero pips." );
     }
 
     function test_base_fee_units_accepts_maximum_bcd_base_fee( )
     external  view
     {
-        assertEq( harness.base_fee_units( 999 ), 99900, "999 bps should convert to 99900 v4 pips." );
+        assertEq( harness.compute_base_fee_pips( 999 ), 99900, "999 bps should convert to 99900 v4 pips." );
     }
 
     // sqrt price for pool price 1:1 (2^96): output and input are valued 1:1, so surplus = amount_out − amount_in.

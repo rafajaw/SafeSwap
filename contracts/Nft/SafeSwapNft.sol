@@ -14,6 +14,7 @@ pragma solidity ^0.8.30;
 */
 
 import "@SafeSwapNft/ISafeSwapNft.sol";
+import { ISafeSwapPositionDescriptor } from "@SafeSwapNft/ISafeSwapPositionDescriptor.sol";
 import "@SafeSwapCommon/PoolManagerIntegration.sol";
 import "@SafeSwapCommon/SafeSwapCommon.sol";
 import "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
@@ -21,6 +22,7 @@ import "@BondRouteProtected/BondRouteProtected.sol";
 import {
     CONFIG_SIGNER,
     SAFESWAP_ROUTER_KEY,
+    SAFESWAP_POSITION_DESCRIPTOR_KEY,
     SAFESWAP_POSITIONS_NAME,
     SAFESWAP_POSITIONS_DESCRIPTION
 } from "@SafeSwapCommon/Definitions.sol";
@@ -64,6 +66,7 @@ interface ISafeSwapRouterHooks {
 contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteProtected, IUnlockCallback {
 
     address public immutable SafeSwapRouter;
+    address public immutable PositionDescriptor;    // external on-chain metadata renderer (keeps this contract under EIP-170).
 
     uint256 private _next_token_id;
 
@@ -77,8 +80,36 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         address router  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_ROUTER_KEY );
         if(  router.code.length == 0  )  revert( "SafeSwapNft: Invalid router" );
 
-        SafeSwapRouter  =  router;
-        _next_token_id  =  1;
+        address descriptor  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_POSITION_DESCRIPTOR_KEY );
+        if(  descriptor.code.length == 0  )  revert( "SafeSwapNft: Invalid descriptor" );
+
+        SafeSwapRouter      =  router;
+        PositionDescriptor  =  descriptor;
+        _next_token_id      =  1;
+    }
+
+
+    // ━━━━  METADATA  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /**
+     * @notice ERC721 token metadata as an on-chain `data:application/json;base64,...` URI. Delegates rendering to the
+     *         external `PositionDescriptor` so this contract stays under the EIP-170 size limit.
+     */
+    function tokenURI( uint256 token_id )
+    public  view override returns ( string memory )
+    {
+        _requireOwned( token_id );
+
+        return ISafeSwapPositionDescriptor(PositionDescriptor).build_token_uri( this, token_id );
+    }
+
+    /**
+     * @notice OpenSea collection-level metadata as an on-chain `data:application/json;base64,...` URI.
+     */
+    function contractURI( )
+    external  view returns ( string memory )
+    {
+        return ISafeSwapPositionDescriptor(PositionDescriptor).build_contract_uri( );
     }
 
 

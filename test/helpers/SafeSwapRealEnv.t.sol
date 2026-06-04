@@ -9,6 +9,7 @@ import "@SafeSwapCommon/Definitions.sol";
 import { HookAddress } from "@SafeSwapCommon/HookAddress.sol";
 import { SafeSwapRouter } from "@SafeSwapRouter/SafeSwapRouter.sol";
 import { SafeSwapNft } from "@SafeSwapNft/SafeSwapNft.sol";
+import { SafeSwapPositionDescriptor } from "@SafeSwapNft/SafeSwapPositionDescriptor.sol";
 import { SafeSwapHookImpl } from "@SafeSwapHook/SafeSwapHookImpl.sol";
 
 import { BondRoute } from "@BondRoute/BondRoute.sol";
@@ -48,11 +49,12 @@ abstract contract SafeSwapRealEnv is ChainConfigTestHelper, SafeSwapTestHelper, 
 
     address internal constant TREASURY  =  address(0x7EEA5);
 
-    IPoolManager     internal poolManager;
-    SafeSwapRouter   internal router;
-    SafeSwapNft      internal nft;
-    SafeSwapHookImpl internal hookImpl;
-    bytes32          internal hookRuntimeCodehash;
+    IPoolManager                internal poolManager;
+    SafeSwapRouter              internal router;
+    SafeSwapNft                 internal nft;
+    SafeSwapPositionDescriptor  internal descriptor;
+    SafeSwapHookImpl            internal hookImpl;
+    bytes32                     internal hookRuntimeCodehash;
 
     uint256 private _bond_salt;
 
@@ -90,9 +92,13 @@ abstract contract SafeSwapRealEnv is ChainConfigTestHelper, SafeSwapTestHelper, 
         _publish_config_address( POOL_MANAGER_KEY, address(poolManager) );
         _publish_config_address( INITIAL_TREASURY_KEY, TREASURY );
 
-        // Router reads PoolManager + treasury from ChainConfig; NFT reads the router; hook impl reads all three.
+        // Router reads PoolManager + treasury from ChainConfig; NFT reads the router + descriptor; hook impl reads all three.
         router  =  new SafeSwapRouter( );
         _publish_config_address( SAFESWAP_ROUTER_KEY, address(router) );
+
+        // Descriptor reads PoolManager from ChainConfig; the NFT requires it at construction.
+        descriptor  =  new SafeSwapPositionDescriptor( );
+        _publish_config_address( SAFESWAP_POSITION_DESCRIPTOR_KEY, address(descriptor) );
 
         nft  =  new SafeSwapNft( );
         _publish_config_address( SAFESWAP_NFT_KEY, address(nft) );

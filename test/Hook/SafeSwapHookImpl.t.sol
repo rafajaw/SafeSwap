@@ -425,7 +425,7 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
     {
         uint24 fee  =  _before_swap_fee( _hook, 0, _DEFAULT_TICK );
 
-        assertEq( fee, LPFeeLibrary.OVERRIDE_FEE_FLAG | SafeSwapCommon.base_fee_units( 30 ), "zero movement should return base fee with override flag." );
+        assertEq( fee, LPFeeLibrary.OVERRIDE_FEE_FLAG | SafeSwapCommon.compute_base_fee_pips( 30 ), "zero movement should return base fee with override flag." );
     }
 
     function test_before_swap_returns_override_fee_with_repricing_component_when_swap_moves_price( )
@@ -433,7 +433,7 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
     {
         uint24 fee  =  _before_swap_fee( _hook, -10 ether, _DEFAULT_TICK );
 
-        assertGt( fee & LPFeeLibrary.REMOVE_OVERRIDE_MASK, SafeSwapCommon.base_fee_units( 30 ), "price movement should add a repricing component." );
+        assertGt( fee & LPFeeLibrary.REMOVE_OVERRIDE_MASK, SafeSwapCommon.compute_base_fee_pips( 30 ), "price movement should add a repricing component." );
     }
 
     function test_before_swap_returns_zero_before_swap_delta( )
@@ -466,7 +466,7 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
 
         uint24 fee  =  _before_swap_fee( expensive_hook, -100_000 ether, _DEFAULT_TICK );
         uint24 fee_without_flag  =  fee & LPFeeLibrary.REMOVE_OVERRIDE_MASK;
-        uint24 maximum_fee_from_repricing_cap  =  SafeSwapCommon.base_fee_units( 999 ) + MAX_REPRICING_FEE_PIPS;
+        uint24 maximum_fee_from_repricing_cap  =  SafeSwapCommon.compute_base_fee_pips( 999 ) + MAX_REPRICING_FEE_PIPS;
 
         assertEq( fee_without_flag, maximum_fee_from_repricing_cap, "repricing component cap should bind before the total-fee hard ceiling." );
         assertLt( fee_without_flag, LPFeeLibrary.MAX_LP_FEE, "total fee should stay below Uniswap's max swap fee." );
@@ -485,7 +485,7 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
         vm.prank( address(_pool_manager) );
         ( , , uint24 fee )  =  SafeSwapHookImpl(low_fee_hook).beforeSwap( address(_router), _pool_key(low_fee_hook), params, abi.encode(uint16(999), uint8(90)) );
 
-        assertEq( fee, LPFeeLibrary.OVERRIDE_FEE_FLAG | SafeSwapCommon.base_fee_units( 5 ), "hook data should not affect decoded hook config." );
+        assertEq( fee, LPFeeLibrary.OVERRIDE_FEE_FLAG | SafeSwapCommon.compute_base_fee_pips( 5 ), "hook data should not affect decoded hook config." );
     }
 
     function test_before_swap_uses_pre_swap_pool_state( )
