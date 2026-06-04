@@ -47,3 +47,20 @@
       behaviors already covered. Found and filled one real gap — router `unlockCallback` caller guard
       (`test_unlock_callback_reverts_when_caller_is_not_pool_manager`). Deferred by choice: no fuzz/invariant layer (behaviors
       covered by concrete unit tests); protocol-fee floor exact-threshold boundary not separately pinned.
+
+## NFT presentation
+
+- [ ] Implement `tokenURI`: build on-chain metadata via an external `SafeSwapPositionDescriptor` (keeps `SafeSwapNft` under
+      EIP-170 — it is the size-bound contract). `tokenURI` returns `data:application/json;base64,<json>` whose `image` is a
+      live `data:image/svg+xml;base64,<svg>` card built from `get_lp_position` + V4 position state (liquidity / current tick /
+      in-range), plus an `attributes` array (token0/1 symbols, base_fee_bps, rebate_percent, tick range, in_range). On
+      `SafeSwapNft`: 3-line `tokenURI` override delegating to the descriptor + descriptor address wiring. DECIDE: descriptor
+      address immutable (from ChainConfig) vs treasury-settable (art v2). Defer SSTORE2/3 for static art blobs unless the
+      descriptor's own bytecode nears the limit.
+- [ ] Add `contractURI()` (OpenSea collection-level metadata: name / description / banner / external link / royalty
+      recipient). Format/hosting TBD — decide later.
+
+## Review
+
+- [ ] Review the signing path for bonded calls: `BondRoute_get_signing_info` typed strings + struct hashes across the router
+      and NFT entrypoints — correctness, EIP-712 readability, and that the hashed params match what executes.

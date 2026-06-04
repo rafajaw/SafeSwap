@@ -34,7 +34,7 @@ profile yields a distinct V4 PoolId. Pools are **dynamic-fee**: in `beforeSwap` 
 estimates the **repricing surplus** (output valued at the post-swap price minus input paid), and returns
 `base fee + capture% × surplus` as a V4 override fee, which accrues path-fairly to the LPs the swap crosses. `capture%` is the
 share of surplus paid to LPs (0–90%), **not** a rate on price displacement. No `donate`. The `execute` action libraries are
-external (delegatecall-linked) to keep contracts under the EIP-170 size limit.
+internal (inlined into the router and NFT); all deploy artifacts sit comfortably under the EIP-170 size limit.
 
 ## Operators for reasoning effectively:
 

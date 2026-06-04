@@ -301,7 +301,7 @@ library ModifyLiquidityLib {
 
     // ━━━━  EXECUTE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function execute( BondContext memory context, ModifyLiquidityParams memory params, IPoolManager pool_manager, SafeSwapPositionInfo memory position_info ) public
+    function execute( BondContext memory context, ModifyLiquidityParams memory params, IPoolManager pool_manager, SafeSwapPositionInfo memory position_info ) internal
     {
         ( uint256 amount0_minimum, uint256 amount1_minimum )  =  _validate_minimum_tokens(
             position_info.token0,
