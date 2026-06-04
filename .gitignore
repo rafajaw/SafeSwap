@@ -4,6 +4,7 @@ lib/
 lcov.info
 .gas-snapshot
 .vscode/
+.claude/
 .codex/
 .agents/
 node_modules/
