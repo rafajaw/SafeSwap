@@ -172,6 +172,9 @@ contract SafeSwapHookImpl is ISafeSwapHook {
         ( uint16 fee_bps, uint8 capture_percent )  =  HookAddress.decode( address(this) );
         uint24 base_fee_pips  =  SafeSwapCommon.base_fee_units( fee_bps );
 
+        // No capture ⇒ repricing fee is always zero and the simulation's output is unused; skip the price-path walk.
+        if(  capture_percent == 0  )  return ( IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, LPFeeLibrary.OVERRIDE_FEE_FLAG | base_fee_pips );
+
         ( , , uint160 sqrt_price_after_x96, uint256 counterpart )  =  SwapSimulator.simulate( PoolManager, key, params.zeroForOne, params.amountSpecified, base_fee_pips );
 
         ( uint256 amount_in, uint256 amount_out )  =  SafeSwapCommon.swap_legs( params.amountSpecified, counterpart );
