@@ -29,6 +29,7 @@ import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { BeforeSwapDelta, BeforeSwapDeltaLibrary } from "@UniswapV4Core/types/BeforeSwapDelta.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
+import { Clones } from "@OpenZeppelin/proxy/Clones.sol";
 
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -37,6 +38,16 @@ error DirectImplementationCallForbidden( address implementation );
 error CallerNotPoolManager( address caller, address pool_manager );
 error CallerNotRouter( address sender, address router );
 error CallerNotPositionManager( address sender, address position_manager );
+// Hook deployment failure modes. ALREADY_EXISTS: a hook is already deployed at this salt's address. CONFIG_MISMATCH: the
+// mined address does not decode to the requested base fee and capture. PERMISSIONS: the address lacks the required V4 hook
+// permission bits. The new_hook address recovers all decoded detail off-chain.
+enum SpawnRejection { ALREADY_EXISTS, CONFIG_MISMATCH, PERMISSIONS }
+error HookSpawnRejected( SpawnRejection reason, address new_hook, uint16 base_fee_bps, uint8 rebate_percent );
+
+
+// ━━━━  EVENTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+event HookSpawned( address indexed new_hook, uint16 indexed base_fee_bps, uint8 indexed rebate_percent );
 
 
 /**
@@ -86,21 +97,15 @@ contract SafeSwapHookImpl is ISafeSwapHook {
     // ━━━━  CONFIG GETTERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     /**
-     * @notice Base LP fee in basis points, decoded from this clone's address. Meaningful only when called on a clone.
+     * @notice Base LP fee in basis points and LP capture share in percent, decoded from this clone's address.
+     * @dev Reverts with `DirectImplementationCallForbidden` if called on the implementation, which carries no valid config.
      */
-    function base_fee_bps( )
-    external  view returns ( uint16 fee_bps )
+    function get_hook_config( )
+    external  view returns ( uint16 base_fee_bps, uint8 rebate_percent )
     {
-        ( fee_bps,  )  =  HookAddress.decode( address(this) );
-    }
+        _require_clone_context( );
 
-    /**
-     * @notice LP capture share in percent, decoded from this clone's address. Meaningful only when called on a clone.
-     */
-    function rebate_percent( )
-    external  view returns ( uint8 capture_percent )
-    {
-        ( , capture_percent )  =  HookAddress.decode( address(this) );
+        ( base_fee_bps, rebate_percent )  =  HookAddress.decode( address(this) );
     }
 
 
@@ -118,6 +123,35 @@ contract SafeSwapHookImpl is ISafeSwapHook {
         ( uint16 fee_bps, uint8 capture_percent )  =  HookAddress.decode( address(this) );
 
         ISafeSwapHookRegistry(SafeSwapRouter).register_hook( fee_bps, capture_percent );
+    }
+
+    /**
+     * @notice Permissionlessly deploy a config-hook clone of this implementation at a mined `salt` address and register it
+     *         with the canonical router for `(base_fee_bps, rebate_percent)`. Callable on the implementation or any clone;
+     *         under a clone's delegatecall it forwards to the implementation so the canonical EIP-1167 code is baked in.
+     *
+     * @dev Every clone is the canonical EIP-1167 minimal proxy with this implementation baked in, so they all share the one
+     *      runtime codehash the router authorizes. The `salt` must be mined off-chain so the CREATE2 address carries the
+     *      matching `HookAddress` BCD config and the required V4 permission bits.
+     */
+    function deploy_hook( uint16 base_fee_bps, uint8 rebate_percent, bytes32 salt )
+    external  returns ( address new_hook )
+    {
+        if(  address(this) != IMPLEMENTATION_SELF  )  return SafeSwapHookImpl(IMPLEMENTATION_SELF).deploy_hook( base_fee_bps, rebate_percent, salt );
+
+        new_hook  =  Clones.predictDeterministicAddress( IMPLEMENTATION_SELF, salt );
+        if(  new_hook.code.length != 0  )  revert HookSpawnRejected( SpawnRejection.ALREADY_EXISTS, new_hook, base_fee_bps, rebate_percent );
+
+        ( uint16 decoded_fee, uint8 decoded_capture )  =  HookAddress.decode( new_hook );
+        if(  decoded_fee != base_fee_bps  ||  decoded_capture != rebate_percent  )  revert HookSpawnRejected( SpawnRejection.CONFIG_MISMATCH, new_hook, base_fee_bps, rebate_percent );
+
+        if(  HookAddress.has_required_permissions( new_hook ) == false  )  revert HookSpawnRejected( SpawnRejection.PERMISSIONS, new_hook, base_fee_bps, rebate_percent );
+
+        Clones.cloneDeterministic( IMPLEMENTATION_SELF, salt );    // canonical EIP-1167, this implementation baked in.
+
+        SafeSwapHookImpl(new_hook).initialize_once( );             // registers with the router; re-validates codehash + config.
+
+        emit HookSpawned( new_hook, base_fee_bps, rebate_percent );
     }
 
 

@@ -32,6 +32,20 @@ interface ISafeSwapHookImplTests {
     function test_initialize_once_bubbles_router_registration_revert() external;
     function test_initialize_once_reverts_when_called_on_implementation() external;
 
+    // ─── Permissionless Hook Deployment (deploy_hook) ───────────────────────────
+    function test_get_hook_config_reverts_when_called_on_implementation() external;
+    function test_clone_deploys_exact_canonical_eip1167_runtime_bytecode() external;
+    function test_deploy_hook_reverts_when_a_contract_already_exists_at_the_salt_address() external;
+    function test_deploy_hook_reverts_when_the_salt_address_is_not_a_valid_hook_config() external;
+    function test_deploy_hook_forwards_to_the_implementation_when_called_on_a_clone() external;
+    // NOTE: deploy_hook's success path (CREATE2 clone -> initialize_once registration -> HookSpawned event) and its
+    //       CONFIG_MISMATCH / PERMISSIONS rejections all require the CREATE2 clone address to carry the HookAddress BCD
+    //       config AND the exact V4 permission bits. A fully valid hook address costs ~2^38 to mine (24 BCD bits + 14
+    //       permission bits), which is infeasible inside the unit suite. Those paths are exercised by the deploy/mining
+    //       script (see TODO.md "Deploy tooling") against real mined salts. The guards above are address-shape independent
+    //       and cover every deploy_hook branch reachable without a mined address: the implementation/clone forwarding
+    //       split, the already-deployed collision guard, and the invalid-config decode revert.
+
     // ─── Initialize And Liquidity Callback Gates ────────────────────────────────
     function test_before_initialize_allows_only_pool_manager_call_with_nft_sender() external;
     function test_before_initialize_reverts_when_sender_is_not_nft() external;

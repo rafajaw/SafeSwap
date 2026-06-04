@@ -5,11 +5,10 @@ pragma solidity ^0.8.30;
 /**
  * @title ISafeSwapHook
  * @notice Minimal interface for a SafeSwap config hook (an EIP-1167 clone of the audited implementation). Config is decoded
- *         from the clone's own address, so these getters only return meaningful values when called on a clone, not the impl.
+ *         from the clone's own address, so `get_hook_config` reverts when called on the implementation rather than a clone.
  */
 interface ISafeSwapHook {
-    function base_fee_bps( ) external view returns ( uint16 );
-    function rebate_percent( ) external view returns ( uint8 );
+    function get_hook_config( ) external view returns ( uint16 base_fee_bps, uint8 rebate_percent );
     function initialize_once( ) external;
 }
 

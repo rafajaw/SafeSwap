@@ -174,9 +174,6 @@ contract SafeSwapRouterTest is ISafeSwapRouterTests, SafeSwapRealEnv {
 
         uint256 router_fee_before  =  token_out.balanceOf( address(router) );
 
-        vm.roll( block.number + MIN_BOND_EXECUTION_DELAY_IN_BLOCKS + 1 );
-        vm.warp( block.timestamp + MIN_BOND_EXECUTION_DELAY_IN_SECONDS + 1 );
-
         _swap_exact_input({ token_in: token_in, token_out: token_out, amount_in: 1_000 ether });
 
         assertGt( token_out.balanceOf( address(router) ), router_fee_before, "protocol fee should accrue to the router." );

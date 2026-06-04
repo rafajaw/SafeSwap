@@ -56,6 +56,13 @@ abstract contract SafeSwapRealEnv is ChainConfigTestHelper, SafeSwapTestHelper, 
 
     uint256 private _bond_salt;
 
+    // Absolute, monotonic roll/warp counters. After a deep `execute_bond` call the test frame's own `block.number` /
+    // `block.timestamp` read stale (frozen at the transaction's start value) while external calls see the live value, so
+    // a relative `block.number + delay` would roll a second bond back onto its own creation block. We advance these
+    // absolutes instead, seeded once from a fresh read before any bond runs.
+    uint256 private _bond_roll_block;
+    uint256 private _bond_warp_timestamp;
+
 
     // ━━━━  ENVIRONMENT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -67,6 +74,9 @@ abstract contract SafeSwapRealEnv is ChainConfigTestHelper, SafeSwapTestHelper, 
         vm.chainId( 31_337 );
         vm.roll( 100 );
         vm.warp( _DEFAULT_CONFIG_TIMESTAMP + 1 days );
+
+        _bond_roll_block      =  block.number;
+        _bond_warp_timestamp  =  block.timestamp;
 
         _deploy_chain_config( );
 
@@ -167,8 +177,10 @@ abstract contract SafeSwapRealEnv is ChainConfigTestHelper, SafeSwapTestHelper, 
         vm.prank( user );
         bond_route.create_bond{ value: stake_value }( commitment_hash, stake );
 
-        vm.roll( block.number + MIN_BOND_EXECUTION_DELAY_IN_BLOCKS + 1 );
-        vm.warp( block.timestamp + MIN_BOND_EXECUTION_DELAY_IN_SECONDS + 1 );
+        _bond_roll_block      +=  MIN_BOND_EXECUTION_DELAY_IN_BLOCKS + 1;
+        _bond_warp_timestamp  +=  MIN_BOND_EXECUTION_DELAY_IN_SECONDS + 1;
+        vm.roll( _bond_roll_block );
+        vm.warp( _bond_warp_timestamp );
 
         uint256 funding_value  =  _native_funding_total( fundings );
 

@@ -56,15 +56,29 @@
       behaviors already covered. Found and filled one real gap — router `unlockCallback` caller guard
       (`test_unlock_callback_reverts_when_caller_is_not_pool_manager`). Deferred by choice: no fuzz/invariant layer (behaviors
       covered by concrete unit tests); protocol-fee floor exact-threshold boundary not separately pinned.
+- [x] Cover `deploy_hook` + `get_hook_config` in the Hook manifest/suite: impl-call revert, canonical EIP-1167 runtime
+      parity (the codehash gate), already-deployed collision, invalid-config decode revert, and clone→impl forwarding. The
+      success / `CONFIG_MISMATCH` / `PERMISSIONS` paths need a mined valid address and are deferred to the deploy script.
+- [x] Fix `SafeSwapRealEnv._create_and_execute_bond` multi-bond timing: the test frame reads `block.number` / `block.timestamp`
+      stale after a deep BondRoute call, so drive vm.roll/vm.warp from absolute monotonic counters seeded once before any
+      bond. Unblocks tests running ≥2 bonds in a single test body (e.g. `test_protocol_fee_recipient_is_router`). Full suite
+      now 279 passing.
 
 ## Pre-deploy (outstanding)
 
-- [ ] **`SafeSwapHookProxy`** — the real EIP-1167 stub contract + CREATE2 deploy script + published runtime codehash. Tests
-      currently synthesize each config-hook clone via `vm.etch`; the registry validates a codehash that has **no real
-      deployable artifact** behind it yet. Blocks permissionless `(base fee, capture)` hook deployment — the core topology.
-      Once built, swap the test harness off `vm.etch` onto the real proxy.
-- [ ] Deploy tooling: `script/` is empty. Needs the hook-clone CREATE2 deploy + `initialize_once` registration script, and
-      router / NFT / treasury wiring from ChainConfig.
+- [x] **Config-hook deployment** — solved by the self-replicating `SafeSwapHookImpl.deploy_hook(base_fee_bps,
+      rebate_percent, salt)`: deploys the canonical EIP-1167 clone (OZ `Clones`, this impl baked in) at a mined salt,
+      pre-flights BCD config + V4 permission bits (`HookSpawnRejected`), then `initialize_once` registers it. Callable on
+      the impl or any clone (a clone-call forwards to the impl so the canonical code is always baked in). `get_hook_config()`
+      replaces the verb-less getters and reverts on the impl. No separate `SafeSwapHookProxy` artifact needed; the parity
+      test (`test_clone_deploys_exact_canonical_eip1167_runtime_bytecode`) proves the deployed runtime is byte-exact EIP-1167
+      so clones pass the registry `extcodehash` gate. The impl's clone runtime codehash is published once to ChainConfig
+      (`SAFESWAP_HOOK_CODEHASH_KEY`) after the impl is deployed — authorizing the bytecode, not addresses.
+  - [ ] Swap the real-env harness off `vm.etch` onto real `deploy_hook` (needs a mined salt — gated on the deploy tooling).
+- [ ] Deploy tooling: `script/` is empty. Needs the off-chain salt miner (BCD config + exact V4 permission bits, ~2^38 per
+      profile), the per-profile `deploy_hook` call, publishing the impl's clone runtime codehash to ChainConfig, and
+      router / NFT / treasury wiring from ChainConfig. Also the home for `deploy_hook`'s success / `CONFIG_MISMATCH` /
+      `PERMISSIONS` paths that the unit suite can't mine (see `test/Hook/TestManifest.sol` note).
 - [ ] Replace the `CONFIG_SIGNER` placeholder (`0xDeaDbeef…`, flagged in `AUDIT_REPORT.md` / `Definitions.sol`) and publish
       per-chain ChainConfig: V4 PoolManager address + signer for each target chain. (Standing deploy blocker.)
 - [ ] Remove `legacy_tests/` (`safeswap`, `stale_dynamic_fee_rewrite_SafeSwap`) once fully mined for coverage — already

@@ -12,9 +12,12 @@ import {
     DirectImplementationCallForbidden,
     CallerNotPoolManager,
     CallerNotRouter,
-    CallerNotPositionManager
+    CallerNotPositionManager,
+    HookSpawnRejected,
+    SpawnRejection
 } from "@SafeSwapHook/SafeSwapHookImpl.sol";
 import { ISafeSwapHook, ISafeSwapHookRegistry } from "@SafeSwapHook/ISafeSwapHook.sol";
+import { Clones } from "@OpenZeppelin/proxy/Clones.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -167,8 +170,9 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
     function test_clone_getters_decode_base_fee_and_rebate_percent_from_clone_address( )
     external
     {
-        assertEq( ISafeSwapHook(_hook).base_fee_bps( ), 30, "clone should decode base fee from its address." );
-        assertEq( ISafeSwapHook(_hook).rebate_percent( ), 50, "clone should decode rebate percent from its address." );
+        ( uint16 base_fee_bps, uint8 rebate_percent )  =  ISafeSwapHook(_hook).get_hook_config( );
+        assertEq( base_fee_bps, 30, "clone should decode base fee from its address." );
+        assertEq( rebate_percent, 50, "clone should decode rebate percent from its address." );
     }
 
     function test_clone_getters_revert_when_clone_address_does_not_encode_valid_config( )
@@ -178,7 +182,14 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
         _etch_hook_clone( invalid_hook, address(_implementation) );
 
         vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, invalid_hook ) );
-        ISafeSwapHook(invalid_hook).base_fee_bps( );
+        ISafeSwapHook(invalid_hook).get_hook_config( );
+    }
+
+    function test_get_hook_config_reverts_when_called_on_implementation( )
+    external
+    {
+        vm.expectRevert( abi.encodeWithSelector( DirectImplementationCallForbidden.selector, address(_implementation) ) );
+        _implementation.get_hook_config( );
     }
 
     function test_clone_runtime_codehash_is_shared_across_config_instances( )
@@ -242,6 +253,53 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
     {
         vm.expectRevert( abi.encodeWithSelector( DirectImplementationCallForbidden.selector, address(_implementation) ) );
         _implementation.initialize_once( );
+    }
+
+    function test_clone_deploys_exact_canonical_eip1167_runtime_bytecode( )
+    external
+    {
+        // deploy_hook deploys clones with OpenZeppelin's Clones; the registry authorizes keccak256 of the canonical
+        // EIP-1167 runtime. Prove the deployed bytecode is exactly that runtime so spawned hooks pass the codehash gate.
+        address clone               =  Clones.clone( address(_implementation) );
+        bytes memory canonical      =  _eip1167_runtime( address(_implementation) );
+
+        assertEq( clone.code.length, 45, "EIP-1167 runtime is exactly 45 bytes." );
+        assertEq( clone.code, canonical, "clone runtime must be the canonical EIP-1167 bytecode." );
+        assertEq( clone.codehash, keccak256( canonical ), "clone codehash must equal the canonical runtime hash the registry approves." );
+    }
+
+    function test_deploy_hook_reverts_when_a_contract_already_exists_at_the_salt_address( )
+    external
+    {
+        bytes32 salt        =  bytes32( uint256(1) );
+        address predicted   =  Clones.predictDeterministicAddress( address(_implementation), salt, address(_implementation) );
+        _etch_hook_clone( predicted, address(_implementation) );
+
+        vm.expectRevert( abi.encodeWithSelector( HookSpawnRejected.selector, SpawnRejection.ALREADY_EXISTS, predicted, uint16(30), uint8(50) ) );
+        _implementation.deploy_hook( 30, 50, salt );
+    }
+
+    function test_deploy_hook_reverts_when_the_salt_address_is_not_a_valid_hook_config( )
+    external
+    {
+        bytes32 salt        =  bytes32( uint256(1) );
+        address predicted   =  Clones.predictDeterministicAddress( address(_implementation), salt, address(_implementation) );
+
+        vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, predicted ) );
+        _implementation.deploy_hook( 30, 50, salt );
+    }
+
+    function test_deploy_hook_forwards_to_the_implementation_when_called_on_a_clone( )
+    external
+    {
+        // A clone delegatecall must forward to the implementation, so the CREATE2 address is derived from the
+        // implementation, never the clone. Etching at the implementation-derived address proves the forwarding occurred.
+        bytes32 salt        =  bytes32( uint256(1) );
+        address predicted   =  Clones.predictDeterministicAddress( address(_implementation), salt, address(_implementation) );
+        _etch_hook_clone( predicted, address(_implementation) );
+
+        vm.expectRevert( abi.encodeWithSelector( HookSpawnRejected.selector, SpawnRejection.ALREADY_EXISTS, predicted, uint16(30), uint8(50) ) );
+        SafeSwapHookImpl(_hook).deploy_hook( 30, 50, salt );
     }
 
     function test_before_initialize_allows_only_pool_manager_call_with_nft_sender( )
@@ -470,9 +528,12 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
 
     function _etch_hook_clone( address hook, address implementation ) internal
     {
-        bytes memory runtime_code  =  abi.encodePacked( hex"363d3d373d3d3d363d73", implementation, hex"5af43d82803e903d91602b57fd5bf3" );
+        vm.etch( hook, _eip1167_runtime( implementation ) );
+    }
 
-        vm.etch( hook, runtime_code );
+    function _eip1167_runtime( address implementation ) internal pure returns ( bytes memory )
+    {
+        return abi.encodePacked( hex"363d3d373d3d3d363d73", implementation, hex"5af43d82803e903d91602b57fd5bf3" );
     }
 
     function _pool_key( address hook ) internal pure returns ( PoolKey memory )
