@@ -21,7 +21,7 @@
 - [x] Implement `test/Hook/SafeSwapHookImpl.t.sol`.
 - [x] Build the shared real-environment harness (`test/helpers/SafeSwapRealEnv.t.sol`, `TestERC20.t.sol`,
       `ForceCompileV4.sol`): real V4 PoolManager + router + NFT + etched hook clone + real BondRoute. Reused by all suites.
-- [ ] Implement `test/Nft/SafeSwapNft.t.sol` (Tier 2 — focused/edge, mock PoolManager for injected deltas).
+- [x] Implement `test/Nft/SafeSwapNft.t.sol` (Tier 2 — focused/edge, mock PoolManager for injected deltas).
   - [x] Constructor, receive policy, create-position, create quote/signing slice.
   - [x] Add-liquidity authorization and execution.
   - [x] Remove-liquidity and collect-fees execution.
@@ -37,9 +37,9 @@
 - [x] Implement `test/Router/User.t.sol` (Tier 2 — exact-input/output edge behavior, quoter, pool id, and BondRoute integration per `IUserSwapTests`).
 - [x] Implement `test/Router/PathFairness.t.sol` (real adjacent ranges: dynamic fee increases feeGrowthInside for crossed
       and final liquidity, fee growth follows served path length, both swap directions, raw V4 donate snapshot contrast).
-- [ ] Implement focused mocks under `test/mocks` only where real dependencies are impractical for the edge case.
-- [ ] Run each suite subset independently. Common (incl. SwapSimulator), Hook, Nft (both tiers), and Router
+- [x] Implement focused mocks under `test/mocks` only where real dependencies are impractical for the edge case.
+- [x] Run each suite subset independently. Common (incl. SwapSimulator), Hook, Nft (both tiers), and Router
       HookRegistry / SafeSwapRouter / User Tier 2 / workflow suites (UserSwap + PathFairness) are green.
       NOTE: `forge test --match-path` cold-compiles sparsely and skips the string-referenced `ForceCompileV4.sol` (deployCode); run a full `forge test` or `forge build` first for suites that deploy real V4.
-- [ ] Run the full active test suite.
+- [x] Run the full active test suite. (12 suites, 265 tests passed, 0 failed.)
 - [ ] Use archived legacy tests as a final coverage checklist.
