@@ -5,10 +5,10 @@
   "type": "module",
   "main": "./dist/SafeSwap.js",
   "module": "./dist/SafeSwap.js",
-  "types": "./dist/SafeSwap.d.ts",
+  "types": "./dist/sdk/SafeSwap.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/SafeSwap.d.ts",
+      "types": "./dist/sdk/SafeSwap.d.ts",
       "import": "./dist/SafeSwap.js",
       "default": "./dist/SafeSwap.js"
     },

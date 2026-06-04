@@ -1,73 +1,122 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, test } from "bun:test";
-import { encodeErrorResult, type Address, type Hex } from "viem";
+import { encodeErrorResult, encodeEventTopics, type Address, type Hex } from "viem";
 import { BONDROUTE_ADDRESS, NATIVE_TOKEN } from "@bondroute/sdk";
-import { SAFESWAP_ABI, SafeSwap, explain_safeswap_revert, parse_safeswap_revert } from "../SafeSwap";
+import {
+    SAFESWAP_ABI,
+    SAFESWAP_NFT_ABI,
+    SafeSwap,
+    SafeSwapSwaps,
+    SafeSwapPositions,
+    explain_safeswap_revert,
+    parse_safeswap_revert,
+} from "../SafeSwap";
 
 const USER        =  "0x1111111111111111111111111111111111111111" as const;
-const SAFESWAP    =  "0x2222222222222222222222222222222222222222" as const;
+const ROUTER      =  "0x2222222222222222222222222222222222222222" as const;
+const NFT         =  "0x7777777777777777777777777777777777777777" as const;
 const BONDROUTE   =  "0x3333333333333333333333333333333333333333" as const;
 const TOKEN_IN    =  "0x4444444444444444444444444444444444444444" as const;
 const TOKEN_OUT   =  "0x5555555555555555555555555555555555555555" as const;
 const TOKEN_OTHER =  "0x6666666666666666666666666666666666666666" as const;
 
+const POOL_INFO  =  { base_fee_bps: 30, rebate_percent: 50, tick_spacing: 60 } as const;
+
 function make_sdk_clients( balances?: Record<string, bigint> )
 {
-    const quote_calls: Array<{ address: Address, args: readonly unknown[] }> = [];
-    const balance_reads: Address[] = [];
+    const quote_calls: Array<{ address: Address, functionName: string, args: readonly unknown[] }> = [];
+    const view_calls: Array<{ address: Address, functionName: string, args: readonly unknown[] }> = [];
+
     const public_client = {
         getChainId: async () => 1,
         getBalance: async () => balances?.[ NATIVE_TOKEN.toLowerCase() ] ?? 0n,
         readContract: async ( request: { address: Address, functionName?: string, args?: readonly unknown[] } ) => {
-            if(  request.functionName === "balanceOf"  )
-        {
-            balance_reads.push( request.address );
-            return balances?.[ request.address.toLowerCase() ] ?? 0n;
-        }
-            if(  request.functionName === "decimals"  )  return request.address === TOKEN_IN  ?  6  :  18;
-            if(  request.functionName === "symbol"  )    return request.address === TOKEN_IN  ?  "USDC"  :  "WETH";
-
+            const fn    =  request.functionName ?? "";
             const args  =  request.args ?? [];
-            quote_calls.push({ address: request.address, args });
-            return [
-                { token: args[ 1 ] as Address, amount: 10n },
-                args[ 2 ],
-                3n,
-                2n,
-                3600n,
-                { min: 0n, max: 0n },
-                { min: 0n, max: 0n },
-            ];
+
+            if(  fn === "balanceOf"  )  return balances?.[ request.address.toLowerCase() ] ?? 0n;
+            if(  fn === "decimals"  )   return request.address === TOKEN_IN  ?  6  :  18;
+            if(  fn === "symbol"  )     return request.address === TOKEN_IN  ?  "USDC"  :  "WETH";
+
+            if(  fn === "BondRoute_quote_call"  )
+            {
+                quote_calls.push({ address: request.address, functionName: fn, args });
+                return [
+                    { token: args[ 1 ] as Address, amount: 10n },    // min_stake (echoes preferred_stake)
+                    args[ 2 ],                                        // min_fundings (echoes preferred_fundings)
+                    3n, 2n, 3600n,
+                    { min: 0n, max: 0n },
+                    { min: 0n, max: 0n },
+                ];
+            }
+
+            view_calls.push({ address: request.address, functionName: fn, args });
+
+            if(  fn === "__OFF_CHAIN__quote_swap_exact_input"  )   return [ 990n, 3050, 12n ];
+            if(  fn === "__OFF_CHAIN__quote_swap_exact_output"  )  return [ 1010n, 3050, 12n ];
+            if(  fn === "__OFF_CHAIN__get_pool_id"  )             return "0xabc0000000000000000000000000000000000000000000000000000000000def";
+            if(  fn === "get_hook"  )                             return TOKEN_OTHER;
+            if(  fn === "get_lp_position"  )
+            {
+                return {
+                    hook:           TOKEN_OTHER,
+                    token0:         TOKEN_IN,
+                    token1:         TOKEN_OUT,
+                    base_fee_bps:   30,
+                    rebate_percent: 50,
+                    tick_spacing:   60,
+                    tick_lower:     -60,
+                    tick_upper:     60,
+                };
+            }
+            if(  fn === "__OFF_CHAIN__get_position_info"  )  return [ 100n, 7n, 9n ];
+
+            throw new Error( `unexpected readContract: ${ fn }` );
         },
     };
     const wallet_client = {};
-    return { public_client, wallet_client, quote_calls, balance_reads };
+    return { public_client, wallet_client, quote_calls, view_calls };
 }
 
-describe( "SafeSwap address overrides", () => {
+async function make_sdk( balances?: Record<string, bigint> )
+{
+    const clients  =  make_sdk_clients( balances );
+    const safeswap  =  await SafeSwap.init({
+        public_client: clients.public_client as any,
+        wallet_client: clients.wallet_client as any,
+        account: USER,
+        storage: "memory",
+        router_address: ROUTER,
+        nft_address: NFT,
+        bondroute_address: BONDROUTE,
+        on_pending_bond: () => {},
+    });
+    return { safeswap, ...clients };
+}
 
-    test( "uses configured SafeSwap and BondRoute addresses when preparing a bond", async () => {
-        const { public_client, wallet_client, quote_calls } = make_sdk_clients();
-        const safeswap = await SafeSwap.init({
+
+describe( "SafeSwap.init", () => {
+
+    test( "exposes swaps and positions surfaces bound to the configured addresses", async () => {
+        const { safeswap } = await make_sdk();
+
+        expect( safeswap.swaps ).toBeInstanceOf( SafeSwapSwaps );
+        expect( safeswap.positions ).toBeInstanceOf( SafeSwapPositions );
+        expect( safeswap.swaps.router_address ).toBe( ROUTER );
+        expect( safeswap.positions.nft_address ).toBe( NFT );
+    });
+
+    test( "throws when the router address is left unconfigured", async () => {
+        const { public_client, wallet_client } = make_sdk_clients();
+        await expect( SafeSwap.init({
             public_client: public_client as any,
             wallet_client: wallet_client as any,
             account: USER,
             storage: "memory",
-            safeswap_address: SAFESWAP,
-            bondroute_address: BONDROUTE,
+            nft_address: NFT,
             on_pending_bond: () => {},
-        });
-
-        const bond = await safeswap.prepare_swap_exact_input({
-            input: { token: TOKEN_IN, exact_amount: 100n },
-            output: { token: TOKEN_OUT, minimum_amount: 1n },
-            pool_info: { fee: 3000, tick_spacing: 60 },
-        });
-
-        expect( quote_calls[0]?.address ).toBe( SAFESWAP );
-        expect( bond.execution_data.protocol ).toBe( SAFESWAP );
-        expect( bond.bondroute ).toBe( BONDROUTE );
+        })).rejects.toThrow( "router_address is not configured." );
     });
 
     test( "defaults to the canonical BondRoute address when not overridden", async () => {
@@ -77,298 +126,331 @@ describe( "SafeSwap address overrides", () => {
             wallet_client: wallet_client as any,
             account: USER,
             storage: "memory",
-            safeswap_address: SAFESWAP,
+            router_address: ROUTER,
+            nft_address: NFT,
             on_pending_bond: () => {},
         });
 
-        const bond = await safeswap.prepare_remove_liquidity({
-            pool_info: { fee: 3000, tick_spacing: 60 },
-            tick_lower: -60,
-            tick_upper: 60,
-            liquidity: 1n,
-            a: { token: TOKEN_IN, minimum_received: 0n },
-            b: { token: TOKEN_OUT, minimum_received: 0n },
+        const bond = await safeswap.swaps.prepare_swap_exact_input({
+            input: { token: TOKEN_IN, exact_amount: 100n },
+            output: { token: TOKEN_OUT, minimum_amount: 1n },
+            pool_info: POOL_INFO,
         });
 
         expect( bond.bondroute ).toBe( BONDROUTE_ADDRESS );
     });
 });
 
-describe( "SafeSwap operation descriptions", () => {
 
-    test( "lazily renders a prepared swap description with token metadata", async () => {
-        const { public_client, wallet_client } = make_sdk_clients();
-        const safeswap = await SafeSwap.init({
-            public_client: public_client as any,
-            wallet_client: wallet_client as any,
-            account: USER,
-            storage: "memory",
-            safeswap_address: SAFESWAP,
-            on_pending_bond: () => {},
-        });
+describe( "SafeSwapSwaps", () => {
 
-        const operation = await safeswap.prepare_swap_exact_input({
+    test( "prepares an exact-input swap bonded to the router with a single funding", async () => {
+        const { safeswap, quote_calls } = await make_sdk();
+
+        const op = await safeswap.swaps.prepare_swap_exact_input({
             input: { token: TOKEN_IN, exact_amount: 1_000_000n },
-            output: { token: TOKEN_OUT, minimum_amount: 390_000_000_000_000_000n },
-            pool_info: { fee: 3000, tick_spacing: 60 },
+            output: { token: TOKEN_OUT, minimum_amount: 1n },
+            pool_info: POOL_INFO,
         });
 
-        expect( operation.kind ).toBe( "swap_exact_input" );
-        expect( await operation.render_description() ).toBe( "Swap exactly 1 USDC for at least 0.39 WETH." );
+        expect( op.kind ).toBe( "swap_exact_input" );
+        expect( op.execution_data.protocol ).toBe( ROUTER );
+        expect( quote_calls[0]?.address ).toBe( ROUTER );
+        expect( op.execution_data.fundings ).toEqual( [{ token: TOKEN_IN, amount: 1_000_000n }] );
+        expect( await op.render_description() ).toBe( "Swap exactly 1 USDC for at least 0.000000000000000001 WETH." );
     });
 
-    test( "propagates token metadata errors while rendering descriptions", async () => {
-        const { public_client, wallet_client } = make_sdk_clients();
-        const failing_public_client = {
-            ...public_client,
-            readContract: async ( request: { functionName?: string } ) => {
-                if(  request.functionName === "decimals"  )  throw new Error( "metadata unavailable" );
-                return await public_client.readContract( request as any );
-            },
-        };
-        const safeswap = await SafeSwap.init({
-            public_client: failing_public_client as any,
-            wallet_client: wallet_client as any,
-            account: USER,
-            storage: "memory",
-            safeswap_address: SAFESWAP,
-            on_pending_bond: () => {},
+    test( "prepares an exact-output swap funding the maximum input", async () => {
+        const { safeswap } = await make_sdk();
+
+        const op = await safeswap.swaps.prepare_swap_exact_output({
+            input: { token: TOKEN_IN, maximum_amount: 1_100_000n },
+            output: { token: TOKEN_OUT, exact_amount: 400_000_000_000_000_000n },
+            pool_info: POOL_INFO,
         });
 
-        const operation = await safeswap.prepare_swap_exact_input({
-            input: { token: TOKEN_IN, exact_amount: 1_000_000n },
-            output: { token: TOKEN_OUT, minimum_amount: 390_000_000_000_000_000n },
-            pool_info: { fee: 3000, tick_spacing: 60 },
-        });
-
-        await expect( operation.render_description() ).rejects.toThrow( "metadata unavailable" );
+        expect( op.kind ).toBe( "swap_exact_output" );
+        expect( op.execution_data.fundings ).toEqual( [{ token: TOKEN_IN, amount: 1_100_000n }] );
+        expect( await op.render_description() ).toBe( "Swap up to 1.1 USDC for exactly 0.4 WETH." );
     });
-});
 
-describe( "SafeSwap parameter validation", () => {
+    test( "quotes exact input against the router's off-chain quoter", async () => {
+        const { safeswap, view_calls } = await make_sdk();
 
-    test( "rejects same-token swaps before quote", async () => {
-        const { public_client, wallet_client, quote_calls } = make_sdk_clients();
-        const safeswap = await SafeSwap.init({
-            public_client: public_client as any,
-            wallet_client: wallet_client as any,
-            account: USER,
-            storage: "memory",
-            safeswap_address: SAFESWAP,
-            on_pending_bond: () => {},
+        const quote = await safeswap.swaps.quote_swap_exact_input({
+            token_in: TOKEN_IN, token_out: TOKEN_OUT, pool_info: POOL_INFO, amount_in: 1_000_000n,
         });
 
-        await expect( safeswap.prepare_swap_exact_input({
+        expect( quote ).toEqual({ expected_net_output: 990n, total_fee_pips: 3050, movement_bps: 12n });
+        expect( view_calls[0]?.functionName ).toBe( "__OFF_CHAIN__quote_swap_exact_input" );
+        expect( view_calls[0]?.address ).toBe( ROUTER );
+    });
+
+    test( "quotes exact output against the router's off-chain quoter", async () => {
+        const { safeswap } = await make_sdk();
+
+        const quote = await safeswap.swaps.quote_swap_exact_output({
+            token_in: TOKEN_IN, token_out: TOKEN_OUT, pool_info: POOL_INFO, exact_output_amount: 1_000n,
+        });
+
+        expect( quote ).toEqual({ required_input: 1010n, total_fee_pips: 3050, movement_bps: 12n });
+    });
+
+    test( "resolves a pool id and a registered hook", async () => {
+        const { safeswap, view_calls } = await make_sdk();
+
+        const pool_id = await safeswap.swaps.get_pool_id( TOKEN_OUT, TOKEN_IN, POOL_INFO );
+        const hook    = await safeswap.swaps.get_hook( 30, 50 );
+
+        expect( pool_id.startsWith( "0xabc" ) ).toBe( true );
+        expect( hook ).toBe( TOKEN_OTHER );
+        expect( view_calls.map( ( c ) => c.functionName ) ).toEqual( [ "__OFF_CHAIN__get_pool_id", "get_hook" ] );
+    });
+
+    test( "rejects same-token swaps before quoting", async () => {
+        const { safeswap, quote_calls } = await make_sdk();
+
+        await expect( safeswap.swaps.prepare_swap_exact_input({
             input: { token: TOKEN_IN, exact_amount: 100n },
             output: { token: TOKEN_IN, minimum_amount: 1n },
-            pool_info: { fee: 3000, tick_spacing: 60 },
+            pool_info: POOL_INFO,
         })).rejects.toThrow( "swap tokens must be different." );
 
         expect( quote_calls.length ).toBe( 0 );
     });
 
-    test( "rejects invalid tick ranges before quote", async () => {
-        const { public_client, wallet_client, quote_calls } = make_sdk_clients();
-        const safeswap = await SafeSwap.init({
-            public_client: public_client as any,
-            wallet_client: wallet_client as any,
-            account: USER,
-            storage: "memory",
-            safeswap_address: SAFESWAP,
-            on_pending_bond: () => {},
-        });
+    test( "rejects a capture share that is not a 10% step before quoting", async () => {
+        const { safeswap, quote_calls } = await make_sdk();
 
-        await expect( safeswap.prepare_remove_liquidity({
-            pool_info: { fee: 3000, tick_spacing: 60 },
-            tick_lower: 60,
-            tick_upper: 60,
-            liquidity: 1n,
-            a: { token: TOKEN_IN, minimum_received: 0n },
-            b: { token: TOKEN_OUT, minimum_received: 0n },
-        })).rejects.toThrow( "tick_lower must be less than tick_upper." );
+        await expect( safeswap.swaps.prepare_swap_exact_input({
+            input: { token: TOKEN_IN, exact_amount: 100n },
+            output: { token: TOKEN_OUT, minimum_amount: 1n },
+            pool_info: { base_fee_bps: 30, rebate_percent: 55, tick_spacing: 60 },
+        })).rejects.toThrow( "pool_info.rebate_percent must be a multiple of 10 between 0 and 90." );
 
         expect( quote_calls.length ).toBe( 0 );
     });
-});
 
-describe( "SafeSwap preferred stake token", () => {
+    test( "rejects an out-of-range base fee before quoting", async () => {
+        const { safeswap } = await make_sdk();
 
-    test( "auto-selects token0 when omitted add-liquidity stake preference has no better candidate", async () => {
-        const { public_client, wallet_client, quote_calls } = make_sdk_clients();
-        const safeswap = await SafeSwap.init({
-            public_client: public_client as any,
-            wallet_client: wallet_client as any,
-            account: USER,
-            storage: "memory",
-            safeswap_address: SAFESWAP,
-            on_pending_bond: () => {},
-        });
-
-        await safeswap.prepare_add_liquidity({
-            a: { token: TOKEN_OUT, amount: 200n, minimum_added: 0n },
-            b: { token: TOKEN_IN, amount: 100n, minimum_added: 0n },
-            pool_info: { fee: 3000, tick_spacing: 60 },
-            tick_lower: -60,
-            tick_upper: 60,
-        });
-
-        expect( quote_calls[0]?.args[1] ).toBe( TOKEN_IN );
-        expect( quote_calls[1]?.args[1] ).toBe( TOKEN_OUT );
+        await expect( safeswap.swaps.prepare_swap_exact_input({
+            input: { token: TOKEN_IN, exact_amount: 100n },
+            output: { token: TOKEN_OUT, minimum_amount: 1n },
+            pool_info: { base_fee_bps: 1000, rebate_percent: 50, tick_spacing: 60 },
+        })).rejects.toThrow( "pool_info.base_fee_bps must be a whole number of basis points between 0 and 999." );
     });
 
-    test( "passes preferred stake token through for add liquidity", async () => {
-        const { public_client, wallet_client, quote_calls } = make_sdk_clients();
+    test( "propagates token metadata errors while rendering descriptions", async () => {
+        const clients = make_sdk_clients();
+        const failing_public_client = {
+            ...clients.public_client,
+            readContract: async ( request: { functionName?: string } ) => {
+                if(  request.functionName === "decimals"  )  throw new Error( "metadata unavailable" );
+                return await clients.public_client.readContract( request as any );
+            },
+        };
         const safeswap = await SafeSwap.init({
-            public_client: public_client as any,
-            wallet_client: wallet_client as any,
+            public_client: failing_public_client as any,
+            wallet_client: clients.wallet_client as any,
             account: USER,
             storage: "memory",
-            safeswap_address: SAFESWAP,
+            router_address: ROUTER,
+            nft_address: NFT,
             on_pending_bond: () => {},
         });
 
-        await safeswap.prepare_add_liquidity({
-            a: { token: TOKEN_IN, amount: 100n, minimum_added: 0n },
-            b: { token: TOKEN_OUT, amount: 200n, minimum_added: 0n },
-            pool_info: { fee: 3000, tick_spacing: 60 },
-            tick_lower: -60,
-            tick_upper: 60,
+        const op = await safeswap.swaps.prepare_swap_exact_input({
+            input: { token: TOKEN_IN, exact_amount: 1_000_000n },
+            output: { token: TOKEN_OUT, minimum_amount: 1n },
+            pool_info: POOL_INFO,
+        });
+
+        await expect( op.render_description() ).rejects.toThrow( "metadata unavailable" );
+    });
+});
+
+
+describe( "SafeSwapPositions stake-token selection", () => {
+
+    test( "auto-quotes both pool tokens when no stake preference is given for create", async () => {
+        const { safeswap, quote_calls } = await make_sdk();
+
+        await safeswap.positions.prepare_create_position({
+            pool_info: POOL_INFO,
+            tick_lower: -60, tick_upper: 60,
+            liquidity: 1n,
+            sqrt_price_x96: 79228162514264337593543950336n,
+            a: { token: TOKEN_OUT, amount: 200n, minimum_deposited: 0n },
+            b: { token: TOKEN_IN, amount: 100n, minimum_deposited: 0n },
+        });
+
+        expect( quote_calls.length ).toBe( 2 );
+        expect( quote_calls[0]?.args[1] ).toBe( TOKEN_IN );    // token0 by address order
+        expect( quote_calls[1]?.args[1] ).toBe( TOKEN_OUT );   // token1 by address order
+        expect( quote_calls.every( ( c ) => c.address === NFT ) ).toBe( true );
+    });
+
+    test( "passes an explicit stake preference through for create with a single quote", async () => {
+        const { safeswap, quote_calls } = await make_sdk();
+
+        const op = await safeswap.positions.prepare_create_position({
+            pool_info: POOL_INFO,
+            tick_lower: -60, tick_upper: 60,
+            liquidity: 1n,
+            sqrt_price_x96: 79228162514264337593543950336n,
+            a: { token: TOKEN_IN, amount: 100n, minimum_deposited: 0n },
+            b: { token: TOKEN_OUT, amount: 200n, minimum_deposited: 0n },
             preferred_stake_token: TOKEN_OUT,
         });
 
+        expect( op.kind ).toBe( "create_position" );
+        expect( quote_calls.length ).toBe( 1 );
         expect( quote_calls[0]?.args[1] ).toBe( TOKEN_OUT );
     });
 
-    test( "auto-selects token1 for remove liquidity when only token1 stake is affordable", async () => {
-        const { public_client, wallet_client, quote_calls } = make_sdk_clients({
+    test( "auto-selects the only affordable stake token for remove liquidity", async () => {
+        const { safeswap, quote_calls } = await make_sdk({
             [ TOKEN_IN.toLowerCase() ]: 0n,
             [ TOKEN_OUT.toLowerCase() ]: 10n,
         });
-        const safeswap = await SafeSwap.init({
-            public_client: public_client as any,
-            wallet_client: wallet_client as any,
-            account: USER,
-            storage: "memory",
-            safeswap_address: SAFESWAP,
-            on_pending_bond: () => {},
-        });
 
-        const bond = await safeswap.prepare_remove_liquidity({
-            pool_info: { fee: 3000, tick_spacing: 60 },
-            tick_lower: -60,
-            tick_upper: 60,
+        const op = await safeswap.positions.prepare_remove_liquidity({
+            token_id: 1n,
             liquidity: 1n,
             a: { token: TOKEN_OUT, minimum_received: 0n },
             b: { token: TOKEN_IN, minimum_received: 0n },
         });
 
-        expect( bond.execution_data.stake.token ).toBe( TOKEN_OUT );
+        expect( op.execution_data.stake.token ).toBe( TOKEN_OUT );
         expect( quote_calls[0]?.args[1] ).toBe( TOKEN_IN );
         expect( quote_calls[1]?.args[1] ).toBe( TOKEN_OUT );
+        expect( op.execution_data.fundings ).toEqual( [] );
     });
 
-    test( "passes preferred stake token through for remove liquidity", async () => {
-        const { public_client, wallet_client, quote_calls } = make_sdk_clients();
-        const safeswap = await SafeSwap.init({
-            public_client: public_client as any,
-            wallet_client: wallet_client as any,
-            account: USER,
-            storage: "memory",
-            safeswap_address: SAFESWAP,
-            on_pending_bond: () => {},
-        });
-
-        await safeswap.prepare_remove_liquidity({
-            pool_info: { fee: 3000, tick_spacing: 60 },
-            tick_lower: -60,
-            tick_upper: 60,
-            liquidity: 1n,
-            a: { token: TOKEN_IN, minimum_received: 0n },
-            b: { token: TOKEN_OUT, minimum_received: 0n },
-            preferred_stake_token: TOKEN_OUT,
-        });
-
-        expect( quote_calls[0]?.args[1] ).toBe( TOKEN_OUT );
-    });
-
-    test( "auto-selects native stake token when both donate candidates are affordable", async () => {
-        const { public_client, wallet_client, quote_calls } = make_sdk_clients({
+    test( "prefers native stake when both collect-fees candidates are affordable", async () => {
+        const { safeswap } = await make_sdk({
             [ NATIVE_TOKEN.toLowerCase() ]: 1_000n,
             [ TOKEN_OUT.toLowerCase() ]: 1_000n,
         });
-        const safeswap = await SafeSwap.init({
-            public_client: public_client as any,
-            wallet_client: wallet_client as any,
-            account: USER,
-            storage: "memory",
-            safeswap_address: SAFESWAP,
-            on_pending_bond: () => {},
+
+        const op = await safeswap.positions.prepare_collect_fees({
+            token_id: 1n,
+            a: { token: TOKEN_OUT, minimum_received: 0n },
+            b: { token: NATIVE_TOKEN, minimum_received: 0n },
         });
 
-        const bond = await safeswap.prepare_donate({
-            a: { token: TOKEN_OUT, amount: 200n },
-            b: { token: NATIVE_TOKEN, amount: 100n },
-            pool_info: { fee: 3000, tick_spacing: 60 },
-        });
-
-        expect( bond.execution_data.stake.token ).toBe( NATIVE_TOKEN );
-        expect( quote_calls[0]?.args[1] ).toBe( NATIVE_TOKEN );
-        expect( quote_calls[1]?.args[1] ).toBe( TOKEN_OUT );
+        expect( op.kind ).toBe( "collect_fees" );
+        expect( op.execution_data.stake.token ).toBe( NATIVE_TOKEN );
     });
 
-    test( "passes preferred stake token through for donate", async () => {
-        const { public_client, wallet_client, quote_calls } = make_sdk_clients();
-        const safeswap = await SafeSwap.init({
-            public_client: public_client as any,
-            wallet_client: wallet_client as any,
-            account: USER,
-            storage: "memory",
-            safeswap_address: SAFESWAP,
-            on_pending_bond: () => {},
-        });
+    test( "passes an explicit stake preference through for add liquidity", async () => {
+        const { safeswap, quote_calls } = await make_sdk();
 
-        await safeswap.prepare_donate({
-            a: { token: TOKEN_IN, amount: 100n },
-            b: { token: TOKEN_OUT, amount: 200n },
-            pool_info: { fee: 3000, tick_spacing: 60 },
+        await safeswap.positions.prepare_add_liquidity({
+            token_id: 1n,
+            liquidity: 1n,
+            a: { token: TOKEN_IN, amount: 100n, minimum_deposited: 0n },
+            b: { token: TOKEN_OUT, amount: 200n, minimum_deposited: 0n },
             preferred_stake_token: TOKEN_OUT,
         });
 
+        expect( quote_calls.length ).toBe( 1 );
         expect( quote_calls[0]?.args[1] ).toBe( TOKEN_OUT );
     });
 
-    test( "rejects unexpected preferred stake token before quote", async () => {
-        const { public_client, wallet_client, quote_calls } = make_sdk_clients();
-        const safeswap = await SafeSwap.init({
-            public_client: public_client as any,
-            wallet_client: wallet_client as any,
-            account: USER,
-            storage: "memory",
-            safeswap_address: SAFESWAP,
-            on_pending_bond: () => {},
-        });
+    test( "rejects an unexpected stake preference before quoting", async () => {
+        const { safeswap, quote_calls } = await make_sdk();
 
-        expect( safeswap.prepare_add_liquidity({
-            a: { token: TOKEN_IN, amount: 100n, minimum_added: 0n },
-            b: { token: TOKEN_OUT, amount: 200n, minimum_added: 0n },
-            pool_info: { fee: 3000, tick_spacing: 60 },
-            tick_lower: -60,
-            tick_upper: 60,
+        await expect( safeswap.positions.prepare_add_liquidity({
+            token_id: 1n,
+            liquidity: 1n,
+            a: { token: TOKEN_IN, amount: 100n, minimum_deposited: 0n },
+            b: { token: TOKEN_OUT, amount: 200n, minimum_deposited: 0n },
             preferred_stake_token: TOKEN_OTHER,
         })).rejects.toThrow( "preferred_stake_token must be one of the SafeSwap pool tokens." );
 
         expect( quote_calls.length ).toBe( 0 );
     });
+
+    test( "rejects misaligned ticks for create before quoting", async () => {
+        const { safeswap, quote_calls } = await make_sdk();
+
+        await expect( safeswap.positions.prepare_create_position({
+            pool_info: POOL_INFO,
+            tick_lower: -61, tick_upper: 60,
+            liquidity: 1n,
+            sqrt_price_x96: 79228162514264337593543950336n,
+            a: { token: TOKEN_IN, amount: 100n, minimum_deposited: 0n },
+            b: { token: TOKEN_OUT, amount: 200n, minimum_deposited: 0n },
+        })).rejects.toThrow( "tick_lower must be aligned to pool_info.tick_spacing." );
+
+        expect( quote_calls.length ).toBe( 0 );
+    });
 });
+
+
+describe( "SafeSwapPositions getters", () => {
+
+    test( "reads and normalizes immutable position metadata", async () => {
+        const { safeswap } = await make_sdk();
+
+        const info = await safeswap.positions.get_lp_position( 1n );
+
+        expect( info ).toEqual({
+            hook:           TOKEN_OTHER,
+            token0:         TOKEN_IN,
+            token1:         TOKEN_OUT,
+            base_fee_bps:   30,
+            rebate_percent: 50,
+            tick_spacing:   60,
+            tick_lower:     -60,
+            tick_upper:     60,
+        });
+    });
+
+    test( "reads live position state from the pool manager", async () => {
+        const { safeswap } = await make_sdk();
+
+        const state = await safeswap.positions.get_position_state( "0xabc" as Hex, 1n, -60, 60 );
+
+        expect( state ).toEqual({
+            liquidity:                     100n,
+            fee_growth_inside_0_last_x128: 7n,
+            fee_growth_inside_1_last_x128: 9n,
+        });
+    });
+
+    test( "decodes the minted token id from create-position execution logs", async () => {
+        const { safeswap } = await make_sdk();
+
+        const topics = encodeEventTopics({
+            abi: SAFESWAP_NFT_ABI,
+            eventName: "Transfer",
+            args: { from: NATIVE_TOKEN, to: USER, tokenId: 42n },
+        });
+
+        const settled_operation = {
+            status: "executed",
+            execution_logs: [{ address: NFT, data: "0x", topics }],
+        } as any;
+
+        expect( safeswap.positions.get_minted_token_id( settled_operation ) ).toBe( 42n );
+    });
+
+    test( "returns null for the minted token id of an unsettled operation", async () => {
+        const { safeswap } = await make_sdk();
+        const active_operation = { status: "active", execution_logs: [] } as any;
+
+        expect( safeswap.positions.get_minted_token_id( active_operation ) ).toBeNull();
+    });
+});
+
 
 describe( "parse_safeswap_revert", () => {
 
-    test( "parses bundled SafeSwap custom errors", () => {
-        const output = encodeErrorResult({
-            abi: SAFESWAP_ABI,
-            errorName: "SlippageExceeded",
-            args: [ 10n, 11n ],
-        });
+    test( "parses a slippage revert", () => {
+        const output = encodeErrorResult({ abi: SAFESWAP_ABI, errorName: "SlippageExceeded", args: [ 10n, 11n ] });
 
         const parsed = parse_safeswap_revert( output as Hex );
         expect( parsed.kind ).toBe( "slippage_exceeded" );
@@ -380,6 +462,33 @@ describe( "parse_safeswap_revert", () => {
         }
     });
 
+    test( "parses a hook-config-not-registered revert", () => {
+        const output = encodeErrorResult({ abi: SAFESWAP_ABI, errorName: "HookConfigNotRegistered", args: [ 30, 50 ] });
+
+        const parsed = parse_safeswap_revert( output as Hex );
+        expect( parsed.kind ).toBe( "hook_config_not_registered" );
+        if(  parsed.kind === "hook_config_not_registered"  )
+        {
+            expect( parsed.base_fee_bps ).toBe( 30 );
+            expect( parsed.rebate_percent ).toBe( 50 );
+        }
+    });
+
+    test( "parses a maximum-input-exceeded revert", () => {
+        const output = encodeErrorResult({ abi: SAFESWAP_ABI, errorName: "MaximumInputExceeded", args: [ 120n, 100n ] });
+
+        const parsed = parse_safeswap_revert( output as Hex );
+        expect( parsed.kind ).toBe( "maximum_input_exceeded" );
+    });
+
+    test( "parses a position-unauthorized revert", () => {
+        const output = encodeErrorResult({ abi: SAFESWAP_ABI, errorName: "PositionUnauthorized", args: [ 1n, USER, TOKEN_OUT ] });
+
+        const parsed = parse_safeswap_revert( output as Hex );
+        expect( parsed.kind ).toBe( "position_unauthorized" );
+        if(  parsed.kind === "position_unauthorized"  )  expect( parsed.token_id ).toBe( 1n );
+    });
+
     test( "returns an unknown shape for unknown revert data", () => {
         expect( parse_safeswap_revert( "0xdeadbeef" ) ).toEqual({
             kind:        "unknown",
@@ -388,14 +497,11 @@ describe( "parse_safeswap_revert", () => {
     });
 });
 
+
 describe( "explain_safeswap_revert", () => {
 
-    test( "explains bundled SafeSwap custom errors", () => {
-        const output = encodeErrorResult({
-            abi: SAFESWAP_ABI,
-            errorName: "SlippageExceeded",
-            args: [ 10n, 11n ],
-        });
+    test( "explains a bundled SafeSwap custom error", () => {
+        const output = encodeErrorResult({ abi: SAFESWAP_ABI, errorName: "SlippageExceeded", args: [ 10n, 11n ] });
 
         expect( explain_safeswap_revert( output as Hex ) ).toBe( "SafeSwap slippage check failed: received 10, required at least 11." );
     });
