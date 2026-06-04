@@ -105,6 +105,9 @@ interface IUserSwapTests {
     function test_swap_exact_output_handles_native_output() external;
     function test_swap_exact_output_rounds_protocol_fee_without_underpaying_user() external;
 
+    // ─── Unlock Callback Gate ───────────────────────────────────────────────────
+    function test_unlock_callback_reverts_when_caller_is_not_pool_manager() external;
+
     // ─── Quoter ────────────────────────────────────────────────────────────────
     function test_quote_exact_input_uses_same_base_fee_simulation_as_hook() external;
     function test_quote_exact_input_reverts_when_amount_exceeds_int256_max() external;

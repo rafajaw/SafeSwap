@@ -24,6 +24,7 @@ import {
     IERC20,
     NATIVE_TOKEN,
     TokenAmount,
+    Unauthorized,
     UnsupportedCall
 } from "@BondRouteProtected/BondRouteProtected.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
@@ -543,6 +544,18 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         _execute_exact_output( IERC20(address(_token0)), IERC20(address(_token1)), 1, _AMOUNT_IN );
 
         assertEq( _mock_pool_manager.take_amount_by_recipient(_USER), 1, "rounding should not underpay the exact user output." );
+    }
+
+
+    // ━━━━  UNLOCK CALLBACK GATE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function test_unlock_callback_reverts_when_caller_is_not_pool_manager( )
+    external
+    {
+        _set_up_mock_env( );
+
+        vm.expectRevert( abi.encodeWithSelector( Unauthorized.selector, address(this), address(_mock_pool_manager) ) );
+        _mock_router.unlockCallback( "" );
     }
 
 

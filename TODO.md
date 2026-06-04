@@ -41,5 +41,9 @@
 - [x] Run each suite subset independently. Common (incl. SwapSimulator), Hook, Nft (both tiers), and Router
       HookRegistry / SafeSwapRouter / User Tier 2 / workflow suites (UserSwap + PathFairness) are green.
       NOTE: `forge test --match-path` cold-compiles sparsely and skips the string-referenced `ForceCompileV4.sol` (deployCode); run a full `forge test` or `forge build` first for suites that deploy real V4.
-- [x] Run the full active test suite. (12 suites, 265 tests passed, 0 failed.)
-- [ ] Use archived legacy tests as a final coverage checklist.
+- [x] Run the full active test suite. (12 suites, 266 tests passed, 0 failed.)
+- [x] Use archived legacy tests as a final coverage checklist. Cross-checked all 25 legacy files vs the four manifests:
+      pre-rewrite suite is mostly obsolete (donate, transient protected-context, old memory-layout structs); remaining
+      behaviors already covered. Found and filled one real gap — router `unlockCallback` caller guard
+      (`test_unlock_callback_reverts_when_caller_is_not_pool_manager`). Deferred by choice: no fuzz/invariant layer (behaviors
+      covered by concrete unit tests); protocol-fee floor exact-threshold boundary not separately pinned.
