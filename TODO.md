@@ -1,4 +1,4 @@
-# SafeSwap Test Suite Implementation TODO
+# SafeSwap Implementation TODO
 
 ## Design docs & mechanism
 - [x] Rewrite the design docs to the surplus framing (capture% = share of repricing surplus, not a rate on displacement):
@@ -9,6 +9,15 @@
       caps). 148 Common/Hook/Nft tests green.
 - [x] Split exact-output max-input failures into `MaximumInputExceeded(required_input, maximum_required)`, keeping
       `SlippageExceeded(amount_received, minimum_required)` for minimum-output/minimum-received paths.
+- [x] C0 fast path: `SafeSwapHookImpl.beforeSwap` skips the `SwapSimulator` walk entirely when `capture == 0` (guard
+      returns the flat base-fee override). Doubles as the "BondRoute + base fee, no repricing" product tier.
+- [x] Bench the simulation cost end-to-end (`test/Router/SwapHookOverheadBench.t.sol`): overhead ≈ 9.4k fixed + ~4.1k per
+      initialized tick crossed (~11% of a within-tick swap); full row contrast vanilla V4 / BondRoute+base / sim.
+- [x] Prototype + bench the **optimistic** design (swapper supplies the repricing fee in `hookData`; `beforeSwap` trusts it,
+      `afterSwap` reverts `UnderCaptured` on under-report) on research branch `optimistic-repricing-no-sim`.
+      DECISION: **not canonical.** On-chain simulation wins for the immutable core — under BondRoute's commit→execute delay the
+      claimed fee is bound at commit, so honest swappers must pad it to dodge drift reverts, and that pad is unrefundable
+      over-capture (the LP fee already accrued; `afterSwap` can only revert, not claw back). Branch kept for reference only.
 
 ## Test suite
 - [x] Move stale legacy tests out of Foundry's active `test/` tree without deleting them.
@@ -47,6 +56,21 @@
       behaviors already covered. Found and filled one real gap — router `unlockCallback` caller guard
       (`test_unlock_callback_reverts_when_caller_is_not_pool_manager`). Deferred by choice: no fuzz/invariant layer (behaviors
       covered by concrete unit tests); protocol-fee floor exact-threshold boundary not separately pinned.
+
+## Pre-deploy (outstanding)
+
+- [ ] **`SafeSwapHookProxy`** — the real EIP-1167 stub contract + CREATE2 deploy script + published runtime codehash. Tests
+      currently synthesize each config-hook clone via `vm.etch`; the registry validates a codehash that has **no real
+      deployable artifact** behind it yet. Blocks permissionless `(base fee, capture)` hook deployment — the core topology.
+      Once built, swap the test harness off `vm.etch` onto the real proxy.
+- [ ] Deploy tooling: `script/` is empty. Needs the hook-clone CREATE2 deploy + `initialize_once` registration script, and
+      router / NFT / treasury wiring from ChainConfig.
+- [ ] Replace the `CONFIG_SIGNER` placeholder (`0xDeaDbeef…`, flagged in `AUDIT_REPORT.md` / `Definitions.sol`) and publish
+      per-chain ChainConfig: V4 PoolManager address + signer for each target chain. (Standing deploy blocker.)
+- [ ] Remove `legacy_tests/` (`safeswap`, `stale_dynamic_fee_rewrite_SafeSwap`) once fully mined for coverage — already
+      cross-checked as a checklist; delete the obsolete pre-rewrite suite.
+- [ ] Decide quoter precision (1-pass exact-fee vs 2-pass exact-output) and confirm the final `MAX_REPRICING_FEE_PIPS` /
+      `MAX_TOTAL_FEE_PIPS` values.
 
 ## NFT presentation
 
