@@ -62,6 +62,7 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         assertTrue( _contains( json, '"trait_type":"LP Rebate","value":"50%"' ), "rebate attribute should render the capture percent." );
         assertTrue( _contains( json, '"trait_type":"Tick Lower","value":"-120"' ), "tick lower attribute should render the signed tick." );
         assertTrue( _contains( json, '"trait_type":"Tick Upper","value":"120"' ), "tick upper attribute should render the signed tick." );
+        assertTrue( _contains( json, '"trait_type":"Current Position"' ), "metadata should include current token inventory." );
         assertTrue( _contains( json, '"trait_type":"Status","value":"In Range"' ), "a position spanning the current tick should be in range." );
     }
 
@@ -73,8 +74,12 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         string memory svg    =  string( _base64_decode( _strip_prefix( image, _SVG_PREFIX ) ) );
 
         assertTrue( _contains( svg, "<svg" ), "image should decode to an inline svg." );
-        assertTrue( _contains( svg, "SafeSwap LP" ), "svg card should carry the protocol title." );
-        assertTrue( _contains( svg, "Base fee: 0.30%" ), "svg card should render the base fee." );
+        assertTrue( _contains( svg, "CURRENT POSITION" ), "svg card should use current token inventory as the hero." );
+        assertTrue( _contains( svg, "Earned" ), "svg card should render lifetime earned fees." );
+        assertTrue( _contains( svg, "Claimable" ), "svg card should prioritize currently claimable fees." );
+        assertTrue( _contains( svg, "FEE 0.30%" ), "svg card should render the base fee chip." );
+        assertTrue( _contains( svg, "REBATE 50%" ), "svg card should render the rebate chip." );
+        assertTrue( _contains( svg, "TICKS -120 -&gt; 120" )  ||  _contains( svg, "TICKS -120 -> 120" ), "svg card should render the tick range." );
         assertTrue( _contains( svg, "In Range" ), "svg card should render the in-range status." );
         assertTrue( _contains( svg, "TKNA" )  &&  _contains( svg, "TKNB" ), "svg card should render both token symbols." );
     }

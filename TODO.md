@@ -100,6 +100,25 @@
       injection). Verified end-to-end by base64-decoding the URIs in `test/Nft/SafeSwapPositionDescriptor.t.sol`.
 - [x] Add `contractURI()` — collection name + description, on-chain base64 JSON. Banner / external link / royalty fields
       deferred (hosting TBD); v1 ships name + description.
+- [ ] Investor-card redesign (mock locked in `nft-renders/reference9.svg`): port the new layout into
+      `SafeSwapPositionDescriptor._render_svg` + `StringHelperLib`. Section order (the "arc"): header (8-byte hex token id +
+      SafeSwap brand) / hero (pair name highlighted, muted amount beneath) / market row (inline price-range bar with live
+      emerald price marker + In Range) / full-bleed FEE·REBATE·AGE stats band / earned·claimable line-grid (coin + download
+      icons) / yield closing line (life | ann, grouped right). On-chain math/formatters DONE:
+      `contracts/Nft/libraries/PriceLib.sol` (`price1_per_0_scaled` sqrtPriceX96→1e18 price decimal-adjusted,
+      `price_at_tick_scaled` for bounds, `fill_width` marker clamp) + `StringHelperLib.format_price` / `group_thousands` /
+      comma-grouped `format_token_amount`, proven by `test/Nft/PriceLib.t.sol` (16 tests, incl. ETH/USDC≈3000 within 1%).
+      Snapshot-stamp DONE: `StringHelperLib.format_utc_datetime(block.timestamp)` → "YYYY-MM-DD HH:MM UTC" (Hinnant
+      civil-from-days, `test/Nft/StringHelperLib.t.sol`, 5 tests). DECIDED: render it as faint bottom fine-print
+      ("as of <datetime> UTC") so a marketplace-cached card visibly carries the as-of time of its live data.
+      REMAINING: rewrite `_render_svg`/`_render_svg_rows` to the reference9 layout (incl. the snapshot footer fed
+      `block.timestamp`), wire the price fields into `PositionView`/`_load_position`, out-of-range red-accent variant,
+      update the affected SVG/attribute test assertions, and re-check the descriptor fits EIP-170.
+- [ ] **Self-locating attributes** — a snapshot of the `attributes` JSON must say *where* the position lives, not just what
+      it is. Add to the `attributes` array: `Chain Id` (`block.chainid`), `NFT Contract` (the `SafeSwapNft` address — most
+      important: the canonical pointer back to the position), `Token Id`, plus `Tick Spacing`, `Hook`, and `Pool Id` for V4
+      `PoolKey` verifiability. Keep these **out of the SVG card** (machine-readable detail only — investors read the card,
+      indexers read the attributes).
 
 ## Review
 

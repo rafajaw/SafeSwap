@@ -33,7 +33,7 @@ fs_permissions = [{ access = "read", path = "./out" }]
 # V4 force-compile helper (which trips solc stack-too-deep under via_ir at high runs) is never compiled. Build with
 # `FOUNDRY_PROFILE=deploy forge build`. The deploy artifacts (router / NFT / hook) stay well under the EIP-170 limit.
 [profile.deploy]
-optimizer_runs = 50_000
+optimizer_runs = 25_000
 skip = ["test/**", "script/**"]
 
 [invariant]

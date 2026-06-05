@@ -34,6 +34,8 @@ import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
+import { FullMath } from "@UniswapV4Core/libraries/FullMath.sol";
+import { FixedPoint128 } from "@UniswapV4Core/libraries/FixedPoint128.sol";
 
 using StateLibrary for IPoolManager;
 using PoolIdLibrary for PoolKey;
@@ -43,6 +45,7 @@ using PoolIdLibrary for PoolKey;
 
 error PositionUnauthorized( uint256 token_id, address caller, address owner );
 error PoolInitializationPriceMismatch( PoolId pool_id, uint160 current_sqrt_price_x96, uint160 expected_sqrt_price_x96 );
+error FeeTotalOverflow( uint256 token_id, uint256 earned0, uint256 earned1 );
 
 
 // ━━━━  ROUTER VIEW  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -65,12 +68,18 @@ interface ISafeSwapRouterHooks {
  */
 contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteProtected, IUnlockCallback {
 
+    struct FeeTotals {
+        uint128 earned0;
+        uint128 earned1;
+    }
+
     address public immutable SafeSwapRouter;
     address public immutable PositionDescriptor;    // external on-chain metadata renderer (keeps this contract under EIP-170).
 
     uint256 private _next_token_id;
 
     mapping( uint256 => SafeSwapPositionInfo ) private _position_infos;
+    mapping( uint256 => FeeTotals ) private _fee_totals;
 
     constructor( )
     ERC721( "SafeSwap LP Positions", "SSWAP-LP" )
@@ -269,6 +278,8 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
 
         ( BondContext memory context, ModifyLiquidityParams memory params, SafeSwapPositionInfo memory position_info )  =  abi.decode( data, (BondContext, ModifyLiquidityParams, SafeSwapPositionInfo) );
 
+        _record_earned_fees( params, position_info );
+
         ModifyLiquidityLib.execute( context, params, PoolManager, position_info );
 
         return "";
@@ -303,11 +314,23 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         );
     }
 
+    /**
+     * @notice Lifetime fees checkpointed into SafeSwap accounting before prior position touches.
+     */
+    function get_lp_fee_totals( uint256 token_id )
+    external  view returns ( uint256 earned0, uint256 earned1 )
+    {
+        _requireOwned( token_id );
+
+        FeeTotals storage totals  =  _fee_totals[ token_id ];
+        earned0                   =  totals.earned0;
+        earned1                   =  totals.earned1;
+    }
+
 
     // ━━━━  INTERNAL HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _prepare_create_position( BondContext memory context, CreatePositionParams memory params )
-    internal returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
+    function _prepare_create_position( BondContext memory context, CreatePositionParams memory params ) internal returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
     {
         if(  params.liquidity == 0  ||  context.fundings.length != 2  )
         {
@@ -334,6 +357,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         }
 
         SafeSwapPositionInfo memory new_position_info  =  SafeSwapPositionInfo({
+            opened_at:      uint40(block.timestamp),
             hook:           hook,
             token0:         token0,
             token1:         token1,
@@ -363,8 +387,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         position_info  =  new_position_info;
     }
 
-    function _prepare_add_liquidity( BondContext memory context, AddPositionLiquidityParams memory params )
-    internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
+    function _prepare_add_liquidity( BondContext memory context, AddPositionLiquidityParams memory params ) internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
     {
         _require_lp_position_authority( params.token_id, context.user );
         position_info  =  get_lp_position( params.token_id );
@@ -372,8 +395,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         executable_params  =  _add_liquidity_modify_params( params, position_info );
     }
 
-    function _prepare_remove_liquidity( BondContext memory context, RemovePositionLiquidityParams memory params )
-    internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
+    function _prepare_remove_liquidity( BondContext memory context, RemovePositionLiquidityParams memory params ) internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
     {
         _require_lp_position_authority( params.token_id, context.user );
         position_info  =  get_lp_position( params.token_id );
@@ -381,8 +403,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         executable_params  =  _remove_liquidity_modify_params( params, position_info );
     }
 
-    function _prepare_collect_fees( BondContext memory context, CollectFeesParams memory params )
-    internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
+    function _prepare_collect_fees( BondContext memory context, CollectFeesParams memory params ) internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
     {
         _require_lp_position_authority( params.token_id, context.user );
         position_info  =  get_lp_position( params.token_id );
@@ -390,8 +411,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         executable_params  =  _collect_fees_modify_params( params, position_info );
     }
 
-    function _add_liquidity_modify_params( AddPositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info )
-    private pure returns ( ModifyLiquidityParams memory modify_params )
+    function _add_liquidity_modify_params( AddPositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info ) private pure returns ( ModifyLiquidityParams memory modify_params )
     {
         modify_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
@@ -404,8 +424,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         });
     }
 
-    function _remove_liquidity_modify_params( RemovePositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info )
-    private pure returns ( ModifyLiquidityParams memory modify_params )
+    function _remove_liquidity_modify_params( RemovePositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info ) private pure returns ( ModifyLiquidityParams memory modify_params )
     {
         modify_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
@@ -418,8 +437,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         });
     }
 
-    function _collect_fees_modify_params( CollectFeesParams memory params, SafeSwapPositionInfo memory position_info )
-    private pure returns ( ModifyLiquidityParams memory modify_params )
+    function _collect_fees_modify_params( CollectFeesParams memory params, SafeSwapPositionInfo memory position_info ) private pure returns ( ModifyLiquidityParams memory modify_params )
     {
         modify_params  =  ModifyLiquidityParams({
             token_id:           params.token_id,
@@ -449,6 +467,55 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         bool is_authorized  =  caller == owner  ||  caller == approved  ||  operator;
 
         if(  is_authorized == false  )  revert PositionUnauthorized({ token_id: token_id, caller: caller, owner: owner });
+    }
+
+    function _record_earned_fees( ModifyLiquidityParams memory params, SafeSwapPositionInfo memory position_info ) private
+    {
+        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key(
+            position_info.token0,
+            position_info.token1,
+            LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            position_info.tick_spacing,
+            position_info.hook
+        );
+        PoolId pool_id  =  pool_key.toId( );
+
+        ( uint128 liquidity, uint256 fee_growth_0_last, uint256 fee_growth_1_last )  =  PoolManager.getPositionInfo(
+            pool_id,
+            address(this),
+            params.tick_lower,
+            params.tick_upper,
+            bytes32(params.token_id)
+        );
+
+        if(  liquidity == 0  )  return;
+
+        ( uint256 fee_growth_0_inside, uint256 fee_growth_1_inside )  =  PoolManager.getFeeGrowthInside( pool_id, params.tick_lower, params.tick_upper );
+
+        uint256 fee_growth_delta0;
+        uint256 fee_growth_delta1;
+        unchecked
+        {
+            fee_growth_delta0  =  fee_growth_0_inside - fee_growth_0_last;
+            fee_growth_delta1  =  fee_growth_1_inside - fee_growth_1_last;
+        }
+
+        uint256 earned0  =  FullMath.mulDiv( fee_growth_delta0, liquidity, FixedPoint128.Q128 );
+        uint256 earned1  =  FullMath.mulDiv( fee_growth_delta1, liquidity, FixedPoint128.Q128 );
+
+        FeeTotals storage totals  =  _fee_totals[ params.token_id ];
+        uint256 next_earned0      =  uint256(totals.earned0) + earned0;
+        uint256 next_earned1      =  uint256(totals.earned1) + earned1;
+
+        if(  next_earned0 > type(uint128).max  ||  next_earned1 > type(uint128).max  )
+        {
+            revert FeeTotalOverflow({ token_id: params.token_id, earned0: next_earned0, earned1: next_earned1 });
+        }
+
+        // *NOTE*  -  These totals are lifetime earned fees checkpointed before a position touch. They are not limited to
+        //            explicit collect calls, and they intentionally exclude remove-liquidity principal.
+        totals.earned0  =  uint128(next_earned0);
+        totals.earned1  =  uint128(next_earned1);
     }
 
     function _positive_liquidity_delta( uint256 token_id, uint128 liquidity ) private pure returns ( int128 liquidity_delta )

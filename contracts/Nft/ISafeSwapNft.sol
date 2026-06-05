@@ -7,4 +7,5 @@ import { SafeSwapPositionInfo } from "@SafeSwapCommon/Types.sol";
 
 interface ISafeSwapNft is IERC721 {
     function get_lp_position( uint256 token_id ) external view returns ( SafeSwapPositionInfo memory position_info );
+    function get_lp_fee_totals( uint256 token_id ) external view returns ( uint256 earned0, uint256 earned1 );
 }

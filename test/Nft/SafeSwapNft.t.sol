@@ -39,6 +39,7 @@ import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 import { Position } from "@UniswapV4Core/libraries/Position.sol";
+import { FixedPoint128 } from "@UniswapV4Core/libraries/FixedPoint128.sol";
 
 
 contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
@@ -659,6 +660,41 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         assertEq( _pool_manager.last_take_to( ), _USER, "collected fees should be sent to the BondRoute context user." );
     }
 
+    function test_collect_fees_records_earned_fee_totals( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        PoolId pool_id  =  _pool_key().toId( );
+        _seed_position_info( pool_id, 1, -120, 120, 2, 10 * FixedPoint128.Q128, 20 * FixedPoint128.Q128 );
+        _seed_fee_growth_globals( pool_id, 15 * FixedPoint128.Q128, 27 * FixedPoint128.Q128 );
+
+        _execute_collect_fees_as( _USER, _collect_params( 1 ), new TokenAmount[](0) );
+
+        ( uint256 token0_fees, uint256 token1_fees )  =  _nft.get_lp_fee_totals( 1 );
+
+        assertEq( token0_fees, 10, "collect should record token0 fees from fee growth." );
+        assertEq( token1_fees, 14, "collect should record token1 fees from fee growth." );
+    }
+
+    function test_remove_liquidity_records_earned_fees_without_counting_principal( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        PoolId pool_id  =  _pool_key().toId( );
+        _seed_position_info( pool_id, 1, -120, 120, 2, 10 * FixedPoint128.Q128, 20 * FixedPoint128.Q128 );
+        _seed_fee_growth_globals( pool_id, 15 * FixedPoint128.Q128, 27 * FixedPoint128.Q128 );
+        _pool_manager.set_next_modify_liquidity_delta( 1_000 ether, 2_000 ether );
+
+        _execute_remove_liquidity_as( _USER, _remove_params( 1, 1 ), new TokenAmount[](0) );
+
+        ( uint256 token0_fees, uint256 token1_fees )  =  _nft.get_lp_fee_totals( 1 );
+
+        assertEq( token0_fees, 10, "remove should record only token0 fees accrued before the touch." );
+        assertEq( token1_fees, 14, "remove should record only token1 fees accrued before the touch." );
+    }
+
     function test_collect_fees_reverts_when_funding_count_is_not_zero( )
     external
     {
@@ -884,6 +920,14 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _pool_manager.set_slot( position_slot, bytes32(uint256(liquidity)) );
         _pool_manager.set_slot( bytes32(uint256(position_slot) + 1), bytes32(fee_growth_inside_0_last_x128) );
         _pool_manager.set_slot( bytes32(uint256(position_slot) + 2), bytes32(fee_growth_inside_1_last_x128) );
+    }
+
+    function _seed_fee_growth_globals( PoolId pool_id, uint256 fee_growth_global_0_x128, uint256 fee_growth_global_1_x128 ) internal
+    {
+        bytes32 state_slot  =  _pool_state_slot( pool_id );
+
+        _pool_manager.set_slot( bytes32(uint256(state_slot) + 1), bytes32(fee_growth_global_0_x128) );
+        _pool_manager.set_slot( bytes32(uint256(state_slot) + 2), bytes32(fee_growth_global_1_x128) );
     }
 
     function _nft_pool_slot0( PoolKey memory key ) internal view returns ( uint160 sqrt_price_x96, int24 tick, uint24 protocol_fee, uint24 lp_fee )

@@ -20,6 +20,7 @@ struct PoolInfo {
 
 /**
  * @notice Immutable metadata for a SafeSwap NFT-backed Uniswap V4 position.
+ * @param opened_at Timestamp when the LP NFT was minted.
  * @param hook SafeSwap config hook (clone) that identifies the pool's base fee and capture share.
  * @param token0 Pool currency0.
  * @param token1 Pool currency1.
@@ -30,6 +31,7 @@ struct PoolInfo {
  * @param tick_upper Upper tick of the position.
  */
 struct SafeSwapPositionInfo {
+    uint40 opened_at;
     address hook;
     IERC20 token0;
     IERC20 token1;

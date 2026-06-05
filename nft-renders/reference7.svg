@@ -1,0 +1,85 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='350' height='480' viewBox='0 0 350 480'>
+  <defs>
+    <linearGradient id='bg' x1='0' y1='0' x2='1' y2='1'>
+      <stop offset='0' stop-color='#276f61'/><stop offset='.46' stop-color='#13233a'/><stop offset='1' stop-color='#584a34'/>
+    </linearGradient>
+    <radialGradient id='glow' cx='18%' cy='6%' r='72%'>
+      <stop offset='0' stop-color='#37d6a3' stop-opacity='.42'/><stop offset='1' stop-color='#37d6a3' stop-opacity='0'/>
+    </radialGradient>
+    <style>
+      .t{font-family:'Inter','Helvetica Neue',Arial,sans-serif}
+      .m{font-family:'Roboto Mono',ui-monospace,monospace}
+      .w{fill:#fff}.w9{fill:#fff;fill-opacity:.9}.w6{fill:#fff;fill-opacity:.6}.w5{fill:#fff;fill-opacity:.5}.w4{fill:#fff;fill-opacity:.4}
+      .g{fill:#37d6a3}.gs{fill:#37d6a3;fill-opacity:.6}
+      .val{font-weight:700}.lbl{font-weight:600;letter-spacing:.4}
+      .rule{stroke:#fff;stroke-opacity:.1}
+      .chip{fill:#fff;fill-opacity:.05;stroke:#fff;stroke-opacity:.1}
+    </style>
+  </defs>
+
+  <rect width='350' height='480' rx='24' fill='url(#bg)'/>
+  <rect width='350' height='480' rx='24' fill='url(#glow)'/>
+  <rect x='.5' y='.5' width='349' height='479' rx='23.5' fill='none' stroke='#fff' stroke-opacity='.1'/>
+
+  <!-- top bar: 8-byte token id (left), brand (right) -->
+  <text x='24' y='43' class='m w9 val' font-size='15'>0x1122334455667788</text>
+  <text x='326' y='43' text-anchor='end' class='t' font-size='13' font-weight='700'><tspan class='w9'>Safe</tspan><tspan class='g'>Swap</tspan></text>
+  <line x1='24' y1='58' x2='326' y2='58' class='rule'/>
+
+  <!-- hero: current position - pair name highlighted, amount muted/smaller beneath -->
+  <text x='175' y='88' text-anchor='middle' class='t w4 lbl' font-size='11'>CURRENT POSITION</text>
+  <text x='90' y='126' text-anchor='middle' class='t w val' font-size='24'>TKNA</text>
+  <text x='90' y='155' text-anchor='middle' class='m w6' font-size='19'>0.42</text>
+  <text x='260' y='126' text-anchor='middle' class='t w val' font-size='24'>TKNB</text>
+  <text x='260' y='155' text-anchor='middle' class='m w6' font-size='19'>1,280</text>
+
+  <!-- earned | claimable, line grid (two cells, no container) -->
+  <line x1='24' y1='184' x2='326' y2='184' class='rule'/>
+  <line x1='175' y1='196' x2='175' y2='278' class='rule' stroke-opacity='.08'/>
+
+  <ellipse cx='72' cy='211' rx='6' ry='4' fill='#1f9d77'/>
+  <ellipse cx='72' cy='209' rx='6' ry='4' fill='#37d6a3'/>
+  <ellipse cx='70' cy='208' rx='2' ry='1.2' fill='#fff' fill-opacity='.5'/>
+  <text x='104' y='213' text-anchor='middle' class='t w4 lbl' font-size='11'>EARNED</text>
+  <text x='99' y='241' text-anchor='middle' class='m w val' font-size='16'>0.078<tspan class='t w5' dx='5' font-size='12'>TKNA</tspan></text>
+  <text x='99' y='263' text-anchor='middle' class='m w val' font-size='16'>2,450<tspan class='t w5' dx='5' font-size='12'>TKNB</tspan></text>
+
+  <path d='M213 202 v7 m-3 -3 l3 3 l3 -3' stroke='#37d6a3' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
+  <path d='M209 213 h8' stroke='#37d6a3' stroke-width='1.6' stroke-linecap='round'/>
+  <text x='256' y='213' text-anchor='middle' class='t w4 lbl' font-size='11'>CLAIMABLE</text>
+  <text x='251' y='241' text-anchor='middle' class='m g val' font-size='16'>0.0093<tspan class='t gs' dx='5' font-size='12'>TKNA</tspan></text>
+  <text x='251' y='263' text-anchor='middle' class='m g val' font-size='16'>180.5<tspan class='t gs' dx='5' font-size='12'>TKNB</tspan></text>
+
+  <!-- yield -->
+  <line x1='24' y1='288' x2='326' y2='288' class='rule'/>
+  <text x='24' y='320' class='t w4 lbl' font-size='11'>YIELD</text>
+  <text x='196' y='320' text-anchor='end' class='m w val' font-size='18'>0.80%</text>
+  <text x='202' y='320' class='t w5' font-size='11'>life</text>
+  <text x='290' y='320' text-anchor='end' class='m w val' font-size='18'>2.43%</text>
+  <text x='296' y='320' class='t w5' font-size='11'>ann.</text>
+
+  <!-- stats row: full-bleed banded background, cells split by vertical rules only -->
+  <rect x='0' y='338' width='350' height='42' fill='#fff' fill-opacity='.05'/>
+  <line x1='0' y1='338' x2='350' y2='338' class='rule'/>
+  <line x1='117' y1='348' x2='117' y2='370' class='rule' stroke-opacity='.12'/>
+  <line x1='233' y1='348' x2='233' y2='370' class='rule' stroke-opacity='.12'/>
+  <text x='58' y='363' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>FEE</tspan><tspan class='m w9 val' dx='5'>0.05%</tspan></text>
+  <text x='175' y='363' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>REBATE</tspan><tspan class='m w9 val' dx='5'>20%</tspan></text>
+  <text x='292' y='363' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>AGE</tspan><tspan class='m w9 val' dx='5'>120d</tspan></text>
+
+  <!-- market: In Range (left) + inline price-range bar extending to the right -->
+  <text x='326' y='404' text-anchor='end' class='t w4 lbl' font-size='9'>TKNB / TKNA</text>
+
+  <circle cx='30' cy='427' r='4' fill='#37d6a3'/>
+  <text x='40' y='431' class='t g' font-size='12' font-weight='600'>In Range</text>
+
+  <!-- live price floats above its marker -->
+  <text x='244' y='417' text-anchor='middle' class='m g' font-size='12'>3,002</text>
+
+  <!-- inline range bar: low [track + thumb] high, all on the bar's line -->
+  <text x='193' y='431' text-anchor='end' class='m w5' font-size='10'>2,850</text>
+  <rect x='201' y='426.5' width='85' height='3' rx='1.5' fill='#fff' fill-opacity='.08'/>
+  <rect x='201' y='426.5' width='43' height='3' rx='1.5' fill='#fff' fill-opacity='.16'/>
+  <circle cx='244' cy='428' r='2.5' fill='#37d6a3' fill-opacity='.9'/>
+  <text x='294' y='431' text-anchor='start' class='m w5' font-size='10'>3,150</text>
+</svg>

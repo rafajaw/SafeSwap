@@ -15,6 +15,7 @@ pragma solidity ^0.8.30;
 
 import { ISafeSwapPositionDescriptor } from "@SafeSwapNft/ISafeSwapPositionDescriptor.sol";
 import { ISafeSwapNft } from "@SafeSwapNft/ISafeSwapNft.sol";
+import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
 import { SafeSwapPositionInfo } from "@SafeSwapCommon/Types.sol";
 import { SafeSwapCommon } from "@SafeSwapCommon/SafeSwapCommon.sol";
 import {
@@ -24,8 +25,6 @@ import {
     SAFESWAP_POSITIONS_DESCRIPTION
 } from "@SafeSwapCommon/Definitions.sol";
 import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
-import { IERC20 } from "@BondRouteProtected/BondRouteProtected.sol";
-import { IERC20Metadata } from "@OpenZeppelin/token/ERC20/extensions/IERC20Metadata.sol";
 import { Base64 } from "@OpenZeppelin/utils/Base64.sol";
 import { Strings } from "@OpenZeppelin/utils/Strings.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
@@ -33,6 +32,11 @@ import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
+import { FullMath } from "@UniswapV4Core/libraries/FullMath.sol";
+import { FixedPoint128 } from "@UniswapV4Core/libraries/FixedPoint128.sol";
+import { FixedPoint96 } from "@UniswapV4Core/libraries/FixedPoint96.sol";
+import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
+import { SqrtPriceMath } from "@UniswapV4Core/libraries/SqrtPriceMath.sol";
 
 using StateLibrary for IPoolManager;
 using PoolIdLibrary for PoolKey;
@@ -46,19 +50,28 @@ using PoolIdLibrary for PoolKey;
  */
 contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
-    uint256 internal constant MAX_SYMBOL_LENGTH  =  12;
-
     IPoolManager public immutable PoolManager;
 
     // Everything needed to render a position, gathered once to keep the render helpers off the stack.
     struct PositionView {
         string  symbol0;
         string  symbol1;
+        uint8   decimals0;
+        uint8   decimals1;
         string  base_fee_percent;
         uint8   rebate_percent;
         int24   tick_lower;
         int24   tick_upper;
         uint128 liquidity;
+        uint256 position0;
+        uint256 position1;
+        uint256 claimable0;
+        uint256 claimable1;
+        uint256 earned0;
+        uint256 earned1;
+        uint256 lifetime_yield_bps;
+        uint256 annualized_yield_bps;
+        uint40  opened_at;
         bool    initialized;
         bool    in_range;
         uint256 token_id;
@@ -107,8 +120,7 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     // ━━━━  STATE LOADING  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _load_position( ISafeSwapNft nft, uint256 token_id )
-    internal view returns ( PositionView memory position )
+    function _load_position( ISafeSwapNft nft, uint256 token_id ) internal view returns ( PositionView memory position )
     {
         SafeSwapPositionInfo memory info  =  nft.get_lp_position( token_id );
 
@@ -116,15 +128,37 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
         PoolId pool_id           =  pool_key.toId( );
 
         ( uint160 sqrt_price_x96, int24 current_tick, , )  =  PoolManager.getSlot0( pool_id );
-        ( uint128 liquidity, , )                           =  PoolManager.getPositionInfo( pool_id, address(nft), info.tick_lower, info.tick_upper, bytes32(token_id) );
+        ( uint128 liquidity, uint256 fee_growth_0_last, uint256 fee_growth_1_last )  =
+            PoolManager.getPositionInfo( pool_id, address(nft), info.tick_lower, info.tick_upper, bytes32(token_id) );
+        ( uint256 checkpointed_earned0, uint256 checkpointed_earned1 )  =  nft.get_lp_fee_totals( token_id );
+        ( uint256 claimable0, uint256 claimable1 )  =  _claimable_fees( pool_id, info, liquidity, fee_growth_0_last, fee_growth_1_last );
+        uint256 lifetime_earned0  =  checkpointed_earned0 + claimable0;
+        uint256 lifetime_earned1  =  checkpointed_earned1 + claimable1;
+        ( uint256 position0, uint256 position1 )  =  _position_amounts( sqrt_price_x96, info.tick_lower, info.tick_upper, liquidity );
 
-        position.symbol0           =  _token_symbol( info.token0 );
-        position.symbol1           =  _token_symbol( info.token1 );
-        position.base_fee_percent  =  _format_bps_as_percent( info.base_fee_bps );
+        // *NOTE*  -  Lifetime earned is the checkpointed SafeSwap total plus fees accrued since the last V4 checkpoint.
+        //            Do not add claimable fees again elsewhere; `claimable0/1` is the live accrued component.
+        ( uint256 lifetime_yield_bps, uint256 annualized_yield_bps )  =
+            _yield_current_basis( sqrt_price_x96, position0, position1, info, lifetime_earned0, lifetime_earned1 );
+
+        position.symbol0           =  StringHelperLib.token_symbol( info.token0 );
+        position.symbol1           =  StringHelperLib.token_symbol( info.token1 );
+        position.decimals0         =  StringHelperLib.token_decimals( info.token0 );
+        position.decimals1         =  StringHelperLib.token_decimals( info.token1 );
+        position.base_fee_percent  =  StringHelperLib.format_bps_as_percent( info.base_fee_bps );
         position.rebate_percent    =  info.rebate_percent;
         position.tick_lower        =  info.tick_lower;
         position.tick_upper        =  info.tick_upper;
         position.liquidity         =  liquidity;
+        position.position0         =  position0;
+        position.position1         =  position1;
+        position.claimable0        =  claimable0;
+        position.claimable1        =  claimable1;
+        position.earned0           =  lifetime_earned0;
+        position.earned1           =  lifetime_earned1;
+        position.lifetime_yield_bps    =  lifetime_yield_bps;
+        position.annualized_yield_bps  =  annualized_yield_bps;
+        position.opened_at         =  info.opened_at;
         position.initialized       =  sqrt_price_x96 != 0;
         position.in_range          =  sqrt_price_x96 != 0  &&  current_tick >= info.tick_lower  &&  current_tick < info.tick_upper;
         position.token_id          =  token_id;
@@ -133,62 +167,120 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     // ━━━━  SVG  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _render_svg( PositionView memory position )
-    internal pure returns ( string memory )
+    function _render_svg( PositionView memory position ) internal view returns ( string memory )
     {
         return string.concat(
             "<svg xmlns='http://www.w3.org/2000/svg' width='300' height='400' viewBox='0 0 300 400'>",
-            "<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>",
-            "<stop offset='0' stop-color='#0f2027'/><stop offset='0.55' stop-color='#203a43'/><stop offset='1' stop-color='#2c5364'/>",
-            "</linearGradient></defs>",
-            "<rect width='300' height='400' rx='20' fill='url(#g)'/>",
-            "<text x='24' y='52' fill='#ffffff' font-family='monospace' font-size='24' font-weight='bold'>SafeSwap LP</text>",
-            "<text x='24' y='84' fill='#8fd3ff' font-family='monospace' font-size='18'>", position.symbol0, " / ", position.symbol1, "</text>",
+            "<defs>",
+            "<linearGradient id='bg' x1='0' y1='0' x2='1' y2='1'>",
+            "<stop offset='0' stop-color='#276f61'/><stop offset='.46' stop-color='#13233a'/><stop offset='1' stop-color='#584a34'/>",
+            "</linearGradient>",
+            "<radialGradient id='glow' cx='18%' cy='6%' r='72%'>",
+            "<stop offset='0' stop-color='#37d6a3' stop-opacity='.42'/><stop offset='1' stop-color='#37d6a3' stop-opacity='0'/>",
+            "</radialGradient>",
+            "<style>",
+            ".t{font-family:monospace}.muted{fill:#adb7c8}.white{fill:#eaf2ff}.green{fill:#49e6a1}",
+            ".label{fill:#c3c9d4;font-size:12px;font-weight:700;letter-spacing:0}.amt{fill:#eaf2ff;font-size:31px}",
+            ".sym{fill:#bac2ce;font-size:15px;font-weight:700}.small{font-size:13px}.chip{fill:#162236;stroke:#26374d;stroke-width:1}",
+            ".panel{fill:#17263a;fill-opacity:.62}",
+            "</style>",
+            "</defs>",
+            "<rect width='300' height='400' fill='url(#bg)'/>",
+            "<rect width='300' height='400' fill='url(#glow)'/>",
+            "<text x='20' y='36' class='t white' font-size='20' font-weight='700'>#", Strings.toString( position.token_id ), "</text>",
+            _render_status_pill( position ),
+            "<line x1='0' y1='70' x2='300' y2='70' stroke='#c8d7e8' stroke-opacity='.10'/>",
             _render_svg_rows( position ),
-            "<text x='24' y='372' fill='#5a7a8a' font-family='monospace' font-size='13'>#", Strings.toString( position.token_id ), "</text>",
             "</svg>"
         );
     }
 
-    function _render_svg_rows( PositionView memory position )
-    internal pure returns ( string memory )
+    function _render_svg_rows( PositionView memory position ) internal view returns ( string memory )
+    {
+        string memory position0       =  StringHelperLib.format_token_amount( position.position0, position.decimals0 );
+        string memory position1       =  StringHelperLib.format_token_amount( position.position1, position.decimals1 );
+        string memory claimable0      =  StringHelperLib.format_symbol_amount( position.claimable0, position.decimals0, position.symbol0 );
+        string memory claimable1      =  StringHelperLib.format_symbol_amount( position.claimable1, position.decimals1, position.symbol1 );
+        string memory earned0         =  StringHelperLib.format_symbol_amount( position.earned0, position.decimals0, position.symbol0 );
+        string memory earned1         =  StringHelperLib.format_symbol_amount( position.earned1, position.decimals1, position.symbol1 );
+        string memory yield_row       =  _format_yield_row( position.lifetime_yield_bps, position.annualized_yield_bps );
+        string memory ticks_row       =  string.concat( "TICKS ", Strings.toStringSigned( position.tick_lower ), " -> ", Strings.toStringSigned( position.tick_upper ) );
+
+        return string.concat(
+            "<text x='150' y='108' text-anchor='middle' class='t label'>CURRENT POSITION</text>",
+            "<text x='82' y='158' text-anchor='middle' class='t amt'>", position0, "</text>",
+            "<text x='82' y='185' text-anchor='middle' class='t sym'>", position.symbol0, "</text>",
+            "<text x='218' y='158' text-anchor='middle' class='t amt'>", position1, "</text>",
+            "<text x='218' y='185' text-anchor='middle' class='t sym'>", position.symbol1, "</text>",
+            "<rect x='0' y='214' width='150' height='78' class='panel'/><rect x='150' y='214' width='150' height='78' class='panel' fill-opacity='.72'/>",
+            "<line x1='150' y1='214' x2='150' y2='292' stroke='#c8d7e8' stroke-opacity='.08'/>",
+            "<text x='20' y='238' class='t label'>Earned</text>",
+            "<text x='20' y='260' class='t white small' font-weight='700'>", earned0, "</text>",
+            "<text x='20' y='280' class='t muted small'>", earned1, "</text>",
+            "<text x='170' y='238' class='t label'>Claimable</text>",
+            "<text x='170' y='260' class='t green small' font-weight='700'>", claimable0, "</text>",
+            "<text x='170' y='280' class='t muted small'>", claimable1, "</text>",
+            "<text x='20' y='318' class='t muted small'>Yield</text>",
+            "<text x='280' y='318' text-anchor='end' class='t white small' font-weight='700'>", yield_row, "</text>",
+            "<line x1='20' y1='333' x2='280' y2='333' stroke='#c8d7e8' stroke-opacity='.14'/>",
+            _render_chip( 20, "FEE ", string.concat( position.base_fee_percent, "%" ) ),
+            _render_chip( 108, "REBATE ", string.concat( Strings.toString( position.rebate_percent ), "%" ) ),
+            _render_chip( 200, "AGE ", StringHelperLib.format_age( position.opened_at ) ),
+            "<text x='150' y='386' text-anchor='middle' class='t muted' font-size='11' font-weight='700'>", ticks_row, "</text>"
+        );
+    }
+
+    function _render_status_pill( PositionView memory position ) internal pure returns ( string memory )
+    {
+        string memory color  =  position.in_range  ?  "#49e6a1"  :  "#ff9f9f";
+
+        return string.concat(
+            "<rect x='178' y='18' width='104' height='28' rx='14' fill='#15313f' fill-opacity='.55' stroke='", color, "' stroke-opacity='.45'/>",
+            "<circle cx='194' cy='32' r='4.5' fill='", color, "'/>",
+            "<text x='204' y='37' class='t' fill='", color, "' font-size='13' font-weight='700'>", _status_label( position ), "</text>"
+        );
+    }
+
+    function _render_chip( uint256 x, string memory label, string memory value ) internal pure returns ( string memory )
     {
         return string.concat(
-            "<text x='24' y='150' fill='#cfe8ff' font-family='monospace' font-size='14'>Base fee: ", position.base_fee_percent, "%</text>",
-            "<text x='24' y='178' fill='#cfe8ff' font-family='monospace' font-size='14'>LP rebate: ", Strings.toString( position.rebate_percent ), "%</text>",
-            "<text x='24' y='206' fill='#cfe8ff' font-family='monospace' font-size='14'>Ticks: ", Strings.toStringSigned( position.tick_lower ), " to ", Strings.toStringSigned( position.tick_upper ), "</text>",
-            "<text x='24' y='234' fill='", position.in_range ? "#7CFFB2" : "#FF9F9F", "' font-family='monospace' font-size='14'>", _status_label( position ), "</text>"
+            "<rect x='", Strings.toString( x ), "' y='348' width='72' height='28' class='chip'/>",
+            "<text x='", Strings.toString( x + 36 ), "' y='367' text-anchor='middle' class='t muted' font-size='11' font-weight='700'>", label, value, "</text>"
         );
     }
 
 
     // ━━━━  ATTRIBUTES  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _render_attributes( PositionView memory position )
-    internal pure returns ( string memory )
+    function _render_attributes( PositionView memory position ) internal pure returns ( string memory )
     {
+        string memory position0       =  StringHelperLib.format_symbol_amount( position.position0, position.decimals0, position.symbol0 );
+        string memory position1       =  StringHelperLib.format_symbol_amount( position.position1, position.decimals1, position.symbol1 );
+        string memory claimable0      =  StringHelperLib.format_symbol_amount( position.claimable0, position.decimals0, position.symbol0 );
+        string memory claimable1      =  StringHelperLib.format_symbol_amount( position.claimable1, position.decimals1, position.symbol1 );
+        string memory earned0         =  StringHelperLib.format_symbol_amount( position.earned0, position.decimals0, position.symbol0 );
+        string memory earned1         =  StringHelperLib.format_symbol_amount( position.earned1, position.decimals1, position.symbol1 );
+
         return string.concat(
             "[",
-            _attribute( "Token 0", position.symbol0 ), ",",
-            _attribute( "Token 1", position.symbol1 ), ",",
-            _attribute( "Base Fee", string.concat( position.base_fee_percent, "%" ) ), ",",
-            _attribute( "LP Rebate", string.concat( Strings.toString( position.rebate_percent ), "%" ) ), ",",
-            _attribute( "Tick Lower", Strings.toStringSigned( position.tick_lower ) ), ",",
-            _attribute( "Tick Upper", Strings.toStringSigned( position.tick_upper ) ), ",",
-            _attribute( "Liquidity", Strings.toString( position.liquidity ) ), ",",
-            _attribute( "Status", _status_label( position ) ),
+            StringHelperLib.attribute( "Pair", string.concat( position.symbol0, "/", position.symbol1 ) ), ",",
+            StringHelperLib.attribute( "Base Fee", string.concat( position.base_fee_percent, "%" ) ), ",",
+            StringHelperLib.attribute( "LP Rebate", string.concat( Strings.toString( position.rebate_percent ), "%" ) ), ",",
+            StringHelperLib.attribute( "Tick Lower", Strings.toStringSigned( position.tick_lower ) ), ",",
+            StringHelperLib.attribute( "Tick Upper", Strings.toStringSigned( position.tick_upper ) ), ",",
+            StringHelperLib.attribute( "Opened At", Strings.toString( position.opened_at ) ), ",",
+            StringHelperLib.attribute( "Liquidity", Strings.toString( position.liquidity ) ), ",",
+            StringHelperLib.attribute( "Current Position", string.concat( position0, " / ", position1 ) ), ",",
+            StringHelperLib.attribute( "Claimable Fees", string.concat( claimable0, " / ", claimable1 ) ), ",",
+            StringHelperLib.attribute( "Lifetime Fees", string.concat( earned0, " / ", earned1 ) ), ",",
+            StringHelperLib.attribute( "Fee Yield Current Basis", StringHelperLib.format_bps_as_percent_string( position.lifetime_yield_bps ) ), ",",
+            StringHelperLib.attribute( "Annualized Fee Yield Estimate", StringHelperLib.format_bps_as_percent_string( position.annualized_yield_bps ) ), ",",
+            StringHelperLib.attribute( "Status", _status_label( position ) ),
             "]"
         );
     }
 
-    function _attribute( string memory trait, string memory value )
-    internal pure returns ( string memory )
-    {
-        return string.concat( '{"trait_type":"', trait, '","value":"', value, '"}' );
-    }
-
-    function _status_label( PositionView memory position )
-    internal pure returns ( string memory )
+    function _status_label( PositionView memory position ) internal pure returns ( string memory )
     {
         if(  position.initialized == false  )  return "Uninitialized";
 
@@ -196,68 +288,91 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
     }
 
 
-    // ━━━━  FORMATTING  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  YIELD  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    // Basis points to a percent string with two decimals: 30 -> "0.30", 5 -> "0.05", 999 -> "9.99".
-    function _format_bps_as_percent( uint16 base_fee_bps )
-    internal pure returns ( string memory )
+    function _yield_current_basis(
+        uint160 sqrt_price_x96,
+        uint256 position0,
+        uint256 position1,
+        SafeSwapPositionInfo memory info,
+        uint256 earned0,
+        uint256 earned1
+    ) internal view returns ( uint256 lifetime_yield_bps, uint256 annualized_yield_bps )
     {
-        uint256 whole       =  uint256(base_fee_bps) / 100;
-        uint256 fractional  =  uint256(base_fee_bps) % 100;
-        string memory pad   =  fractional < 10  ?  "0"  :  "";
+        if(  sqrt_price_x96 == 0  )  return ( 0, 0 );
 
-        return string.concat( Strings.toString( whole ), ".", pad, Strings.toString( fractional ) );
+        uint256 current_basis_value0  =  position0 + _convert_token1_to_token0_units( sqrt_price_x96, position1 );
+        if(  current_basis_value0 == 0  )  return ( 0, 0 );
+
+        uint256 earned_value0  =  earned0 + _convert_token1_to_token0_units( sqrt_price_x96, earned1 );
+        lifetime_yield_bps     =  FullMath.mulDiv( earned_value0, 10_000, current_basis_value0 );
+
+        // *NOTE*  -  This is an annualized fee-yield estimate against current position value at the current pool price. It
+        //            is not time-weighted and does not imply compounding.
+        uint256 age  =  block.timestamp > info.opened_at  ?  block.timestamp - info.opened_at  :  0;    // forge-lint: disable-line(block-timestamp)
+        if(  age > 0  )  annualized_yield_bps  =  FullMath.mulDiv( lifetime_yield_bps, 365 days, age );
     }
 
-    // Safe token symbol for embedding in JSON and SVG: native ETH is labelled directly; a non-conforming `symbol()`
-    // (missing, reverting, or non-string) falls back to the short address; the result is filtered to an alphanumeric
-    // subset so it can never break out of the surrounding XML/JSON or exceed a sane length.
-    function _token_symbol( IERC20 token )
-    internal view returns ( string memory )
+    function _position_amounts( uint160 sqrt_price_x96, int24 tick_lower, int24 tick_upper, uint128 liquidity ) internal pure returns ( uint256 amount0, uint256 amount1 )
     {
-        if(  address(token) == address(0)  )  return "ETH";
+        uint160 sqrt_price_a_x96  =  TickMath.getSqrtPriceAtTick( tick_lower );
+        uint160 sqrt_price_b_x96  =  TickMath.getSqrtPriceAtTick( tick_upper );
 
-        try IERC20Metadata( address(token) ).symbol( ) returns ( string memory symbol )
+        if(  sqrt_price_a_x96 > sqrt_price_b_x96  )
         {
-            return _sanitize( symbol );
+            ( sqrt_price_a_x96, sqrt_price_b_x96 )  =  ( sqrt_price_b_x96, sqrt_price_a_x96 );
         }
-        catch
+
+        if(  sqrt_price_x96 <= sqrt_price_a_x96  )
         {
-            return _sanitize( Strings.toHexString( address(token) ) );
+            amount0  =  SqrtPriceMath.getAmount0Delta( sqrt_price_a_x96, sqrt_price_b_x96, liquidity, false );
+        }
+        else if(  sqrt_price_x96 < sqrt_price_b_x96  )
+        {
+            amount0  =  SqrtPriceMath.getAmount0Delta( sqrt_price_x96, sqrt_price_b_x96, liquidity, false );
+            amount1  =  SqrtPriceMath.getAmount1Delta( sqrt_price_a_x96, sqrt_price_x96, liquidity, false );
+        }
+        else
+        {
+            amount1  =  SqrtPriceMath.getAmount1Delta( sqrt_price_a_x96, sqrt_price_b_x96, liquidity, false );
         }
     }
 
-    // Keep only [0-9A-Za-z], '.', '-' and cap the length. Drops quotes, angle brackets, backslashes, control bytes — so a
-    // hostile token symbol cannot inject markup into the SVG or escape the JSON string.
-    function _sanitize( string memory input )
-    internal pure returns ( string memory )
+    function _convert_token1_to_token0_units( uint160 sqrt_price_x96, uint256 amount1 ) internal pure returns ( uint256 )
     {
-        bytes memory raw    =  bytes(input);
-        uint256 limit       =  raw.length < MAX_SYMBOL_LENGTH  ?  raw.length  :  MAX_SYMBOL_LENGTH;
-        bytes memory clean  =  new bytes( limit );
-        uint256 count       =  0;
+        if(  amount1 == 0  )  return 0;
 
-        for(  uint256 i = 0  ;  i < limit  ;  i = i + 1  )
-        {
-            bytes1 c  =  raw[ i ];
-
-            bool is_allowed  =  ( c >= 0x30 && c <= 0x39 )       // 0-9
-                                ||  ( c >= 0x41 && c <= 0x5A )   // A-Z
-                                ||  ( c >= 0x61 && c <= 0x7A )   // a-z
-                                ||  c == 0x2E                    // .
-                                ||  c == 0x2D;                   // -
-
-            if(  is_allowed  )
-            {
-                clean[ count ]  =  c;
-                count           =  count + 1;
-            }
-        }
-
-        if(  count == 0  )  return "TOKEN";
-
-        assembly { mstore( clean, count ) }    // Truncate to the kept bytes.
-
-        return string(clean);
+        uint256 intermediate  =  FullMath.mulDiv( amount1, FixedPoint96.Q96, sqrt_price_x96 );
+        return FullMath.mulDiv( intermediate, FixedPoint96.Q96, sqrt_price_x96 );
     }
+
+    function _format_yield_row( uint256 lifetime_yield_bps, uint256 annualized_yield_bps ) internal pure returns ( string memory )
+    {
+        if(  lifetime_yield_bps == 0  &&  annualized_yield_bps == 0  )  return "n/a";
+
+        string memory lifetime_yield    =  StringHelperLib.format_bps_as_percent_string( lifetime_yield_bps );
+        string memory annualized_yield  =  StringHelperLib.format_bps_as_percent_string( annualized_yield_bps );
+
+        return string.concat( lifetime_yield, " life | ", annualized_yield, " ann." );
+    }
+
+    function _claimable_fees(
+        PoolId pool_id,
+        SafeSwapPositionInfo memory info,
+        uint128 liquidity,
+        uint256 fee_growth_0_last,
+        uint256 fee_growth_1_last
+    ) internal view returns ( uint256 claimable0, uint256 claimable1 )
+    {
+        if(  liquidity == 0  )  return ( 0, 0 );
+
+        ( uint256 fee_growth_0_inside, uint256 fee_growth_1_inside )  =  PoolManager.getFeeGrowthInside( pool_id, info.tick_lower, info.tick_upper );
+
+        unchecked
+        {
+            claimable0  =  FullMath.mulDiv( fee_growth_0_inside - fee_growth_0_last, liquidity, FixedPoint128.Q128 );
+            claimable1  =  FullMath.mulDiv( fee_growth_1_inside - fee_growth_1_last, liquidity, FixedPoint128.Q128 );
+        }
+    }
+
 }
