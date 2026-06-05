@@ -84,9 +84,9 @@
 - [x] Remove `legacy_tests/` — deleted after the coverage cross-check.
 - [ ] Decide quoter precision (1-pass exact-fee vs 2-pass exact-output) and confirm the final `MAX_REPRICING_FEE_PIPS` /
       `MAX_TOTAL_FEE_PIPS` values.
-- [ ] Re-tune `[profile.deploy] optimizer_runs` (currently 50_000) so `SafeSwapNft` fits EIP-170. The tokenURI/contractURI
-      wiring pushed it ~258 B over the 24,576 limit at 50k runs (24,834 B); it builds fine under the default 200 runs. Lower
-      the deploy runs (global) until it fits before mainnet — trades a little runtime gas on router/hook for deployability.
+- [x] Split deployment optimizer profiles by deployable contract family. `foundry.toml` now has separate artifact dirs and
+      optimizer runs for `deploy_hook`, `deploy_router`, `deploy_nft`, and `deploy_descriptor`, so the NFT descriptor can keep
+      the full investor-card render at lower runs without forcing router/hook/NFT core bytecode down to the same setting.
 
 ## NFT presentation
 

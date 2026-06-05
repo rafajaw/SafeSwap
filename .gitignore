@@ -1,5 +1,6 @@
 cache/
 out/
+out-deploy-*/
 lib/
 lcov.info
 .gas-snapshot

@@ -27,14 +27,35 @@ remappings = [
     "@test=test/",
 ]
 
-fs_permissions = [{ access = "read", path = "./out" }]
+fs_permissions = [
+    { access = "read", path = "./out" },
+    { access = "read", path = "./out-deploy-hook" },
+    { access = "read", path = "./out-deploy-router" },
+    { access = "read", path = "./out-deploy-nft" },
+    { access = "read", path = "./out-deploy-descriptor" },
+]
 
-# Deployment profile: high optimizer_runs for cheaper runtime gas on the deployed bytecode. Skips the test tree so the
-# V4 force-compile helper (which trips solc stack-too-deep under via_ir at high runs) is never compiled. Build with
-# `FOUNDRY_PROFILE=deploy forge build`. The deploy artifacts (router / NFT / hook) stay well under the EIP-170 limit.
-[profile.deploy]
+# Deployment profiles compile one deployable contract family per artifact dir, so each deployed bytecode can use the
+# highest optimizer run count that still fits EIP-170 without overwriting another deploy artifact.
+[profile.deploy_hook]
+out = "out-deploy-hook"
 optimizer_runs = 25_000
-skip = ["test/**", "script/**"]
+skip = ["test/**", "script/**", "contracts/Router/**", "contracts/Nft/**"]
+
+[profile.deploy_router]
+out = "out-deploy-router"
+optimizer_runs = 25_000
+skip = ["test/**", "script/**", "contracts/Nft/**", "contracts/Hook/**"]
+
+[profile.deploy_nft]
+out = "out-deploy-nft"
+optimizer_runs = 10_000
+skip = ["test/**", "script/**", "contracts/Router/**", "contracts/Hook/**", "contracts/Nft/SafeSwapPositionDescriptor.sol"]
+
+[profile.deploy_descriptor]
+out = "out-deploy-descriptor"
+optimizer_runs = 1_000
+skip = ["test/**", "script/**", "contracts/Router/**", "contracts/Hook/**", "contracts/Nft/SafeSwapNft.sol"]
 
 [invariant]
 runs = 32
