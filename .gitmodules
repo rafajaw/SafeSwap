@@ -13,3 +13,6 @@
 [submodule "lib/ChainConfig"]
 	path = lib/ChainConfig
 	url = https://github.com/rafajaw/ChainConfig
+[submodule "lib/solady"]
+	path = lib/solady
+	url = https://github.com/Vectorized/solady

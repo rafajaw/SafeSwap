@@ -72,14 +72,14 @@ library ExactInputSwapLib {
 
         ( typed_string, token_amount_offset )  =  SigningLib.build_typed_string( SWAP_FIELD_DECLARATION, inner_definition );
 
-        struct_hash  =  keccak256( abi.encode(
-            keccak256( bytes(inner_definition) ),
-            keccak256( bytes(pay) ),
-            keccak256( bytes(receive_value) ),
-            keccak256( bytes(pool) ),
-            keccak256( bytes(SigningLib.WARNING_VALUE) ),
-            address(params.token_out)
-        ));
+        struct_hash  =  SigningLib.hash_words(
+            SigningLib.hash_string( inner_definition ),
+            SigningLib.hash_string( pay ),
+            SigningLib.hash_string( receive_value ),
+            SigningLib.hash_string( pool ),
+            SigningLib.WARNING_VALUE_HASH,
+            SigningLib.encode_address_word( address(params.token_out) )
+        );
     }
 
 

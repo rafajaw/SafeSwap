@@ -202,16 +202,16 @@ library ModifyLiquidityLib {
 
         ( typed_string, token_amount_offset )  =  SigningLib.build_typed_string( REMOVE_FIELD_DECLARATION, inner_definition );
 
-        struct_hash  =  keccak256( abi.encode(
-            keccak256( bytes(inner_definition) ),
-            keccak256( bytes(SigningLib.render_position_value( params.token_id )) ),
-            keccak256( bytes(SigningLib.render_burn_value( params.liquidity )) ),
-            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, received1, tokens.decimals1, tokens.symbol1, received0, tokens.decimals0, tokens.symbol0 )) ),
-            keccak256( bytes(SigningLib.render_pool_value( _pool_info_of( position_info ) )) ),
-            keccak256( bytes(SigningLib.WARNING_VALUE) ),
-            tokens.token1,
-            tokens.token0
-        ));
+        struct_hash  =  SigningLib.hash_words(
+            SigningLib.hash_string( inner_definition ),
+            SigningLib.hash_string( SigningLib.render_position_value( params.token_id ) ),
+            SigningLib.hash_string( SigningLib.render_burn_value( params.liquidity ) ),
+            SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, received1, tokens.decimals1, tokens.symbol1, received0, tokens.decimals0, tokens.symbol0 ) ),
+            SigningLib.hash_string( SigningLib.render_pool_value( _pool_info_of( position_info ) ) ),
+            SigningLib.WARNING_VALUE_HASH,
+            SigningLib.encode_address_word( tokens.token1 ),
+            SigningLib.encode_address_word( tokens.token0 )
+        );
     }
 
     function get_collect_fees_signing_info( CollectFeesParams memory params, SafeSwapPositionInfo memory position_info )
@@ -227,15 +227,15 @@ library ModifyLiquidityLib {
 
         ( typed_string, token_amount_offset )  =  SigningLib.build_typed_string( COLLECT_FIELD_DECLARATION, inner_definition );
 
-        struct_hash  =  keccak256( abi.encode(
-            keccak256( bytes(inner_definition) ),
-            keccak256( bytes(SigningLib.render_position_value( params.token_id )) ),
-            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, received1, tokens.decimals1, tokens.symbol1, received0, tokens.decimals0, tokens.symbol0 )) ),
-            keccak256( bytes(SigningLib.render_pool_value( _pool_info_of( position_info ) )) ),
-            keccak256( bytes(SigningLib.WARNING_VALUE) ),
-            tokens.token1,
-            tokens.token0
-        ));
+        struct_hash  =  SigningLib.hash_words(
+            SigningLib.hash_string( inner_definition ),
+            SigningLib.hash_string( SigningLib.render_position_value( params.token_id ) ),
+            SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, received1, tokens.decimals1, tokens.symbol1, received0, tokens.decimals0, tokens.symbol0 ) ),
+            SigningLib.hash_string( SigningLib.render_pool_value( _pool_info_of( position_info ) ) ),
+            SigningLib.WARNING_VALUE_HASH,
+            SigningLib.encode_address_word( tokens.token1 ),
+            SigningLib.encode_address_word( tokens.token0 )
+        );
     }
 
 
@@ -256,18 +256,18 @@ library ModifyLiquidityLib {
     {
         ( uint256 deposit0, uint256 deposit1 )  =  SigningLib.calculate_amounts_for_liquidity( params.sqrt_price_x96, params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, params.liquidity );
 
-        return keccak256( abi.encode(
-            keccak256( bytes(inner_definition) ),
-            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, deposit1, tokens.decimals1, tokens.symbol1, deposit0, tokens.decimals0, tokens.symbol0 )) ),
-            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 )) ),
-            keccak256( bytes(Strings.toString( params.liquidity )) ),
-            keccak256( bytes(SigningLib.render_range_value( params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, tokens.decimals0, tokens.decimals1, tokens.symbol0, tokens.symbol1 )) ),
-            keccak256( bytes(SigningLib.render_price_value( params.sqrt_price_x96, tokens.decimals0, tokens.decimals1, tokens.symbol0, tokens.symbol1 )) ),
-            keccak256( bytes(SigningLib.render_pool_value( params.pool_info )) ),
-            keccak256( bytes(SigningLib.WARNING_VALUE) ),
-            tokens.token1,
-            tokens.token0
-        ));
+        return SigningLib.hash_words(
+            SigningLib.hash_string( inner_definition ),
+            SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, deposit1, tokens.decimals1, tokens.symbol1, deposit0, tokens.decimals0, tokens.symbol0 ) ),
+            SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 ) ),
+            SigningLib.hash_string( Strings.toString( params.liquidity ) ),
+            SigningLib.hash_string( SigningLib.render_range_value( params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, tokens.decimals0, tokens.decimals1, tokens.symbol0, tokens.symbol1 ) ),
+            SigningLib.hash_string( SigningLib.render_price_value( params.sqrt_price_x96, tokens.decimals0, tokens.decimals1, tokens.symbol0, tokens.symbol1 ) ),
+            SigningLib.hash_string( SigningLib.render_pool_value( params.pool_info ) ),
+            SigningLib.WARNING_VALUE_HASH,
+            SigningLib.encode_address_word( tokens.token1 ),
+            SigningLib.encode_address_word( tokens.token0 )
+        );
     }
 
     function _add_struct_hash(
@@ -285,17 +285,17 @@ library ModifyLiquidityLib {
         uint160 sqrt_price_upper_x96  =  TickMath.getSqrtPriceAtTick( position_info.tick_upper );
         ( uint256 deposit0, uint256 deposit1 )  =  SigningLib.calculate_amounts_for_liquidity( current_sqrt_price_x96, sqrt_price_lower_x96, sqrt_price_upper_x96, params.liquidity );
 
-        return keccak256( abi.encode(
-            keccak256( bytes(inner_definition) ),
-            keccak256( bytes(SigningLib.render_position_value( params.token_id )) ),
-            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, deposit1, tokens.decimals1, tokens.symbol1, deposit0, tokens.decimals0, tokens.symbol0 )) ),
-            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 )) ),
-            keccak256( bytes(Strings.toString( params.liquidity )) ),
-            keccak256( bytes(SigningLib.render_pool_value( _pool_info_of( position_info ) )) ),
-            keccak256( bytes(SigningLib.WARNING_VALUE) ),
-            tokens.token1,
-            tokens.token0
-        ));
+        return SigningLib.hash_words(
+            SigningLib.hash_string( inner_definition ),
+            SigningLib.hash_string( SigningLib.render_position_value( params.token_id ) ),
+            SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, deposit1, tokens.decimals1, tokens.symbol1, deposit0, tokens.decimals0, tokens.symbol0 ) ),
+            SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 ) ),
+            SigningLib.hash_string( Strings.toString( params.liquidity ) ),
+            SigningLib.hash_string( SigningLib.render_pool_value( _pool_info_of( position_info ) ) ),
+            SigningLib.WARNING_VALUE_HASH,
+            SigningLib.encode_address_word( tokens.token1 ),
+            SigningLib.encode_address_word( tokens.token0 )
+        );
     }
 
     function _pool_info_of( SafeSwapPositionInfo memory position_info ) private pure returns ( PoolInfo memory )

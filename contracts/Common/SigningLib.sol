@@ -6,6 +6,7 @@ import "@SafeSwapCommon/Types.sol";
 import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
 import { PriceLib } from "@SafeSwapNft/libraries/PriceLib.sol";
 import { Strings } from "@OpenZeppelin/utils/Strings.sol";
+import { EfficientHashLib } from "@Solady/utils/EfficientHashLib.sol";
 import { SqrtPriceMath } from "@UniswapV4Core/libraries/SqrtPriceMath.sol";
 
 
@@ -26,11 +27,13 @@ library SigningLib {
     // ━━━━  ENVELOPE / FIXED TEXT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     // BondRoute requires the typed string to start with this exact envelope and to contain the TokenAmount definition.
-    string internal constant ENVELOPE_HEAD  =  "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,";
-    string internal constant TOKEN_AMOUNT_DEFINITION  =  "TokenAmount(address token,uint256 amount)";
+    string internal constant ENVELOPE_HEAD              =  "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,";
+    string internal constant TOKEN_AMOUNT_DEFINITION    =  "TokenAmount(address token,uint256 amount)";
+    uint256 internal constant ENVELOPE_HEAD_LENGTH      =  85;
 
     // The only prose field — a nudge, not the control. The real check is `protocol` + token addresses against ChainConfig.
-    string internal constant WARNING_VALUE  =  ">>  Check protocol and token addresses  <<";
+    string internal constant WARNING_VALUE          =  ">>  Check protocol and token addresses  <<";
+    bytes32 internal constant WARNING_VALUE_HASH    =  keccak256( bytes(WARNING_VALUE) );
 
     // Every token amount carries an operator: `=` exact, `<=` cap (max), `>=` floor (min). Trailing space joins the amount.
     string internal constant OPERATOR_EXACT     =  "= ";
@@ -165,9 +168,47 @@ library SigningLib {
     function build_typed_string( string memory field_declaration, string memory inner_definition )
     internal pure returns ( string memory typed_string, uint256 token_amount_offset )
     {
-        string memory prefix  =  string.concat( ENVELOPE_HEAD, field_declaration, ")", inner_definition );
+        token_amount_offset  =  ENVELOPE_HEAD_LENGTH + bytes(field_declaration).length + 1 + bytes(inner_definition).length;
+        typed_string         =  string.concat( ENVELOPE_HEAD, field_declaration, ")", inner_definition, TOKEN_AMOUNT_DEFINITION );
+    }
 
-        token_amount_offset  =  bytes(prefix).length;
-        typed_string         =  string.concat( prefix, TOKEN_AMOUNT_DEFINITION );
+    function hash_string( string memory value ) internal pure returns ( bytes32 value_hash )
+    {
+        return EfficientHashLib.hash( bytes(value) );
+    }
+
+    function encode_address_word( address value ) internal pure returns ( bytes32 )
+    {
+        return bytes32( uint256( uint160( value ) ) );
+    }
+
+    function hash_words( bytes32 v0, bytes32 v1, bytes32 v2, bytes32 v3, bytes32 v4, bytes32 v5 )
+    internal pure returns ( bytes32 )
+    {
+        return EfficientHashLib.hash( v0, v1, v2, v3, v4, v5 );
+    }
+
+    function hash_words( bytes32 v0, bytes32 v1, bytes32 v2, bytes32 v3, bytes32 v4, bytes32 v5, bytes32 v6 )
+    internal pure returns ( bytes32 )
+    {
+        return EfficientHashLib.hash( v0, v1, v2, v3, v4, v5, v6 );
+    }
+
+    function hash_words( bytes32 v0, bytes32 v1, bytes32 v2, bytes32 v3, bytes32 v4, bytes32 v5, bytes32 v6, bytes32 v7 )
+    internal pure returns ( bytes32 )
+    {
+        return EfficientHashLib.hash( v0, v1, v2, v3, v4, v5, v6, v7 );
+    }
+
+    function hash_words( bytes32 v0, bytes32 v1, bytes32 v2, bytes32 v3, bytes32 v4, bytes32 v5, bytes32 v6, bytes32 v7, bytes32 v8 )
+    internal pure returns ( bytes32 )
+    {
+        return EfficientHashLib.hash( v0, v1, v2, v3, v4, v5, v6, v7, v8 );
+    }
+
+    function hash_words( bytes32 v0, bytes32 v1, bytes32 v2, bytes32 v3, bytes32 v4, bytes32 v5, bytes32 v6, bytes32 v7, bytes32 v8, bytes32 v9 )
+    internal pure returns ( bytes32 )
+    {
+        return EfficientHashLib.hash( v0, v1, v2, v3, v4, v5, v6, v7, v8, v9 );
     }
 }
