@@ -104,7 +104,7 @@
       preimage `[chainid()][address(this) | uint96 counter]`, keeps the low 10 bytes for the ERC721 id / V4 salt, and
       re-rolls only on zero or an actual minted-id collision. Focused, workflow, and descriptor tests now capture the mint
       `Transfer` event instead of assuming token ids `1`, `2`, ...
-- [ ] Investor-card redesign (mock locked in `nft-renders/reference9.svg`): port the new layout into
+- [x] Investor-card redesign (mock locked in `nft-renders/reference9.svg`): ported the new layout into
       `SafeSwapPositionDescriptor._render_svg` + `StringHelperLib`. Section order (the "arc"): header (8-byte hex token id +
       SafeSwap brand) / hero (pair name highlighted, muted amount beneath) / market row (inline price-range bar with live
       emerald price marker + In Range) / full-bleed FEE·REBATE·AGE stats band / earned·claimable line-grid (coin + download
@@ -115,14 +115,14 @@
       Snapshot-stamp DONE: `StringHelperLib.format_utc_datetime(block.timestamp)` → "YYYY-MM-DD HH:MM UTC" (Hinnant
       civil-from-days, `test/Nft/StringHelperLib.t.sol`, 5 tests). DECIDED: render it as faint bottom fine-print
       ("as of <datetime> UTC") so a marketplace-cached card visibly carries the as-of time of its live data.
-      REMAINING: rewrite `_render_svg`/`_render_svg_rows` to the reference9 layout (incl. the snapshot footer fed
-      `block.timestamp`), wire the price fields into `PositionView`/`_load_position`, out-of-range red-accent variant,
-      update the affected SVG/attribute test assertions, and re-check the descriptor fits EIP-170.
-- [ ] **Self-locating attributes** — a snapshot of the `attributes` JSON must say *where* the position lives, not just what
-      it is. Add to the `attributes` array: `Chain Id` (`block.chainid`), `NFT Contract` (the `SafeSwapNft` address — most
-      important: the canonical pointer back to the position), `Token Id`, plus `Tick Spacing`, `Hook`, and `Pool Id` for V4
-      `PoolKey` verifiability. Keep these **out of the SVG card** (machine-readable detail only — investors read the card,
-      indexers read the attributes).
+      DONE: `_load_position` wires price fields into `PositionView`, `_render_svg` uses the reference9 350x480 layout,
+      out-of-range positions use the red accent, and descriptor tests assert the layout, status variants, and snapshot
+      footer. Descriptor still builds under the normal Foundry profile; EIP-170 deploy-profile tuning remains tracked in
+      Pre-deploy.
+- [x] **Self-locating attributes** — a snapshot of the `attributes` JSON now says *where* the position lives, not just what
+      it is. Added `Chain Id` (`block.chainid`), `NFT Contract` (the `SafeSwapNft` address), `Token Id`, `Tick Spacing`,
+      `Hook`, and `Pool Id` for V4 `PoolKey` verifiability. Kept these **out of the SVG card**; descriptor tests assert
+      exact JSON traits and absence from the rendered SVG.
 
 ## Review
 

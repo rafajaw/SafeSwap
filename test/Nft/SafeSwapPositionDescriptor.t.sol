@@ -7,12 +7,16 @@ import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
 
 import { SAFESWAP_POSITIONS_NAME, SAFESWAP_POSITIONS_DESCRIPTION } from "@SafeSwapCommon/Definitions.sol";
 import { PoolInfo } from "@SafeSwapCommon/Types.sol";
+import { SafeSwapCommon } from "@SafeSwapCommon/SafeSwapCommon.sol";
 import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
 import { BondStatus } from "@BondRoute/Definitions.sol";
 import { IBondRouteProtected, IERC20, TokenAmount } from "@BondRouteProtected/BondRouteProtected.sol";
 import { IERC721Errors } from "@OpenZeppelin/interfaces/draft-IERC6093.sol";
 import { Strings } from "@OpenZeppelin/utils/Strings.sol";
 import { Vm } from "forge-std/Vm.sol";
+import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
+import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
+import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 
 
 /**
@@ -23,6 +27,8 @@ import { Vm } from "forge-std/Vm.sol";
  */
 contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, SafeSwapRealEnv {
 
+    using PoolIdLibrary for PoolKey;
+
     string internal constant _JSON_PREFIX  =  "data:application/json;base64,";
     string internal constant _SVG_PREFIX   =  "data:image/svg+xml;base64,";
 
@@ -31,13 +37,14 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
 
     TestERC20 internal _token_a;
     TestERC20 internal _token_b;
+    address   internal _hook;
     uint256   internal _token_id;
 
     function setUp( ) public
     {
         _setup_real_env( );
 
-        _register_hook( 30, 50 );
+        _hook     =  _register_hook( 30, 50 );
         _token_a  =  _new_token( "Token A", "TKNA" );
         _token_b  =  _new_token( "Token B", "TKNB" );
 
@@ -45,7 +52,7 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         _fund_and_approve( _USER, _token_b, 1_000_000 ether );
 
         vm.recordLogs( );
-        BondStatus status  =  _create_position( );
+        BondStatus status  =  _create_position( -120, 120 );
         assertEq( uint256(status), uint256(BondStatus.EXECUTED), "position creation should execute." );
         _token_id  =  _captured_minted_token_id( );
     }
@@ -71,7 +78,22 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         assertTrue( _contains( json, '"trait_type":"Status","value":"In Range"' ), "a position spanning the current tick should be in range." );
     }
 
-    function test_token_uri_image_is_a_fully_on_chain_svg( )
+    function test_token_uri_attributes_self_locate_position( )
+    external  view
+    {
+        string memory json  =  _decoded_json( nft.tokenURI( _token_id ) );
+        string memory expected_pool_id  =  Strings.toHexString( uint256(PoolId.unwrap( _pool_id() )), 32 );
+        string memory expected_nft_contract  =  string.concat( '"trait_type":"NFT Contract","value":"', Strings.toHexString( address(nft) ), '"' );
+
+        assertTrue( _contains( json, string.concat( '"trait_type":"Chain Id","value":"', Strings.toString( block.chainid ), '"' ) ), "attributes should include the chain id." );
+        assertTrue( _contains( json, expected_nft_contract ), "attributes should include the NFT contract." );
+        assertTrue( _contains( json, string.concat( '"trait_type":"Token Id","value":"', Strings.toString( _token_id ), '"' ) ), "attributes should include the token id." );
+        assertTrue( _contains( json, '"trait_type":"Tick Spacing","value":"60"' ), "attributes should include tick spacing." );
+        assertTrue( _contains( json, string.concat( '"trait_type":"Hook","value":"', Strings.toHexString( _hook ), '"' ) ), "attributes should include the hook address." );
+        assertTrue( _contains( json, string.concat( '"trait_type":"Pool Id","value":"', expected_pool_id, '"' ) ), "attributes should include the V4 pool id." );
+    }
+
+    function test_token_uri_image_matches_investor_card_layout( )
     external  view
     {
         string memory json   =  _decoded_json( nft.tokenURI( _token_id ) );
@@ -79,14 +101,37 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         string memory svg    =  string( _base64_decode( _strip_prefix( image, _SVG_PREFIX ) ) );
 
         assertTrue( _contains( svg, "<svg" ), "image should decode to an inline svg." );
+        assertTrue( _contains( svg, "width='350' height='480'" ), "svg should use the investor-card canvas." );
+        assertTrue( _contains( svg, "Safe</tspan><tspan class='g'>Swap" ), "svg should render the SafeSwap brand in the header." );
         assertTrue( _contains( svg, "CURRENT POSITION" ), "svg card should use current token inventory as the hero." );
-        assertTrue( _contains( svg, "Earned" ), "svg card should render lifetime earned fees." );
-        assertTrue( _contains( svg, "Claimable" ), "svg card should prioritize currently claimable fees." );
-        assertTrue( _contains( svg, "FEE 0.30%" ), "svg card should render the base fee chip." );
-        assertTrue( _contains( svg, "REBATE 50%" ), "svg card should render the rebate chip." );
-        assertTrue( _contains( svg, "TICKS -120 -&gt; 120" )  ||  _contains( svg, "TICKS -120 -> 120" ), "svg card should render the tick range." );
+        assertTrue( _contains( svg, "TKNB / TKNA" )  ||  _contains( svg, "TKNA / TKNB" ), "svg card should render the market pair row." );
+        assertTrue( _contains( svg, "EARNED" ), "svg card should render lifetime earned fees." );
+        assertTrue( _contains( svg, "CLAIMABLE" ), "svg card should prioritize currently claimable fees." );
+        assertTrue( _contains( svg, "FEE</tspan><tspan class='m w9 val' dx='5'>0.30%" ), "svg card should render the base fee stats band." );
+        assertTrue( _contains( svg, "REBATE</tspan><tspan class='m w9 val' dx='5'>50%" ), "svg card should render the rebate stats band." );
+        assertTrue( _contains( svg, "YIELD" ), "svg card should render the yield closing line." );
+        assertTrue( _contains( svg, "as of " ), "svg card should include a live-data snapshot timestamp." );
         assertTrue( _contains( svg, "In Range" ), "svg card should render the in-range status." );
         assertTrue( _contains( svg, "TKNA" )  &&  _contains( svg, "TKNB" ), "svg card should render both token symbols." );
+        assertTrue( _contains( svg, "NFT Contract" ) == false, "machine-readable location traits should stay out of the SVG." );
+        assertTrue( _contains( svg, "Pool Id" ) == false, "machine-readable pool id should stay out of the SVG." );
+    }
+
+    function test_token_uri_image_renders_out_of_range_red_variant( )
+    external
+    {
+        vm.recordLogs( );
+        BondStatus status  =  _create_position( 120, 240 );
+        assertEq( uint256(status), uint256(BondStatus.EXECUTED), "out-of-range position creation should execute." );
+
+        uint256 token_id    =  _captured_minted_token_id( );
+        string memory json  =  _decoded_json( nft.tokenURI( token_id ) );
+        string memory image =  _extract_between( json, '"image":"', '"' );
+        string memory svg   =  string( _base64_decode( _strip_prefix( image, _SVG_PREFIX ) ) );
+
+        assertTrue( _contains( json, '"trait_type":"Status","value":"Out of Range"' ), "metadata should report the out-of-range status." );
+        assertTrue( _contains( svg, "Out of Range" ), "svg card should render the out-of-range status." );
+        assertTrue( _contains( svg, "#ff8a8a" ), "out-of-range card should use the red accent." );
     }
 
 
@@ -114,12 +159,12 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
 
     // ━━━━  POSITION SETUP  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _create_position( ) internal returns ( BondStatus status )
+    function _create_position( int24 tick_lower, int24 tick_upper ) internal returns ( BondStatus status )
     {
         CreatePositionParams memory params  =  CreatePositionParams({
             pool_info: PoolInfo({ base_fee_bps: 30, rebate_percent: 50, tick_spacing: 60 }),
-            tick_lower: -120,
-            tick_upper: 120,
+            tick_lower: tick_lower,
+            tick_upper: tick_upper,
             liquidity: 1 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
             minimum_deposited_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),
@@ -139,6 +184,12 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
             TokenAmount({ token: currency0, amount: 10 ether }),
             fundings
         );
+    }
+
+    function _pool_id( ) internal view returns ( PoolId )
+    {
+        PoolKey memory key  =  SafeSwapCommon.build_pool_key( IERC20(address(_token_a)), IERC20(address(_token_b)), LPFeeLibrary.DYNAMIC_FEE_FLAG, 60, _hook );
+        return key.toId( );
     }
 
     function _captured_minted_token_id( ) internal returns ( uint256 )

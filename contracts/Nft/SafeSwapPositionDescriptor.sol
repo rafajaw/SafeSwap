@@ -16,6 +16,7 @@ pragma solidity ^0.8.30;
 import { ISafeSwapPositionDescriptor } from "@SafeSwapNft/ISafeSwapPositionDescriptor.sol";
 import { ISafeSwapNft } from "@SafeSwapNft/ISafeSwapNft.sol";
 import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
+import { PriceLib } from "@SafeSwapNft/libraries/PriceLib.sol";
 import { SafeSwapPositionInfo } from "@SafeSwapCommon/Types.sol";
 import { SafeSwapCommon } from "@SafeSwapCommon/SafeSwapCommon.sol";
 import {
@@ -52,29 +53,61 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     IPoolManager public immutable PoolManager;
 
-    // Everything needed to render a position, gathered once to keep the render helpers off the stack.
-    struct PositionView {
-        string  symbol0;
-        string  symbol1;
-        uint8   decimals0;
-        uint8   decimals1;
+    struct PositionIdentity {
+        uint256 token_id;
+        address nft_contract;
+        address hook;
+        int24   tick_spacing;
+        bytes32 pool_id;
+    }
+
+    struct PriceView {
+        uint256 current;
+        uint256 lower;
+        uint256 upper;
+        uint256 fill;
+    }
+
+    struct TokenView {
+        string symbol0;
+        string symbol1;
+        uint8  decimals0;
+        uint8  decimals1;
+    }
+
+    struct PositionConfigView {
         string  base_fee_percent;
         uint8   rebate_percent;
         int24   tick_lower;
         int24   tick_upper;
         uint128 liquidity;
+        uint40  opened_at;
+        bool    initialized;
+        bool    in_range;
+    }
+
+    struct AmountView {
         uint256 position0;
         uint256 position1;
         uint256 claimable0;
         uint256 claimable1;
         uint256 earned0;
         uint256 earned1;
-        uint256 lifetime_yield_bps;
-        uint256 annualized_yield_bps;
-        uint40  opened_at;
-        bool    initialized;
-        bool    in_range;
-        uint256 token_id;
+    }
+
+    struct YieldView {
+        uint256 lifetime_bps;
+        uint256 annualized_bps;
+    }
+
+    // Everything needed to render a position, gathered once to keep the render helpers off the stack.
+    struct PositionView {
+        TokenView tokens;
+        PositionConfigView config;
+        PriceView prices;
+        AmountView amounts;
+        YieldView yield;
+        PositionIdentity identity;
     }
 
     constructor( )
@@ -96,7 +129,7 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
         string memory image  =  string.concat( "data:image/svg+xml;base64,", Base64.encode( bytes(_render_svg( position )) ) );
 
         bytes memory json  =  abi.encodePacked(
-            '{"name":"', SAFESWAP_POSITIONS_NAME, ' #', Strings.toString( token_id ), ' ', position.symbol0, '/', position.symbol1, '",',
+            '{"name":"', SAFESWAP_POSITIONS_NAME, ' #', Strings.toString( token_id ), ' ', position.tokens.symbol0, '/', position.tokens.symbol1, '",',
             '"description":"', SAFESWAP_POSITIONS_DESCRIPTION, '",',
             '"image":"', image, '",',
             '"attributes":', _render_attributes( position ),
@@ -123,45 +156,107 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
     function _load_position( ISafeSwapNft nft, uint256 token_id ) internal view returns ( PositionView memory position )
     {
         SafeSwapPositionInfo memory info  =  nft.get_lp_position( token_id );
-
-        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( info.token0, info.token1, LPFeeLibrary.DYNAMIC_FEE_FLAG, info.tick_spacing, info.hook );
-        PoolId pool_id           =  pool_key.toId( );
+        PoolId pool_id                    =  _pool_id( info );
 
         ( uint160 sqrt_price_x96, int24 current_tick, , )  =  PoolManager.getSlot0( pool_id );
-        ( uint128 liquidity, uint256 fee_growth_0_last, uint256 fee_growth_1_last )  =
-            PoolManager.getPositionInfo( pool_id, address(nft), info.tick_lower, info.tick_upper, bytes32(token_id) );
+        uint8 decimals0  =  StringHelperLib.token_decimals( info.token0 );
+        uint8 decimals1  =  StringHelperLib.token_decimals( info.token1 );
+
+        ( AmountView memory amounts, uint128 liquidity )  =  _load_amounts( nft, token_id, info, pool_id, sqrt_price_x96 );
+
+        position.tokens            =  TokenView({
+            symbol0:   StringHelperLib.token_symbol( info.token0 ),
+            symbol1:   StringHelperLib.token_symbol( info.token1 ),
+            decimals0: decimals0,
+            decimals1: decimals1
+        });
+        position.config            =  _load_config( info, sqrt_price_x96, current_tick, liquidity );
+        position.prices            =  _load_prices( sqrt_price_x96, info, decimals0, decimals1 );
+        position.amounts           =  amounts;
+        position.yield             =  _load_yield( sqrt_price_x96, amounts, info );
+        position.identity          =  PositionIdentity({
+            token_id:      token_id,
+            nft_contract:  address(nft),
+            hook:          info.hook,
+            tick_spacing:  info.tick_spacing,
+            pool_id:       PoolId.unwrap( pool_id )
+        });
+    }
+
+    function _pool_id( SafeSwapPositionInfo memory info ) internal pure returns ( PoolId )
+    {
+        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( info.token0, info.token1, LPFeeLibrary.DYNAMIC_FEE_FLAG, info.tick_spacing, info.hook );
+        return pool_key.toId( );
+    }
+
+    function _load_config( SafeSwapPositionInfo memory info, uint160 sqrt_price_x96, int24 current_tick, uint128 liquidity )
+    internal pure returns ( PositionConfigView memory config )
+    {
+        config  =  PositionConfigView({
+            base_fee_percent: StringHelperLib.format_bps_as_percent( info.base_fee_bps ),
+            rebate_percent:   info.rebate_percent,
+            tick_lower:       info.tick_lower,
+            tick_upper:       info.tick_upper,
+            liquidity:        liquidity,
+            opened_at:        info.opened_at,
+            initialized:      sqrt_price_x96 != 0,
+            in_range:         sqrt_price_x96 != 0  &&  current_tick >= info.tick_lower  &&  current_tick < info.tick_upper
+        });
+    }
+
+    function _load_prices( uint160 sqrt_price_x96, SafeSwapPositionInfo memory info, uint8 decimals0, uint8 decimals1 )
+    internal pure returns ( PriceView memory prices )
+    {
+        uint256 current_price  =  PriceLib.price1_per_0_scaled( sqrt_price_x96, decimals0, decimals1 );
+        uint256 lower_price    =  PriceLib.price_at_tick_scaled( info.tick_lower, decimals0, decimals1 );
+        uint256 upper_price    =  PriceLib.price_at_tick_scaled( info.tick_upper, decimals0, decimals1 );
+
+        prices  =  PriceView({
+            current: current_price,
+            lower:   lower_price,
+            upper:   upper_price,
+            fill:    PriceLib.fill_width( current_price, lower_price, upper_price, 85 )
+        });
+    }
+
+    function _load_amounts(
+        ISafeSwapNft nft,
+        uint256 token_id,
+        SafeSwapPositionInfo memory info,
+        PoolId pool_id,
+        uint160 sqrt_price_x96
+    ) internal view returns ( AmountView memory amounts, uint128 liquidity )
+    {
+        uint256 fee_growth_0_last;
+        uint256 fee_growth_1_last;
+        ( liquidity, fee_growth_0_last, fee_growth_1_last )  =  _position_state( nft, token_id, info, pool_id );
         ( uint256 checkpointed_earned0, uint256 checkpointed_earned1 )  =  nft.get_lp_fee_totals( token_id );
         ( uint256 claimable0, uint256 claimable1 )  =  _claimable_fees( pool_id, info, liquidity, fee_growth_0_last, fee_growth_1_last );
-        uint256 lifetime_earned0  =  checkpointed_earned0 + claimable0;
-        uint256 lifetime_earned1  =  checkpointed_earned1 + claimable1;
-        ( uint256 position0, uint256 position1 )  =  _position_amounts( sqrt_price_x96, info.tick_lower, info.tick_upper, liquidity );
+        ( uint256 position0, uint256 position1 )    =  _position_amounts( sqrt_price_x96, info.tick_lower, info.tick_upper, liquidity );
 
-        // *NOTE*  -  Lifetime earned is the checkpointed SafeSwap total plus fees accrued since the last V4 checkpoint.
-        //            Do not add claimable fees again elsewhere; `claimable0/1` is the live accrued component.
-        ( uint256 lifetime_yield_bps, uint256 annualized_yield_bps )  =
-            _yield_current_basis( sqrt_price_x96, position0, position1, info, lifetime_earned0, lifetime_earned1 );
+        amounts  =  AmountView({
+            position0:  position0,
+            position1:  position1,
+            claimable0: claimable0,
+            claimable1: claimable1,
+            earned0:    checkpointed_earned0 + claimable0,
+            earned1:    checkpointed_earned1 + claimable1
+        });
+    }
 
-        position.symbol0           =  StringHelperLib.token_symbol( info.token0 );
-        position.symbol1           =  StringHelperLib.token_symbol( info.token1 );
-        position.decimals0         =  StringHelperLib.token_decimals( info.token0 );
-        position.decimals1         =  StringHelperLib.token_decimals( info.token1 );
-        position.base_fee_percent  =  StringHelperLib.format_bps_as_percent( info.base_fee_bps );
-        position.rebate_percent    =  info.rebate_percent;
-        position.tick_lower        =  info.tick_lower;
-        position.tick_upper        =  info.tick_upper;
-        position.liquidity         =  liquidity;
-        position.position0         =  position0;
-        position.position1         =  position1;
-        position.claimable0        =  claimable0;
-        position.claimable1        =  claimable1;
-        position.earned0           =  lifetime_earned0;
-        position.earned1           =  lifetime_earned1;
-        position.lifetime_yield_bps    =  lifetime_yield_bps;
-        position.annualized_yield_bps  =  annualized_yield_bps;
-        position.opened_at         =  info.opened_at;
-        position.initialized       =  sqrt_price_x96 != 0;
-        position.in_range          =  sqrt_price_x96 != 0  &&  current_tick >= info.tick_lower  &&  current_tick < info.tick_upper;
-        position.token_id          =  token_id;
+    function _position_state( ISafeSwapNft nft, uint256 token_id, SafeSwapPositionInfo memory info, PoolId pool_id )
+    internal view returns ( uint128 liquidity, uint256 fee_growth_0_last, uint256 fee_growth_1_last )
+    {
+        ( liquidity, fee_growth_0_last, fee_growth_1_last )  =  PoolManager.getPositionInfo( pool_id, address(nft), info.tick_lower, info.tick_upper, bytes32(token_id) );
+    }
+
+    function _load_yield( uint160 sqrt_price_x96, AmountView memory amounts, SafeSwapPositionInfo memory info )
+    internal view returns ( YieldView memory fee_yield )
+    {
+        ( uint256 lifetime_bps, uint256 annualized_bps )  =
+            _yield_current_basis( sqrt_price_x96, amounts.position0, amounts.position1, info, amounts.earned0, amounts.earned1 );
+
+        fee_yield  =  YieldView({ lifetime_bps: lifetime_bps, annualized_bps: annualized_bps });
     }
 
 
@@ -170,7 +265,17 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
     function _render_svg( PositionView memory position ) internal view returns ( string memory )
     {
         return string.concat(
-            "<svg xmlns='http://www.w3.org/2000/svg' width='300' height='400' viewBox='0 0 300 400'>",
+            _render_svg_definitions( ),
+            _render_svg_frame( position ),
+            _render_svg_rows( position ),
+            "</svg>"
+        );
+    }
+
+    function _render_svg_definitions( ) internal pure returns ( string memory )
+    {
+        return string.concat(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='350' height='480' viewBox='0 0 350 480'>",
             "<defs>",
             "<linearGradient id='bg' x1='0' y1='0' x2='1' y2='1'>",
             "<stop offset='0' stop-color='#276f61'/><stop offset='.46' stop-color='#13233a'/><stop offset='1' stop-color='#584a34'/>",
@@ -179,112 +284,246 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
             "<stop offset='0' stop-color='#37d6a3' stop-opacity='.42'/><stop offset='1' stop-color='#37d6a3' stop-opacity='0'/>",
             "</radialGradient>",
             "<style>",
-            ".t{font-family:monospace}.muted{fill:#adb7c8}.white{fill:#eaf2ff}.green{fill:#49e6a1}",
-            ".label{fill:#c3c9d4;font-size:12px;font-weight:700;letter-spacing:0}.amt{fill:#eaf2ff;font-size:31px}",
-            ".sym{fill:#bac2ce;font-size:15px;font-weight:700}.small{font-size:13px}.chip{fill:#162236;stroke:#26374d;stroke-width:1}",
-            ".panel{fill:#17263a;fill-opacity:.62}",
+            ".t{font-family:Arial,sans-serif}.m{font-family:monospace}.w{fill:#fff}",
+            ".w9{fill:#fff;fill-opacity:.9}.w6{fill:#fff;fill-opacity:.6}.w5{fill:#fff;fill-opacity:.5}.w4{fill:#fff;fill-opacity:.4}",
+            ".g{fill:#37d6a3}.r{fill:#ff8a8a}.gs{fill:#37d6a3;fill-opacity:.6}.rs{fill:#ff8a8a;fill-opacity:.6}",
+            ".val{font-weight:700}.lbl{font-weight:600;letter-spacing:0}.rule{stroke:#fff;stroke-opacity:.1}",
             "</style>",
-            "</defs>",
-            "<rect width='300' height='400' fill='url(#bg)'/>",
-            "<rect width='300' height='400' fill='url(#glow)'/>",
-            "<text x='20' y='36' class='t white' font-size='20' font-weight='700'>#", Strings.toString( position.token_id ), "</text>",
-            _render_status_pill( position ),
-            "<line x1='0' y1='70' x2='300' y2='70' stroke='#c8d7e8' stroke-opacity='.10'/>",
-            _render_svg_rows( position ),
-            "</svg>"
+            "</defs>"
+        );
+    }
+
+    function _render_svg_frame( PositionView memory position ) internal pure returns ( string memory )
+    {
+        return string.concat(
+            "<rect width='350' height='480' rx='24' fill='url(#bg)'/>",
+            "<rect width='350' height='480' rx='24' fill='url(#glow)'/>",
+            "<rect x='.5' y='.5' width='349' height='479' rx='23.5' fill='none' stroke='#fff' stroke-opacity='.1'/>",
+            "<text x='24' y='43' class='m w9 val' font-size='15'>", _short_token_id_hex( position.identity.token_id ), "</text>",
+            "<text x='326' y='43' text-anchor='end' class='t' font-size='13' font-weight='700'><tspan class='w9'>Safe</tspan><tspan class='g'>Swap</tspan></text>",
+            "<line x1='24' y1='58' x2='326' y2='58' class='rule'/>"
         );
     }
 
     function _render_svg_rows( PositionView memory position ) internal view returns ( string memory )
     {
-        string memory position0       =  StringHelperLib.format_token_amount( position.position0, position.decimals0 );
-        string memory position1       =  StringHelperLib.format_token_amount( position.position1, position.decimals1 );
-        string memory claimable0      =  StringHelperLib.format_symbol_amount( position.claimable0, position.decimals0, position.symbol0 );
-        string memory claimable1      =  StringHelperLib.format_symbol_amount( position.claimable1, position.decimals1, position.symbol1 );
-        string memory earned0         =  StringHelperLib.format_symbol_amount( position.earned0, position.decimals0, position.symbol0 );
-        string memory earned1         =  StringHelperLib.format_symbol_amount( position.earned1, position.decimals1, position.symbol1 );
-        string memory yield_row       =  _format_yield_row( position.lifetime_yield_bps, position.annualized_yield_bps );
-        string memory ticks_row       =  string.concat( "TICKS ", Strings.toStringSigned( position.tick_lower ), " -> ", Strings.toStringSigned( position.tick_upper ) );
-
         return string.concat(
-            "<text x='150' y='108' text-anchor='middle' class='t label'>CURRENT POSITION</text>",
-            "<text x='82' y='158' text-anchor='middle' class='t amt'>", position0, "</text>",
-            "<text x='82' y='185' text-anchor='middle' class='t sym'>", position.symbol0, "</text>",
-            "<text x='218' y='158' text-anchor='middle' class='t amt'>", position1, "</text>",
-            "<text x='218' y='185' text-anchor='middle' class='t sym'>", position.symbol1, "</text>",
-            "<rect x='0' y='214' width='150' height='78' class='panel'/><rect x='150' y='214' width='150' height='78' class='panel' fill-opacity='.72'/>",
-            "<line x1='150' y1='214' x2='150' y2='292' stroke='#c8d7e8' stroke-opacity='.08'/>",
-            "<text x='20' y='238' class='t label'>Earned</text>",
-            "<text x='20' y='260' class='t white small' font-weight='700'>", earned0, "</text>",
-            "<text x='20' y='280' class='t muted small'>", earned1, "</text>",
-            "<text x='170' y='238' class='t label'>Claimable</text>",
-            "<text x='170' y='260' class='t green small' font-weight='700'>", claimable0, "</text>",
-            "<text x='170' y='280' class='t muted small'>", claimable1, "</text>",
-            "<text x='20' y='318' class='t muted small'>Yield</text>",
-            "<text x='280' y='318' text-anchor='end' class='t white small' font-weight='700'>", yield_row, "</text>",
-            "<line x1='20' y1='333' x2='280' y2='333' stroke='#c8d7e8' stroke-opacity='.14'/>",
-            _render_chip( 20, "FEE ", string.concat( position.base_fee_percent, "%" ) ),
-            _render_chip( 108, "REBATE ", string.concat( Strings.toString( position.rebate_percent ), "%" ) ),
-            _render_chip( 200, "AGE ", StringHelperLib.format_age( position.opened_at ) ),
-            "<text x='150' y='386' text-anchor='middle' class='t muted' font-size='11' font-weight='700'>", ticks_row, "</text>"
+            _render_hero( position ),
+            _render_market_row( position ),
+            _render_stats_band( position ),
+            _render_fee_grid( position ),
+            _render_yield_line( position ),
+            "<text x='175' y='472' text-anchor='middle' class='m w4' font-size='7'>as of ", StringHelperLib.format_utc_datetime( block.timestamp ), "</text>"
         );
     }
 
-    function _render_status_pill( PositionView memory position ) internal pure returns ( string memory )
+    function _render_hero( PositionView memory position ) internal pure returns ( string memory )
     {
-        string memory color  =  position.in_range  ?  "#49e6a1"  :  "#ff9f9f";
+        string memory position0  =  StringHelperLib.format_token_amount( position.amounts.position0, position.tokens.decimals0 );
+        string memory position1  =  StringHelperLib.format_token_amount( position.amounts.position1, position.tokens.decimals1 );
 
         return string.concat(
-            "<rect x='178' y='18' width='104' height='28' rx='14' fill='#15313f' fill-opacity='.55' stroke='", color, "' stroke-opacity='.45'/>",
-            "<circle cx='194' cy='32' r='4.5' fill='", color, "'/>",
-            "<text x='204' y='37' class='t' fill='", color, "' font-size='13' font-weight='700'>", _status_label( position ), "</text>"
+            "<text x='175' y='88' text-anchor='middle' class='t w4 lbl' font-size='11'>CURRENT POSITION</text>",
+            "<text x='90' y='124' text-anchor='middle' class='t w val' font-size='24'>", position.tokens.symbol0, "</text>",
+            "<text x='90' y='153' text-anchor='middle' class='m w6' font-size='19'>", position0, "</text>",
+            "<text x='260' y='124' text-anchor='middle' class='t w val' font-size='24'>", position.tokens.symbol1, "</text>",
+            "<text x='260' y='153' text-anchor='middle' class='m w6' font-size='19'>", position1, "</text>",
+            "<line x1='24' y1='180' x2='326' y2='180' class='rule'/>"
         );
     }
 
-    function _render_chip( uint256 x, string memory label, string memory value ) internal pure returns ( string memory )
+    function _render_market_row( PositionView memory position ) internal pure returns ( string memory )
+    {
+        string memory marker_color  =  position.config.in_range  ?  "#37d6a3"  :  "#ff8a8a";
+        string memory marker_class  =  position.config.in_range  ?  "g"  :  "r";
+        string memory price_fill    =  Strings.toString( position.prices.fill );
+        string memory price_marker  =  Strings.toString( 201 + position.prices.fill );
+
+        return string.concat(
+            _render_market_labels( position, marker_color, marker_class ),
+            _render_market_bar( position, marker_color, price_fill, price_marker )
+        );
+    }
+
+    function _render_market_labels( PositionView memory position, string memory marker_color, string memory marker_class ) internal pure returns ( string memory )
     {
         return string.concat(
-            "<rect x='", Strings.toString( x ), "' y='348' width='72' height='28' class='chip'/>",
-            "<text x='", Strings.toString( x + 36 ), "' y='367' text-anchor='middle' class='t muted' font-size='11' font-weight='700'>", label, value, "</text>"
+            "<text x='326' y='200' text-anchor='end' class='t w4 lbl' font-size='9'>", position.tokens.symbol1, " / ", position.tokens.symbol0, "</text>",
+            "<text x='244' y='218' text-anchor='middle' class='m ", marker_class, "' font-size='12'>", StringHelperLib.format_price( position.prices.current ), "</text>",
+            "<circle cx='30' cy='217' r='4' fill='", marker_color, "'/>",
+            "<text x='40' y='221' class='t ", marker_class, "' font-size='12' font-weight='600'>", _status_label( position ), "</text>",
+            "<text x='193' y='234' text-anchor='end' class='m w5' font-size='10'>", StringHelperLib.format_price( position.prices.lower ), "</text>"
+        );
+    }
+
+    function _render_market_bar(
+        PositionView memory position,
+        string memory marker_color,
+        string memory price_fill,
+        string memory price_marker
+    ) internal pure returns ( string memory )
+    {
+        return string.concat(
+            "<rect x='201' y='229.5' width='85' height='3' rx='1.5' fill='#fff' fill-opacity='.08'/>",
+            "<rect x='201' y='229.5' width='", price_fill, "' height='3' rx='1.5' fill='#fff' fill-opacity='.16'/>",
+            "<circle cx='", price_marker, "' cy='231' r='2.5' fill='", marker_color, "' fill-opacity='.9'/>",
+            "<text x='294' y='234' text-anchor='start' class='m w5' font-size='10'>", StringHelperLib.format_price( position.prices.upper ), "</text>"
+        );
+    }
+
+    function _render_stats_band( PositionView memory position ) internal view returns ( string memory )
+    {
+        return string.concat(
+            "<rect x='0' y='254' width='350' height='42' fill='#fff' fill-opacity='.05'/>",
+            "<line x1='0' y1='254' x2='350' y2='254' class='rule'/>",
+            "<line x1='117' y1='262' x2='117' y2='288' class='rule' stroke-opacity='.12'/>",
+            "<line x1='233' y1='262' x2='233' y2='288' class='rule' stroke-opacity='.12'/>",
+            "<text x='58' y='279' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>FEE</tspan><tspan class='m w9 val' dx='5'>",
+            position.config.base_fee_percent, "%</tspan></text>",
+            "<text x='175' y='279' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>REBATE</tspan><tspan class='m w9 val' dx='5'>",
+            Strings.toString( position.config.rebate_percent ), "%</tspan></text>",
+            "<text x='292' y='279' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>AGE</tspan><tspan class='m w9 val' dx='5'>",
+            StringHelperLib.format_age( position.config.opened_at ), "</tspan></text>"
+        );
+    }
+
+    function _render_fee_grid( PositionView memory position ) internal pure returns ( string memory )
+    {
+        string memory marker_subclass  =  position.config.in_range  ?  "gs"  :  "rs";
+
+        return string.concat(
+            _render_earned_fees( position ),
+            _render_claimable_fees( position, marker_subclass ),
+            "<line x1='24' y1='402' x2='326' y2='402' class='rule'/>"
+        );
+    }
+
+    function _render_earned_fees( PositionView memory position ) internal pure returns ( string memory )
+    {
+        string memory earned0  =  StringHelperLib.format_token_amount( position.amounts.earned0, position.tokens.decimals0 );
+        string memory earned1  =  StringHelperLib.format_token_amount( position.amounts.earned1, position.tokens.decimals1 );
+
+        return string.concat(
+            "<line x1='175' y1='312' x2='175' y2='394' class='rule' stroke-opacity='.08'/>",
+            "<ellipse cx='72' cy='328' rx='6' ry='4' fill='#1f9d77'/>",
+            "<ellipse cx='72' cy='326' rx='6' ry='4' fill='#37d6a3'/>",
+            "<ellipse cx='70' cy='325' rx='2' ry='1.2' fill='#fff' fill-opacity='.5'/>",
+            "<text x='104' y='330' text-anchor='middle' class='t w4 lbl' font-size='11'>EARNED</text>",
+            _render_amount_line( 99, 358, earned0, position.tokens.symbol0, "w", "w5" ),
+            _render_amount_line( 99, 380, earned1, position.tokens.symbol1, "w", "w5" )
+        );
+    }
+
+    function _render_claimable_fees( PositionView memory position, string memory marker_subclass ) internal pure returns ( string memory )
+    {
+        string memory claimable0  =  StringHelperLib.format_token_amount( position.amounts.claimable0, position.tokens.decimals0 );
+        string memory claimable1  =  StringHelperLib.format_token_amount( position.amounts.claimable1, position.tokens.decimals1 );
+
+        return string.concat(
+            "<path d='M213 319 v7 m-3 -3 l3 3 l3 -3' stroke='#37d6a3' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/>",
+            "<path d='M209 330 h8' stroke='#37d6a3' stroke-width='1.6' stroke-linecap='round'/>",
+            "<text x='256' y='330' text-anchor='middle' class='t w4 lbl' font-size='11'>CLAIMABLE</text>",
+            _render_amount_line( 251, 358, claimable0, position.tokens.symbol0, "g", marker_subclass ),
+            _render_amount_line( 251, 380, claimable1, position.tokens.symbol1, "g", marker_subclass )
+        );
+    }
+
+    function _render_amount_line(
+        uint256 x,
+        uint256 y,
+        string memory amount,
+        string memory symbol,
+        string memory amount_class,
+        string memory symbol_class
+    ) internal pure returns ( string memory )
+    {
+        return string.concat(
+            "<text x='", Strings.toString( x ), "' y='", Strings.toString( y ), "' text-anchor='middle' class='m ",
+            amount_class, " val' font-size='16'>", amount,
+            "<tspan class='t ", symbol_class, "' dx='5' font-size='12'>", symbol, "</tspan></text>"
+        );
+    }
+
+    function _render_yield_line( PositionView memory position ) internal pure returns ( string memory )
+    {
+        return string.concat(
+            "<text x='24' y='436' class='t w4 lbl' font-size='11'>YIELD</text>",
+            "<text x='188' y='437' text-anchor='end' class='m w val' font-size='20'>", StringHelperLib.format_bps_as_percent_string( position.yield.lifetime_bps ), "</text>",
+            "<text x='194' y='437' class='t w5' font-size='11'>life</text>",
+            "<text x='288' y='437' text-anchor='end' class='m w val' font-size='20'>", StringHelperLib.format_bps_as_percent_string( position.yield.annualized_bps ), "</text>",
+            "<text x='294' y='437' class='t w5' font-size='11'>ann.</text>"
         );
     }
 
 
     // ━━━━  ATTRIBUTES  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _render_attributes( PositionView memory position ) internal pure returns ( string memory )
+    function _render_attributes( PositionView memory position ) internal view returns ( string memory )
     {
-        string memory position0       =  StringHelperLib.format_symbol_amount( position.position0, position.decimals0, position.symbol0 );
-        string memory position1       =  StringHelperLib.format_symbol_amount( position.position1, position.decimals1, position.symbol1 );
-        string memory claimable0      =  StringHelperLib.format_symbol_amount( position.claimable0, position.decimals0, position.symbol0 );
-        string memory claimable1      =  StringHelperLib.format_symbol_amount( position.claimable1, position.decimals1, position.symbol1 );
-        string memory earned0         =  StringHelperLib.format_symbol_amount( position.earned0, position.decimals0, position.symbol0 );
-        string memory earned1         =  StringHelperLib.format_symbol_amount( position.earned1, position.decimals1, position.symbol1 );
-
         return string.concat(
             "[",
-            StringHelperLib.attribute( "Pair", string.concat( position.symbol0, "/", position.symbol1 ) ), ",",
-            StringHelperLib.attribute( "Base Fee", string.concat( position.base_fee_percent, "%" ) ), ",",
-            StringHelperLib.attribute( "LP Rebate", string.concat( Strings.toString( position.rebate_percent ), "%" ) ), ",",
-            StringHelperLib.attribute( "Tick Lower", Strings.toStringSigned( position.tick_lower ) ), ",",
-            StringHelperLib.attribute( "Tick Upper", Strings.toStringSigned( position.tick_upper ) ), ",",
-            StringHelperLib.attribute( "Opened At", Strings.toString( position.opened_at ) ), ",",
-            StringHelperLib.attribute( "Liquidity", Strings.toString( position.liquidity ) ), ",",
-            StringHelperLib.attribute( "Current Position", string.concat( position0, " / ", position1 ) ), ",",
-            StringHelperLib.attribute( "Claimable Fees", string.concat( claimable0, " / ", claimable1 ) ), ",",
-            StringHelperLib.attribute( "Lifetime Fees", string.concat( earned0, " / ", earned1 ) ), ",",
-            StringHelperLib.attribute( "Fee Yield Current Basis", StringHelperLib.format_bps_as_percent_string( position.lifetime_yield_bps ) ), ",",
-            StringHelperLib.attribute( "Annualized Fee Yield Estimate", StringHelperLib.format_bps_as_percent_string( position.annualized_yield_bps ) ), ",",
+            _render_identity_attributes( position ), ",",
+            _render_position_attributes( position ), ",",
+            _render_fee_attributes( position ), ",",
             StringHelperLib.attribute( "Status", _status_label( position ) ),
             "]"
         );
     }
 
+    function _render_identity_attributes( PositionView memory position ) internal view returns ( string memory )
+    {
+        return string.concat(
+            StringHelperLib.attribute( "Pair", string.concat( position.tokens.symbol0, "/", position.tokens.symbol1 ) ), ",",
+            StringHelperLib.attribute( "Chain Id", Strings.toString( block.chainid ) ), ",",
+            StringHelperLib.attribute( "NFT Contract", Strings.toHexString( position.identity.nft_contract ) ), ",",
+            StringHelperLib.attribute( "Token Id", Strings.toString( position.identity.token_id ) ), ",",
+            StringHelperLib.attribute( "Tick Spacing", Strings.toStringSigned( position.identity.tick_spacing ) ), ",",
+            StringHelperLib.attribute( "Hook", Strings.toHexString( position.identity.hook ) ), ",",
+            StringHelperLib.attribute( "Pool Id", Strings.toHexString( uint256(position.identity.pool_id), 32 ) )
+        );
+    }
+
+    function _render_position_attributes( PositionView memory position ) internal pure returns ( string memory )
+    {
+        string memory position0       =  StringHelperLib.format_symbol_amount( position.amounts.position0, position.tokens.decimals0, position.tokens.symbol0 );
+        string memory position1       =  StringHelperLib.format_symbol_amount( position.amounts.position1, position.tokens.decimals1, position.tokens.symbol1 );
+
+        return string.concat(
+            StringHelperLib.attribute( "Base Fee", string.concat( position.config.base_fee_percent, "%" ) ), ",",
+            StringHelperLib.attribute( "LP Rebate", string.concat( Strings.toString( position.config.rebate_percent ), "%" ) ), ",",
+            StringHelperLib.attribute( "Tick Lower", Strings.toStringSigned( position.config.tick_lower ) ), ",",
+            StringHelperLib.attribute( "Tick Upper", Strings.toStringSigned( position.config.tick_upper ) ), ",",
+            StringHelperLib.attribute( "Opened At", Strings.toString( position.config.opened_at ) ), ",",
+            StringHelperLib.attribute( "Liquidity", Strings.toString( position.config.liquidity ) ), ",",
+            StringHelperLib.attribute( "Current Position", string.concat( position0, " / ", position1 ) )
+        );
+    }
+
+    function _render_fee_attributes( PositionView memory position ) internal pure returns ( string memory )
+    {
+        string memory claimable0      =  StringHelperLib.format_symbol_amount( position.amounts.claimable0, position.tokens.decimals0, position.tokens.symbol0 );
+        string memory claimable1      =  StringHelperLib.format_symbol_amount( position.amounts.claimable1, position.tokens.decimals1, position.tokens.symbol1 );
+        string memory earned0         =  StringHelperLib.format_symbol_amount( position.amounts.earned0, position.tokens.decimals0, position.tokens.symbol0 );
+        string memory earned1         =  StringHelperLib.format_symbol_amount( position.amounts.earned1, position.tokens.decimals1, position.tokens.symbol1 );
+
+        return string.concat(
+            StringHelperLib.attribute( "Claimable Fees", string.concat( claimable0, " / ", claimable1 ) ), ",",
+            StringHelperLib.attribute( "Lifetime Fees", string.concat( earned0, " / ", earned1 ) ), ",",
+            StringHelperLib.attribute( "Fee Yield Current Basis", StringHelperLib.format_bps_as_percent_string( position.yield.lifetime_bps ) ), ",",
+            StringHelperLib.attribute( "Annualized Fee Yield Estimate", StringHelperLib.format_bps_as_percent_string( position.yield.annualized_bps ) )
+        );
+    }
+
     function _status_label( PositionView memory position ) internal pure returns ( string memory )
     {
-        if(  position.initialized == false  )  return "Uninitialized";
+        if(  position.config.initialized == false  )  return "Uninitialized";
 
-        return position.in_range  ?  "In Range"  :  "Out of Range";
+        return position.config.in_range  ?  "In Range"  :  "Out of Range";
+    }
+
+    function _short_token_id_hex( uint256 token_id ) internal pure returns ( string memory )
+    {
+        return Strings.toHexString( token_id & ( ( uint256(1) << 64 ) - 1 ), 8 );
     }
 
 
