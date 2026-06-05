@@ -100,6 +100,10 @@
       injection). Verified end-to-end by base64-decoding the URIs in `test/Nft/SafeSwapPositionDescriptor.t.sol`.
 - [x] Add `contractURI()` — collection name + description, on-chain base64 JSON. Banner / external link / royalty fields
       deferred (hosting TBD); v1 ships name + description.
+- [x] Derive LP NFT token ids from a chain-aware hash instead of a sequential counter. Each mint hashes scratch-space
+      preimage `[chainid()][address(this) | uint96 counter]`, keeps the low 10 bytes for the ERC721 id / V4 salt, and
+      re-rolls only on zero or an actual minted-id collision. Focused, workflow, and descriptor tests now capture the mint
+      `Transfer` event instead of assuming token ids `1`, `2`, ...
 - [ ] Investor-card redesign (mock locked in `nft-renders/reference9.svg`): port the new layout into
       `SafeSwapPositionDescriptor._render_svg` + `StringHelperLib`. Section order (the "arc"): header (8-byte hex token id +
       SafeSwap brand) / hero (pair name highlighted, muted amount beneath) / market row (inline price-range bar with live

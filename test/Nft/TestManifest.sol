@@ -18,7 +18,7 @@ interface ISafeSwapNftTests {
     function test_constructor_reads_canonical_router_from_chain_config() external;
     function test_constructor_reverts_when_router_has_no_code() external;
     function test_constructor_reverts_when_descriptor_has_no_code() external;
-    function test_constructor_initializes_first_token_id_to_one() external;
+    function test_first_token_id_is_derived_not_sequential() external;
     function test_constructor_uses_shared_pool_manager_from_chain_config() external;
     function test_inherits_bondroute_native_receive_for_native_fundings() external;
     function test_receive_reverts_on_unknown_direct_native_transfer() external;
@@ -30,7 +30,7 @@ interface ISafeSwapNftTests {
     function test_create_position_initializes_uninitialized_pool_at_signed_price() external;
     function test_create_position_reverts_when_initialized_pool_price_differs_from_signed_price() external;
     function test_create_position_mints_token_id_to_bond_context_user() external;
-    function test_create_position_increments_token_id_after_each_mint() external;
+    function test_create_position_derives_distinct_token_id_per_mint() external;
     function test_create_position_uses_token_id_as_v4_position_salt() external;
     function test_create_position_stores_immutable_metadata() external;
     function test_create_position_sorts_token_fundings_into_token0_and_token1() external;
@@ -118,7 +118,7 @@ interface ISafeSwapNftTests {
 
 interface ISafeSwapNftWorkflowTests {
     function test_create_position_initializes_pool_deposits_liquidity_and_mints() external;
-    function test_create_position_uses_incrementing_token_ids() external;
+    function test_create_position_derives_distinct_token_ids() external;
     function test_add_liquidity_increases_the_v4_position() external;
     function test_remove_liquidity_returns_tokens_and_reduces_the_position() external;
     function test_collect_fees_executes_with_no_accrued_fees_and_leaves_liquidity() external;

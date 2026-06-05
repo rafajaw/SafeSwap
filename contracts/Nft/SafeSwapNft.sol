@@ -76,7 +76,9 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     address public immutable SafeSwapRouter;
     address public immutable PositionDescriptor;    // external on-chain metadata renderer (keeps this contract under EIP-170).
 
-    uint256 private _next_token_id;
+    // Token ids are derived (not sequential): each mint bumps this counter and hashes it with the chain id and this
+    // contract address, keeping the low 10 bytes (see `_compute_next_token_id`). The counter itself is never a token id.
+    uint96 private _token_counter;
 
     mapping( uint256 => SafeSwapPositionInfo ) private _position_infos;
     mapping( uint256 => FeeTotals ) private _fee_totals;
@@ -94,7 +96,6 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
 
         SafeSwapRouter      =  router;
         PositionDescriptor  =  descriptor;
-        _next_token_id      =  1;
     }
 
 
@@ -368,8 +369,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
             tick_upper:     params.tick_upper
         });
 
-        uint256 token_id  =  _next_token_id;
-        _next_token_id    =  _next_token_id + 1;
+        uint256 token_id  =  _compute_next_token_id( );
 
         _position_infos[ token_id ]  =  new_position_info;
         _mint( context.user, token_id );
@@ -457,6 +457,34 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
             rebate_percent: position_info.rebate_percent,
             tick_spacing:   position_info.tick_spacing
         });
+    }
+
+    /**
+     * @notice Derive the next token id: bump the counter, then keep the low 10 bytes of
+     *         `keccak256( chain id, this address, counter )` so ids read as opaque hex instead of 1, 2, 3 — and the
+     *         same Nth position differs across chains / deployments. The collision loop is defensive: truncating the
+     *         hash makes a clash astronomically unlikely (10 bytes = 2^80) but not impossible, and `_mint` reverts on a
+     *         duplicate id, so we re-roll until the id is unused (and non-zero). It executes once in practice.
+     */
+    function _compute_next_token_id( ) private returns ( uint256 token_id )
+    {
+        while(  true  )
+        {
+            _token_counter  =  _token_counter + 1;
+
+            uint96 token_counter  =  _token_counter;
+            assembly ("memory-safe")
+            {
+                // Hash preimage in scratch:
+                // 0x00..0x1f  [ chainid()                                               ] 32 bytes
+                // 0x20..0x3f  [ address(this) 20 bytes ][   token_counter 12 bytes      ] 32 bytes
+                mstore( 0x00, chainid() )
+                mstore( 0x20, or( shl( 96, address() ), token_counter ) )
+                token_id  :=  and( keccak256( 0x00, 64 ), sub( shl( 80, 1 ), 1 ) )
+            }
+
+            if(  token_id != 0  &&  _ownerOf( token_id ) == address(0)  )  break;
+        }
     }
 
     function _require_lp_position_authority( uint256 token_id, address caller ) private view

@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import { ISafeSwapNftWorkflowTests } from "@test/Nft/TestManifest.sol";
 import { SafeSwapRealEnv } from "@test/helpers/SafeSwapRealEnv.t.sol";
 import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
+import { Vm } from "forge-std/Vm.sol";
 
 import { PoolInfo, SafeSwapPositionInfo } from "@SafeSwapCommon/Types.sol";
 import {
@@ -66,34 +67,36 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
         uint256 user_a_before  =  _token_a.balanceOf( _USER );
         uint256 user_b_before  =  _token_b.balanceOf( _USER );
 
-        BondStatus status  =  _create( _USER );
+        ( BondStatus status, uint256 token_id )  =  _create( _USER );
 
         assertEq( uint256(status), uint256(BondStatus.EXECUTED), "create bond should execute." );
-        assertEq( nft.ownerOf( 1 ), _USER, "LP NFT should mint to the bonded user." );
+        assertEq( nft.ownerOf( token_id ), _USER, "LP NFT should mint to the bonded user." );
+        assertTrue( token_id != 0  &&  token_id < 1 << 80, "LP NFT id should be a non-zero 10-byte derived id." );
 
         ( uint160 sqrt_price, , , )  =  poolManager.getSlot0( _pool_id() );
         assertEq( sqrt_price, _SQRT_PRICE_1_1, "pool should initialize at the signed price." );
 
-        assertEq( _position_liquidity( 1 ), 1 ether, "V4 position (salt = tokenId) should hold the created liquidity." );
+        assertEq( _position_liquidity( token_id ), 1 ether, "V4 position (salt = tokenId) should hold the created liquidity." );
 
         assertLt( _token_a.balanceOf( _USER ), user_a_before, "token A should be pulled from the user (stake refunded)." );
         assertLt( _token_b.balanceOf( _USER ), user_b_before, "token B should be pulled from the user." );
 
-        SafeSwapPositionInfo memory info  =  nft.get_lp_position( 1 );
+        SafeSwapPositionInfo memory info  =  nft.get_lp_position( token_id );
         assertEq( info.hook, _hook, "metadata should record the registered hook." );
         assertEq( info.base_fee_bps, 30, "metadata should record the base fee." );
         assertEq( info.rebate_percent, 50, "metadata should record the rebate percent." );
     }
 
-    function test_create_position_uses_incrementing_token_ids( )
+    function test_create_position_derives_distinct_token_ids( )
     external
     {
-        _create( _USER );
-        _create( _USER );
+        ( , uint256 first_token_id )   =  _create( _USER );
+        ( , uint256 second_token_id )  =  _create( _USER );
 
-        assertEq( nft.ownerOf( 1 ), _USER, "first create should mint token id 1." );
-        assertEq( nft.ownerOf( 2 ), _USER, "second create should mint token id 2." );
-        assertEq( _position_liquidity( 2 ), 1 ether, "the second position uses its own tokenId as salt." );
+        assertEq( nft.ownerOf( first_token_id ), _USER, "first create should mint to the bonded user." );
+        assertEq( nft.ownerOf( second_token_id ), _USER, "second create should mint to the bonded user." );
+        assertTrue( first_token_id != second_token_id, "each mint should derive a distinct token id." );
+        assertEq( _position_liquidity( second_token_id ), 1 ether, "the second position uses its own tokenId as salt." );
     }
 
 
@@ -102,12 +105,12 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
     function test_add_liquidity_increases_the_v4_position( )
     external
     {
-        _create( _USER );
+        ( , uint256 token_id )  =  _create( _USER );
 
-        BondStatus status  =  _add( _USER, 1, 1 ether );
+        BondStatus status  =  _add( _USER, token_id, 1 ether );
 
         assertEq( uint256(status), uint256(BondStatus.EXECUTED), "add bond should execute." );
-        assertEq( _position_liquidity( 1 ), 2 ether, "adding liquidity should grow the same V4 position." );
+        assertEq( _position_liquidity( token_id ), 2 ether, "adding liquidity should grow the same V4 position." );
     }
 
 
@@ -116,15 +119,15 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
     function test_remove_liquidity_returns_tokens_and_reduces_the_position( )
     external
     {
-        _create( _USER );
+        ( , uint256 token_id )  =  _create( _USER );
 
         uint256 user_a_before  =  _token_a.balanceOf( _USER );
         uint256 user_b_before  =  _token_b.balanceOf( _USER );
 
-        BondStatus status  =  _remove( _USER, 1, 0.5 ether );
+        BondStatus status  =  _remove( _USER, token_id, 0.5 ether );
 
         assertEq( uint256(status), uint256(BondStatus.EXECUTED), "remove bond should execute." );
-        assertEq( _position_liquidity( 1 ), 0.5 ether, "removing half should halve the V4 position liquidity." );
+        assertEq( _position_liquidity( token_id ), 0.5 ether, "removing half should halve the V4 position liquidity." );
         assertGt( _token_a.balanceOf( _USER ), user_a_before, "removed token A should be returned to the user." );
         assertGt( _token_b.balanceOf( _USER ), user_b_before, "removed token B should be returned to the user." );
     }
@@ -135,12 +138,12 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
     function test_collect_fees_executes_with_no_accrued_fees_and_leaves_liquidity( )
     external
     {
-        _create( _USER );
+        ( , uint256 token_id )  =  _create( _USER );
 
-        BondStatus status  =  _collect( _USER, 1 );
+        BondStatus status  =  _collect( _USER, token_id );
 
         assertEq( uint256(status), uint256(BondStatus.EXECUTED), "collect bond should execute even with zero accrued fees." );
-        assertEq( _position_liquidity( 1 ), 1 ether, "collect must not change position liquidity." );
+        assertEq( _position_liquidity( token_id ), 1 ether, "collect must not change position liquidity." );
     }
 
 
@@ -149,20 +152,22 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
     function test_remove_by_non_owner_is_protocol_reverted_and_position_is_untouched( )
     external
     {
-        _create( _USER );
+        ( , uint256 token_id )  =  _create( _USER );
 
-        BondStatus status  =  _remove( _OTHER, 1, 0.5 ether );
+        BondStatus status  =  _remove( _OTHER, token_id, 0.5 ether );
 
         assertEq( uint256(status), uint256(BondStatus.PROTOCOL_REVERTED), "a non-owner remove must revert inside the protocol." );
-        assertEq( _position_liquidity( 1 ), 1 ether, "the rejected remove must leave the position liquidity intact." );
-        assertEq( nft.ownerOf( 1 ), _USER, "ownership is unchanged." );
+        assertEq( _position_liquidity( token_id ), 1 ether, "the rejected remove must leave the position liquidity intact." );
+        assertEq( nft.ownerOf( token_id ), _USER, "ownership is unchanged." );
     }
 
 
     // ━━━━  HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _create( address user ) internal returns ( BondStatus status )
+    function _create( address user ) internal returns ( BondStatus status, uint256 token_id )
     {
+        vm.recordLogs( );
+
         ( status, )  =  _create_and_execute_bond(
             user,
             IBondRouteProtected( address(nft) ),
@@ -170,6 +175,27 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
             _stake_token0( 10 ether ),
             _two_fundings( 100 ether, 100 ether )
         );
+
+        token_id  =  _captured_minted_token_id( );
+    }
+
+    // Token ids are derived (hashed), not sequential: read the actual id back from the ERC721 mint Transfer event.
+    function _captured_minted_token_id( ) internal returns ( uint256 )
+    {
+        Vm.Log[] memory entries  =  vm.getRecordedLogs( );
+        bytes32 transfer_sig     =  keccak256( "Transfer(address,address,uint256)" );
+
+        for(  uint256 i = 0  ;  i < entries.length  ;  i = i + 1  )
+        {
+            Vm.Log memory entry  =  entries[ i ];
+
+            if(  entry.emitter == address(nft)  &&  entry.topics.length == 4  &&  entry.topics[0] == transfer_sig  &&  entry.topics[1] == bytes32(0)  )
+            {
+                return uint256( entry.topics[3] );
+            }
+        }
+
+        revert( "create_position emitted no mint" );
     }
 
     function _add( address user, uint256 token_id, uint128 liquidity ) internal returns ( BondStatus status )

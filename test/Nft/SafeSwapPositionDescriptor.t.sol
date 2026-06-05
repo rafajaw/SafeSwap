@@ -11,6 +11,8 @@ import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.
 import { BondStatus } from "@BondRoute/Definitions.sol";
 import { IBondRouteProtected, IERC20, TokenAmount } from "@BondRouteProtected/BondRouteProtected.sol";
 import { IERC721Errors } from "@OpenZeppelin/interfaces/draft-IERC6093.sol";
+import { Strings } from "@OpenZeppelin/utils/Strings.sol";
+import { Vm } from "forge-std/Vm.sol";
 
 
 /**
@@ -29,6 +31,7 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
 
     TestERC20 internal _token_a;
     TestERC20 internal _token_b;
+    uint256   internal _token_id;
 
     function setUp( ) public
     {
@@ -41,8 +44,10 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         _fund_and_approve( _USER, _token_a, 1_000_000 ether );
         _fund_and_approve( _USER, _token_b, 1_000_000 ether );
 
+        vm.recordLogs( );
         BondStatus status  =  _create_position( );
         assertEq( uint256(status), uint256(BondStatus.EXECUTED), "position creation should execute." );
+        _token_id  =  _captured_minted_token_id( );
     }
 
 
@@ -51,9 +56,9 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
     function test_token_uri_returns_base64_json_with_name_description_and_attributes( )
     external  view
     {
-        string memory json  =  _decoded_json( nft.tokenURI( 1 ) );
+        string memory json  =  _decoded_json( nft.tokenURI( _token_id ) );
 
-        assertTrue( _contains( json, '"name":"SafeSwap Positions #1 ' ), "name should carry the collection name and token id." );
+        assertTrue( _contains( json, string.concat( '"name":"SafeSwap Positions #', Strings.toString( _token_id ), " " ) ), "name should carry the collection name and token id." );
         assertTrue( _contains( json, "TKNA" )  &&  _contains( json, "TKNB" ), "name/attributes should carry both token symbols." );
         assertTrue( _contains( json, string.concat( '"description":"', SAFESWAP_POSITIONS_DESCRIPTION, '"' ) ), "description should match the constant." );
         assertTrue( _contains( json, string.concat( '"image":"', _SVG_PREFIX ) ), "image should be an on-chain svg data uri." );
@@ -69,7 +74,7 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
     function test_token_uri_image_is_a_fully_on_chain_svg( )
     external  view
     {
-        string memory json   =  _decoded_json( nft.tokenURI( 1 ) );
+        string memory json   =  _decoded_json( nft.tokenURI( _token_id ) );
         string memory image  =  _extract_between( json, '"image":"', '"' );
         string memory svg    =  string( _base64_decode( _strip_prefix( image, _SVG_PREFIX ) ) );
 
@@ -134,6 +139,24 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
             TokenAmount({ token: currency0, amount: 10 ether }),
             fundings
         );
+    }
+
+    function _captured_minted_token_id( ) internal returns ( uint256 )
+    {
+        Vm.Log[] memory entries  =  vm.getRecordedLogs( );
+        bytes32 transfer_sig     =  keccak256( "Transfer(address,address,uint256)" );
+
+        for(  uint256 i = 0  ;  i < entries.length  ;  i = i + 1  )
+        {
+            Vm.Log memory entry  =  entries[ i ];
+
+            if(  entry.emitter == address(nft)  &&  entry.topics.length == 4  &&  entry.topics[0] == transfer_sig  &&  entry.topics[1] == bytes32(0)  )
+            {
+                return uint256( entry.topics[3] );
+            }
+        }
+
+        revert( "create_position emitted no mint" );
     }
 
 

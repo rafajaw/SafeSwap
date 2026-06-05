@@ -9,6 +9,7 @@ import {
     MockSafeSwapNftRouter
 } from "@test/mocks/SafeSwapNftMocks.t.sol";
 import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
+import { Vm } from "forge-std/Vm.sol";
 import "@SafeSwapCommon/Definitions.sol";
 import { HookAddress } from "@SafeSwapCommon/HookAddress.sol";
 import { OneSidedDepositMismatch } from "@SafeSwapCommon/SafeSwapCommon.sol";
@@ -55,6 +56,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     TestERC20 internal _token_b;
     SafeSwapNft internal _nft;
     address internal _hook;
+    uint256 internal _minted_token_id;    // id of the most recent _execute_create_position mint (token ids are derived, not sequential)
 
     function setUp( )
     public
@@ -133,12 +135,15 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         assertEq( sqrt_price_x96, _SQRT_PRICE_1_1, "NFT should read slot0 through the PoolManager published by ChainConfig." );
     }
 
-    function test_constructor_initializes_first_token_id_to_one( )
+    function test_first_token_id_is_derived_not_sequential( )
     external
     {
-        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+        uint256 token_id  =  _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        assertEq( _nft.ownerOf( 1 ), _USER, "first minted LP token id should be 1." );
+        assertEq( _nft.ownerOf( token_id ), _USER, "first minted LP token should be owned by the bonded user." );
+        assertTrue( token_id != 1, "token id should be derived (hashed), not the sequential counter." );
+        assertTrue( token_id != 0, "derived token id is never zero." );
+        assertLt( token_id, 1 << 80, "derived token id keeps only the low 10 bytes." );
     }
 
     function test_inherits_bondroute_native_receive_for_native_fundings( )
@@ -227,8 +232,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         TokenAmount[] memory fundings  =  new TokenAmount[](1);
         fundings[0]  =  TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether });
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, int128(1 ether), 1 ) );
-        _nft.BondRoute_quote_call( abi.encodeCall( _nft.add_liquidity, (_add_params(1, 1 ether)) ), IERC20(address(_token_a)), fundings );
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(1 ether), 1 ) );
+        _nft.BondRoute_quote_call( abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) ), IERC20(address(_token_a)), fundings );
     }
 
     function test_bondroute_quote_add_computes_normalized_liquidity_stake_from_current_pool_price( )
@@ -237,7 +242,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.add_liquidity, (_add_params(1, 1 ether)) ),
+            abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) ),
             IERC20(address(_token_a)),
             _two_fundings( 100 ether, 100 ether )
         );
@@ -252,9 +257,9 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, -int128(1 ether), 2 ) );
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, -int128(1 ether), 2 ) );
         _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.remove_liquidity, (_remove_params(1, 1 ether)) ),
+            abi.encodeCall( _nft.remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) ),
             IERC20(address(_token_a)),
             _two_fundings( 100 ether, 100 ether )
         );
@@ -266,7 +271,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.remove_liquidity, (_remove_params(1, 1 ether)) ),
+            abi.encodeCall( _nft.remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) ),
             IERC20(address(_token_a)),
             new TokenAmount[](0)
         );
@@ -281,9 +286,9 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, int128(0), 2 ) );
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(0), 2 ) );
         _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.collect_fees, (_collect_params(1)) ),
+            abi.encodeCall( _nft.collect_fees, (_collect_params(_minted_token_id)) ),
             IERC20(address(_token_a)),
             _two_fundings( 100 ether, 100 ether )
         );
@@ -295,7 +300,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.collect_fees, (_collect_params(1)) ),
+            abi.encodeCall( _nft.collect_fees, (_collect_params(_minted_token_id)) ),
             IERC20(address(_token_a)),
             new TokenAmount[](0)
         );
@@ -309,7 +314,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     external  view
     {
         ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
-            abi.encodeCall( _nft.add_liquidity, (_add_params(1, 1 ether)) )
+            abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) )
         );
 
         assertGt( bytes(typed_string).length, 0, "signing info should expose a readable EIP-712 type string." );
@@ -333,7 +338,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     external  view
     {
         ( , , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
-            abi.encodeCall( _nft.add_liquidity, (_add_params(1, 1 ether)) )
+            abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) )
         );
 
         assertEq( token_amount_offset, 215, "add-liquidity signing info should return the TokenAmount type offset." );
@@ -343,7 +348,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     external  view
     {
         ( , , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
-            abi.encodeCall( _nft.remove_liquidity, (_remove_params(1, 1 ether)) )
+            abi.encodeCall( _nft.remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) )
         );
 
         assertEq( token_amount_offset, 219, "remove-liquidity signing info should return the TokenAmount type offset." );
@@ -353,7 +358,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     external  view
     {
         ( , , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
-            abi.encodeCall( _nft.collect_fees, (_collect_params(1)) )
+            abi.encodeCall( _nft.collect_fees, (_collect_params(_minted_token_id)) )
         );
 
         assertEq( token_amount_offset, 193, "collect-fees signing info should return the TokenAmount type offset." );
@@ -378,7 +383,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        SafeSwapPositionInfo memory position_info  =  _nft.get_lp_position( 1 );
+        SafeSwapPositionInfo memory position_info  =  _nft.get_lp_position( _minted_token_id );
 
         assertEq( position_info.hook, _hook, "created position should store the hook resolved from the router registry." );
     }
@@ -407,25 +412,29 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _seed_slot0( key, _SQRT_PRICE_1_1 + 1 );
 
         vm.expectRevert();
-        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+        _execute_entry_point(
+            abi.encodeCall( _nft.create_position, (_create_params()) ),
+            _context( _two_fundings( 100 ether, 100 ether ) )
+        );
     }
 
     function test_create_position_mints_token_id_to_bond_context_user( )
     external
     {
-        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+        uint256 token_id  =  _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        assertEq( _nft.ownerOf( 1 ), _USER, "created LP token should be minted to the BondRoute context user." );
+        assertEq( _nft.ownerOf( token_id ), _USER, "created LP token should be minted to the BondRoute context user." );
     }
 
-    function test_create_position_increments_token_id_after_each_mint( )
+    function test_create_position_derives_distinct_token_id_per_mint( )
     external
     {
-        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
-        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+        uint256 first_id   =  _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+        uint256 second_id  =  _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        assertEq( _nft.ownerOf( 1 ), _USER, "first position should mint token id 1." );
-        assertEq( _nft.ownerOf( 2 ), _USER, "second position should mint token id 2." );
+        assertTrue( first_id != second_id, "each mint should derive a distinct token id." );
+        assertEq( _nft.ownerOf( first_id ), _USER, "first position should be owned by the user." );
+        assertEq( _nft.ownerOf( second_id ), _USER, "second position should be owned by the user." );
     }
 
     function test_create_position_uses_token_id_as_v4_position_salt( )
@@ -433,7 +442,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        assertEq( _pool_manager.last_modify_liquidity_salt( ), bytes32(uint256(1)), "first NFT id should be used as v4 position salt." );
+        assertEq( _pool_manager.last_modify_liquidity_salt( ), bytes32(_minted_token_id), "first NFT id should be used as v4 position salt." );
     }
 
     function test_create_position_stores_immutable_metadata( )
@@ -441,7 +450,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        SafeSwapPositionInfo memory position_info  =  _nft.get_lp_position( 1 );
+        SafeSwapPositionInfo memory position_info  =  _nft.get_lp_position( _minted_token_id );
 
         assertEq( position_info.base_fee_bps, 30, "metadata should store base fee." );
         assertEq( position_info.rebate_percent, 50, "metadata should store rebate percent." );
@@ -455,8 +464,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        vm.expectRevert( abi.encodeWithSelector( PositionUnauthorized.selector, 1, address(this), _USER ) );
-        _execute_add_liquidity_as( address(this), _add_params( 1, 1 ether ), _two_fundings( 100 ether, 100 ether ) );
+        vm.expectRevert( abi.encodeWithSelector( PositionUnauthorized.selector, _minted_token_id, address(this), _USER ) );
+        _execute_add_liquidity_as( address(this), _add_params( _minted_token_id,1 ether ), _two_fundings( 100 ether, 100 ether ) );
     }
 
     function test_add_liquidity_allows_approved_token_address( )
@@ -465,9 +474,9 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         vm.prank( _USER );
-        _nft.approve( address(this), 1 );
+        _nft.approve( address(this), _minted_token_id );
 
-        _execute_add_liquidity_as( address(this), _add_params( 1, 1 ether ), _two_fundings( 100 ether, 100 ether ) );
+        _execute_add_liquidity_as( address(this), _add_params( _minted_token_id,1 ether ), _two_fundings( 100 ether, 100 ether ) );
 
         assertTrue( _pool_manager.modify_liquidity_called(), "approved token address should be allowed to add liquidity." );
     }
@@ -480,7 +489,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         vm.prank( _USER );
         _nft.setApprovalForAll( address(this), true );
 
-        _execute_add_liquidity_as( address(this), _add_params( 1, 1 ether ), _two_fundings( 100 ether, 100 ether ) );
+        _execute_add_liquidity_as( address(this), _add_params( _minted_token_id,1 ether ), _two_fundings( 100 ether, 100 ether ) );
 
         assertTrue( _pool_manager.modify_liquidity_called(), "approved operator should be allowed to add liquidity." );
     }
@@ -489,7 +498,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     external
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
-        _execute_add_liquidity_as( _USER, _add_params( 1, 1 ether ), _two_fundings( 100 ether, 100 ether ) );
+        _execute_add_liquidity_as( _USER, _add_params( _minted_token_id,1 ether ), _two_fundings( 100 ether, 100 ether ) );
 
         assertEq( _pool_manager.last_modify_liquidity_hook( ), _hook, "add liquidity should use the stored hook." );
         assertEq( _pool_manager.last_modify_liquidity_tick_spacing( ), 60, "add liquidity should use the stored tick spacing." );
@@ -499,9 +508,9 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     external
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
-        _execute_add_liquidity_as( _USER, _add_params( 1, 1 ether ), _two_fundings( 100 ether, 100 ether ) );
+        _execute_add_liquidity_as( _USER, _add_params( _minted_token_id,1 ether ), _two_fundings( 100 ether, 100 ether ) );
 
-        assertEq( _pool_manager.last_modify_liquidity_salt( ), bytes32(uint256(1)), "add liquidity should use the existing token id as v4 salt." );
+        assertEq( _pool_manager.last_modify_liquidity_salt( ), bytes32(_minted_token_id), "add liquidity should use the existing token id as v4 salt." );
     }
 
     function test_add_liquidity_reverts_when_liquidity_is_zero( )
@@ -509,8 +518,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, int128(0), 0 ) );
-        _execute_add_liquidity_as( _USER, _add_params( 1, 0 ), _two_fundings( 100 ether, 100 ether ) );
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(0), 0 ) );
+        _execute_add_liquidity_as( _USER, _add_params( _minted_token_id,0 ), _two_fundings( 100 ether, 100 ether ) );
     }
 
     function test_add_liquidity_reverts_when_liquidity_exceeds_int128_max( )
@@ -519,7 +528,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         vm.expectRevert();
-        _execute_add_liquidity_as( _USER, _add_params( 1, uint128(type(int128).max) + 1 ), _two_fundings( 100 ether, 100 ether ) );
+        _execute_add_liquidity_as( _USER, _add_params( _minted_token_id,uint128(type(int128).max) + 1 ), _two_fundings( 100 ether, 100 ether ) );
     }
 
     function test_add_liquidity_reverts_when_funding_count_is_not_two( )
@@ -530,8 +539,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         TokenAmount[] memory fundings  =  new TokenAmount[](1);
         fundings[0]  =  TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether });
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, int128(1 ether), 1 ) );
-        _execute_add_liquidity_as( _USER, _add_params( 1, 1 ether ), fundings );
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(1 ether), 1 ) );
+        _execute_add_liquidity_as( _USER, _add_params( _minted_token_id,1 ether ), fundings );
     }
 
     function test_add_liquidity_reverts_when_minimum_token_addresses_do_not_match_position_tokens( )
@@ -539,7 +548,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        AddPositionLiquidityParams memory params  =  _add_params( 1, 1 ether );
+        AddPositionLiquidityParams memory params  =  _add_params( _minted_token_id,1 ether );
         params.minimum_deposited_a.token  =  NATIVE_TOKEN;
 
         vm.expectRevert();
@@ -552,7 +561,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
         _pool_manager.set_next_modify_liquidity_delta( -10 ether, 0 );
 
-        AddPositionLiquidityParams memory params  =  _add_params( 1, 1 ether );
+        AddPositionLiquidityParams memory params  =  _add_params( _minted_token_id,1 ether );
         params.minimum_deposited_a.amount  =  10 ether;
         params.minimum_deposited_b.amount  =  0;
 
@@ -569,7 +578,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
         _pool_manager.set_next_modify_liquidity_delta( -10 ether, 0 );
 
-        AddPositionLiquidityParams memory params  =  _add_params( 1, 1 ether );
+        AddPositionLiquidityParams memory params  =  _add_params( _minted_token_id,1 ether );
         params.minimum_deposited_a.amount  =  10 ether;
         params.minimum_deposited_b.amount  =  1;
 
@@ -582,8 +591,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        vm.expectRevert( abi.encodeWithSelector( PositionUnauthorized.selector, 1, address(this), _USER ) );
-        _execute_remove_liquidity_as( address(this), _remove_params( 1, 1 ether ), new TokenAmount[](0) );
+        vm.expectRevert( abi.encodeWithSelector( PositionUnauthorized.selector, _minted_token_id, address(this), _USER ) );
+        _execute_remove_liquidity_as( address(this), _remove_params( _minted_token_id,1 ether ), new TokenAmount[](0) );
     }
 
     function test_remove_liquidity_allows_approved_token_address( )
@@ -592,9 +601,9 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         vm.prank( _USER );
-        _nft.approve( address(this), 1 );
+        _nft.approve( address(this), _minted_token_id );
 
-        _execute_remove_liquidity_as( address(this), _remove_params( 1, 1 ether ), new TokenAmount[](0) );
+        _execute_remove_liquidity_as( address(this), _remove_params( _minted_token_id,1 ether ), new TokenAmount[](0) );
 
         assertEq( _pool_manager.last_modify_liquidity_delta( ), -int256(1 ether), "approved token address should remove liquidity." );
     }
@@ -605,7 +614,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
         _pool_manager.set_next_modify_liquidity_delta( 5 ether, 7 ether );
 
-        _execute_remove_liquidity_as( _USER, _remove_params( 1, 1 ether ), new TokenAmount[](0) );
+        _execute_remove_liquidity_as( _USER, _remove_params( _minted_token_id,1 ether ), new TokenAmount[](0) );
 
         assertEq( _pool_manager.take_call_count( ), 2, "remove liquidity should take both pool tokens." );
         assertEq( _pool_manager.last_take_to( ), _USER, "removed liquidity should be sent to the BondRoute context user." );
@@ -616,8 +625,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, int128(0), 0 ) );
-        _execute_remove_liquidity_as( _USER, _remove_params( 1, 0 ), new TokenAmount[](0) );
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(0), 0 ) );
+        _execute_remove_liquidity_as( _USER, _remove_params( _minted_token_id,0 ), new TokenAmount[](0) );
     }
 
     function test_remove_liquidity_reverts_when_funding_count_is_not_zero( )
@@ -625,8 +634,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, -int128(1 ether), 2 ) );
-        _execute_remove_liquidity_as( _USER, _remove_params( 1, 1 ether ), _two_fundings( 100 ether, 100 ether ) );
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, -int128(1 ether), 2 ) );
+        _execute_remove_liquidity_as( _USER, _remove_params( _minted_token_id,1 ether ), _two_fundings( 100 ether, 100 ether ) );
     }
 
     function test_collect_fees_requires_owner_or_approved_operator( )
@@ -634,8 +643,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        vm.expectRevert( abi.encodeWithSelector( PositionUnauthorized.selector, 1, address(this), _USER ) );
-        _execute_collect_fees_as( address(this), _collect_params( 1 ), new TokenAmount[](0) );
+        vm.expectRevert( abi.encodeWithSelector( PositionUnauthorized.selector, _minted_token_id, address(this), _USER ) );
+        _execute_collect_fees_as( address(this), _collect_params( _minted_token_id ), new TokenAmount[](0) );
     }
 
     function test_collect_fees_uses_zero_liquidity_delta( )
@@ -643,7 +652,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        _execute_collect_fees_as( _USER, _collect_params( 1 ), new TokenAmount[](0) );
+        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ), new TokenAmount[](0) );
 
         assertEq( _pool_manager.last_modify_liquidity_delta( ), 0, "collect fees should use zero liquidity delta." );
     }
@@ -654,7 +663,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
         _pool_manager.set_next_modify_liquidity_delta( 1 ether, 2 ether );
 
-        _execute_collect_fees_as( _USER, _collect_params( 1 ), new TokenAmount[](0) );
+        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ), new TokenAmount[](0) );
 
         assertEq( _pool_manager.take_call_count( ), 2, "collect fees should take both pool tokens." );
         assertEq( _pool_manager.last_take_to( ), _USER, "collected fees should be sent to the BondRoute context user." );
@@ -666,12 +675,12 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         PoolId pool_id  =  _pool_key().toId( );
-        _seed_position_info( pool_id, 1, -120, 120, 2, 10 * FixedPoint128.Q128, 20 * FixedPoint128.Q128 );
+        _seed_position_info( pool_id, _minted_token_id,-120, 120, 2, 10 * FixedPoint128.Q128, 20 * FixedPoint128.Q128 );
         _seed_fee_growth_globals( pool_id, 15 * FixedPoint128.Q128, 27 * FixedPoint128.Q128 );
 
-        _execute_collect_fees_as( _USER, _collect_params( 1 ), new TokenAmount[](0) );
+        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ), new TokenAmount[](0) );
 
-        ( uint256 token0_fees, uint256 token1_fees )  =  _nft.get_lp_fee_totals( 1 );
+        ( uint256 token0_fees, uint256 token1_fees )  =  _nft.get_lp_fee_totals( _minted_token_id );
 
         assertEq( token0_fees, 10, "collect should record token0 fees from fee growth." );
         assertEq( token1_fees, 14, "collect should record token1 fees from fee growth." );
@@ -683,13 +692,13 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         PoolId pool_id  =  _pool_key().toId( );
-        _seed_position_info( pool_id, 1, -120, 120, 2, 10 * FixedPoint128.Q128, 20 * FixedPoint128.Q128 );
+        _seed_position_info( pool_id, _minted_token_id,-120, 120, 2, 10 * FixedPoint128.Q128, 20 * FixedPoint128.Q128 );
         _seed_fee_growth_globals( pool_id, 15 * FixedPoint128.Q128, 27 * FixedPoint128.Q128 );
         _pool_manager.set_next_modify_liquidity_delta( 1_000 ether, 2_000 ether );
 
-        _execute_remove_liquidity_as( _USER, _remove_params( 1, 1 ), new TokenAmount[](0) );
+        _execute_remove_liquidity_as( _USER, _remove_params( _minted_token_id,1 ), new TokenAmount[](0) );
 
-        ( uint256 token0_fees, uint256 token1_fees )  =  _nft.get_lp_fee_totals( 1 );
+        ( uint256 token0_fees, uint256 token1_fees )  =  _nft.get_lp_fee_totals( _minted_token_id );
 
         assertEq( token0_fees, 10, "remove should record only token0 fees accrued before the touch." );
         assertEq( token1_fees, 14, "remove should record only token1 fees accrued before the touch." );
@@ -700,8 +709,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 1, int128(0), 2 ) );
-        _execute_collect_fees_as( _USER, _collect_params( 1 ), _two_fundings( 100 ether, 100 ether ) );
+        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(0), 2 ) );
+        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ), _two_fundings( 100 ether, 100 ether ) );
     }
 
     function test_get_lp_position_returns_stored_metadata_for_existing_token( )
@@ -709,7 +718,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        SafeSwapPositionInfo memory position_info  =  _nft.get_lp_position( 1 );
+        SafeSwapPositionInfo memory position_info  =  _nft.get_lp_position( _minted_token_id );
 
         assertEq( address(position_info.token0), Currency.unwrap(_pool_key().currency0), "position view should return stored token0." );
         assertEq( address(position_info.token1), Currency.unwrap(_pool_key().currency1), "position view should return stored token1." );
@@ -720,7 +729,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     external
     {
         vm.expectRevert();
-        _nft.get_lp_position( 1 );
+        _nft.get_lp_position( _minted_token_id );
     }
 
     function test_off_chain_position_info_reads_v4_position_owned_by_nft( )
@@ -755,7 +764,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _pool_manager.set_next_modify_liquidity_delta( -10 ether, -10 ether );
 
         ModifyLiquidityParams memory params  =  ModifyLiquidityParams({
-            token_id: 1,
+            token_id: _minted_token_id,
             pool_info: PoolInfo({ base_fee_bps: 30, rebate_percent: 50, tick_spacing: 60 }),
             tick_lower: -120,
             tick_upper: 120,
@@ -763,7 +772,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
             minimum_amount_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),
             minimum_amount_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 0 })
         });
-        SafeSwapPositionInfo memory position_info  =  _nft.get_lp_position( 1 );
+        SafeSwapPositionInfo memory position_info  =  _nft.get_lp_position( _minted_token_id );
 
         vm.prank( address(_pool_manager) );
         _nft.unlockCallback( abi.encode( _context(_two_fundings(100 ether, 100 ether)), params, position_info ) );
@@ -771,12 +780,36 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         assertTrue( _pool_manager.modify_liquidity_called(), "unlock callback should execute the prepared liquidity change." );
     }
 
-    function _execute_create_position( CreatePositionParams memory params, TokenAmount[] memory fundings ) internal
+    function _execute_create_position( CreatePositionParams memory params, TokenAmount[] memory fundings ) internal returns ( uint256 token_id )
     {
         BondContext memory context  =  _context( fundings );
         bytes memory call_data      =  abi.encodeCall( _nft.create_position, (params) );
 
+        vm.recordLogs( );
         _execute_entry_point( call_data, context );
+
+        token_id          =  _capture_minted_token_id( );
+        _minted_token_id  =  token_id;
+    }
+
+    // Token ids are derived (hashed), not sequential, so read the actual id back from the ERC721 mint Transfer event
+    // (from == address(0), tokenId indexed in topic[3]); ERC20 Transfers are skipped via the 4-topic / emitter filter.
+    function _capture_minted_token_id( ) internal returns ( uint256 )
+    {
+        Vm.Log[] memory entries  =  vm.getRecordedLogs( );
+        bytes32 transfer_sig     =  keccak256( "Transfer(address,address,uint256)" );
+
+        for(  uint256 i = 0  ;  i < entries.length  ;  i = i + 1  )
+        {
+            Vm.Log memory entry  =  entries[ i ];
+
+            if(  entry.emitter == address(_nft)  &&  entry.topics.length == 4  &&  entry.topics[0] == transfer_sig  &&  entry.topics[1] == bytes32(0)  )
+            {
+                return uint256( entry.topics[3] );
+            }
+        }
+
+        revert( "create_position emitted no mint" );
     }
 
     function _execute_add_liquidity_as( address user, AddPositionLiquidityParams memory params, TokenAmount[] memory fundings ) internal
