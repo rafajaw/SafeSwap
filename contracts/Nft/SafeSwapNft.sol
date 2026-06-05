@@ -230,7 +230,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     }
 
     function BondRoute_get_signing_info( bytes calldata call )
-    external  pure override returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
+    external  view override returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
         if(  call.length < 4  )  revert UnsupportedCall( );
 
@@ -244,17 +244,17 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         else if(  selector == this.add_liquidity.selector  )
         {
             AddPositionLiquidityParams memory params  =  abi.decode( call[ 4: ], (AddPositionLiquidityParams) );
-            return ModifyLiquidityLib.get_add_liquidity_signing_info( params );
+            return ModifyLiquidityLib.get_add_liquidity_signing_info( params, get_lp_position( params.token_id ), PoolManager );
         }
         else if(  selector == this.remove_liquidity.selector  )
         {
             RemovePositionLiquidityParams memory params  =  abi.decode( call[ 4: ], (RemovePositionLiquidityParams) );
-            return ModifyLiquidityLib.get_remove_liquidity_signing_info( params );
+            return ModifyLiquidityLib.get_remove_liquidity_signing_info( params, get_lp_position( params.token_id ) );
         }
         else if(  selector == this.collect_fees.selector  )
         {
             CollectFeesParams memory params  =  abi.decode( call[ 4: ], (CollectFeesParams) );
-            return ModifyLiquidityLib.get_collect_fees_signing_info( params );
+            return ModifyLiquidityLib.get_collect_fees_signing_info( params, get_lp_position( params.token_id ) );
         }
         else
         {
@@ -340,6 +340,10 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
 
         ( IERC20 token0, , IERC20 token1, )  =  SafeSwapCommon.sort_token_amount_pair( context.fundings[ 0 ], context.fundings[ 1 ] );
 
+        // *SOURCE OF TRUTH*  -  The user signs human Range / Price, not raw ticks. Derive the position ticks from the signed
+        //                      sqrt-price bounds (snapped to tick spacing); see SIGNING_UX_REFERENCE_2.md / ModifyLiquidityLib.
+        ( int24 tick_lower, int24 tick_upper )  =  ModifyLiquidityLib.derive_ticks_from_price_bounds( params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, params.pool_info.tick_spacing );
+
         address hook  =  ISafeSwapRouterHooks(SafeSwapRouter).get_hook( params.pool_info.base_fee_bps, params.pool_info.rebate_percent );
 
         PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token0, token1, LPFeeLibrary.DYNAMIC_FEE_FLAG, params.pool_info.tick_spacing, hook );
@@ -365,8 +369,8 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
             base_fee_bps:   params.pool_info.base_fee_bps,
             rebate_percent: params.pool_info.rebate_percent,
             tick_spacing:   params.pool_info.tick_spacing,
-            tick_lower:     params.tick_lower,
-            tick_upper:     params.tick_upper
+            tick_lower:     tick_lower,
+            tick_upper:     tick_upper
         });
 
         uint256 token_id  =  _compute_next_token_id( );
@@ -377,8 +381,8 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         executable_params  =  ModifyLiquidityParams({
             token_id:           token_id,
             pool_info:          params.pool_info,
-            tick_lower:         params.tick_lower,
-            tick_upper:         params.tick_upper,
+            tick_lower:         tick_lower,
+            tick_upper:         tick_upper,
             liquidity_delta:    _positive_liquidity_delta( token_id, params.liquidity ),
             minimum_amount_a:   params.minimum_deposited_a,
             minimum_amount_b:   params.minimum_deposited_b

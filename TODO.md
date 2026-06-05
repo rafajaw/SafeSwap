@@ -154,6 +154,41 @@ Decisions already baked into both references (see the docs for the why):
 Open decisions: confirm the price-as-source-of-truth create change; then implement `BondRoute_get_signing_info` to emit the
 REFERENCE_2 layout (pure ASCII, `|` pool separator) + the companion SDK message-values path.
 
+- [ ] **NEW AGENT - START HERE: implement the locked signing model (REFERENCE_2).** Self-contained task; everything you need
+      is below.
+
+      *Read first (in this order):* `lib/BondRoute/README.md` and `lib/BondRoute/src/integrations/BondRouteProtected.sol` -
+      you must fully understand the `ExecuteBondAs` envelope, how the protected protocol contributes its custom action field
+      name + type, exactly how the final struct hash is composed (`typeHash, fundingsHash, stakeHash, salt, protocol,
+      actionHash`), and the precise return contract of `BondRoute_get_signing_info` (`typed_string`, `struct_hash`,
+      `token_amount_offset`). Then `SIGNING_UX_REFERENCE_2.md` (the binding spec - field layout, values, and the design notes
+      explaining each choice), then this repo's CLAUDE.md read order and `CODING_STYLE.md`.
+
+      *What to build:* rewrite the on-chain signing-info generation so every bonded entrypoint emits the REFERENCE_2 receipt
+      exactly (per-action type string + display values). Sites:
+      - Swaps: `contracts/Router/BondRouteIntegration.sol:63` (`BondRoute_get_signing_info`) + the action libs'
+        `get_signing_info` (`ExactInputSwapLib`, `ExactOutputSwapLib`).
+      - LP: `contracts/Nft/SafeSwapNft.sol:232` + `ModifyLiquidityLib` for create / add / remove / collect.
+      Cover all six actions. Honor every locked decision: role-named single-word fields; each token symbol once per role;
+      amounts at `StringHelperLib.FULL_PRECISION`; human `Range`/`Price` for create (NOT raw ticks/sqrtPrice); token address
+      fields labeled with the sanitized symbol (reuse the NFT descriptor's symbol sanitizer - the symbol is embedded in the
+      on-chain-generated EIP-712 type string, so an unsanitized `symbol()` can corrupt it); `Warning` leading with
+      `protocol`; pure ASCII with `|` pool separator.
+
+      *Dependent contract change:* dropping raw ticks/sqrtPrice makes the signed `Range`/`Price` the source of truth, so
+      `SafeSwapNft` create (via `ModifyLiquidityLib`) must derive `tickLower`/`tickUpper`/`sqrtPriceX96` from the signed price
+      on-chain (snapping to tick spacing by a fixed rule), not consume raw ticks from calldata. Confirm this before coding.
+
+      *Gas - this runs on-chain during bond execution:* use inline assembly for the hot paths where the code stays easy to
+      follow - building/concatenating the type string and display strings, and the keccak hashing of fields and the struct
+      hash. Keep it readable and commented per CODING_STYLE.md (assembly only where it is a clear win and still legible);
+      do not obfuscate the security-relevant hashing.
+
+      *Verify:* the generated `typed_string` + `struct_hash` must match an independent EIP-712 encoding of the REFERENCE_2
+      sample for each action (compute the digest off the documented samples and assert equality), and `token_amount_offset`
+      must point at the right field. Register tests in the relevant manifests. Then build the companion BondRoute SDK
+      message-values path so wallets can render these on-chain-generated fields (see the SDK note in REFERENCE_2).
+
 - [x] Trim insignificant zeroes in the bps percent formatters. `StringHelperLib.format_bps_as_percent` and
       `format_bps_as_percent_string` now drop a zero fraction entirely and trim trailing zeroes via `trimmed_fraction`:
       `5 -> 0.05 / 0.05%`, `30 -> 0.3 / 0.3%`, `100 -> 1 / 1%`, `125 -> 1.25 / 1.25%`. Updated NFT descriptor expectations

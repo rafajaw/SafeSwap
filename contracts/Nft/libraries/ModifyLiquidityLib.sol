@@ -4,7 +4,9 @@ pragma solidity ^0.8.30;
 import "@BondRouteProtected/BondRouteProtected.sol";
 import "@SafeSwapCommon/Types.sol";
 import "@SafeSwapCommon/SafeSwapCommon.sol";
+import "@SafeSwapCommon/SigningLib.sol";
 import "@SafeSwapCommon/Definitions.sol";
+import { Strings } from "@OpenZeppelin/utils/Strings.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -59,17 +61,24 @@ struct ModifyLiquidityParams {
 /**
  * @notice Create-position parameters signed by the user.
  * @param pool_info Target SafeSwap pool configuration.
- * @param tick_lower Lower tick of the liquidity position.
- * @param tick_upper Upper tick of the liquidity position.
+ * @param sqrt_price_lower_x96 Lower range bound as a sqrt price. The position tick is derived from it on-chain (snapped to
+ *        the pool tick spacing). The receipt signs the human `Range`, never raw ticks — see SIGNING_UX_REFERENCE_2.md.
+ * @param sqrt_price_upper_x96 Upper range bound as a sqrt price (derived + snapped to a tick the same way).
  * @param liquidity Liquidity amount to create.
- * @param sqrt_price_x96 Initial pool price if the pool has not been initialized yet.
+ * @param sqrt_price_x96 Initial pool price (the signed `Price`). Used to initialize the pool if it does not exist yet, and
+ *        as the price the deposit is computed at.
  * @param minimum_deposited_a Minimum actual deposited amount for one pool token. Token field identifies which token.
  * @param minimum_deposited_b Minimum actual deposited amount for the other pool token. Token field identifies which token.
+ *
+ * @dev *SOURCE OF TRUTH*  -  The signed price is authoritative; ticks are derived from `sqrt_price_lower_x96` /
+ *      `sqrt_price_upper_x96` by snapping to tick spacing (`derive_ticks_from_price_bounds`). The snapped ticks therefore
+ *      drift sub-display-precision from the exact signed bounds; that drift is bounded by the committed `minimum_deposited_*`
+ *      floors (a manipulated range that moved real deposits would breach them and revert).
  */
 struct CreatePositionParams {
     PoolInfo pool_info;
-    int24 tick_lower;
-    int24 tick_upper;
+    uint160 sqrt_price_lower_x96;
+    uint160 sqrt_price_upper_x96;
     uint128 liquidity;
     uint160 sqrt_price_x96;
     TokenAmount minimum_deposited_a;
@@ -128,122 +137,215 @@ library ModifyLiquidityLib {
     using StateLibrary for IPoolManager;
 
 
-    // ━━━━  EIP-712 SIGNING  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  EIP-712 SIGNING (SIGNING_UX_REFERENCE_2)  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //
+    // Each LP action signs the locked symbolic receipt: role-named single-word fields, each token symbol once per role,
+    // amounts at FULL_PRECISION, the two pool tokens kept as raw address anchors named by their (sanitized) symbol — token1
+    // first, token0 second. Create signs the human Range / Price (token0-per-token1); raw ticks / sqrtPrice never appear.
+    // Deposit is computed from the committed liquidity + range + price (V4 math), so no separate funding field is signed.
 
-    string constant CREATE_POSITION_EIP712_TYPE_STRING  =
-        "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,CreatePosition call)"
-        "CreatePosition(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,uint160 sqrt_price_x96,TokenAmount minimum_deposited_a,TokenAmount minimum_deposited_b)"
-        "PoolInfo(uint16 base_fee_bps,uint8 rebate_percent,int24 tick_spacing)"
-        "TokenAmount(address token,uint256 amount)";
+    string constant CREATE_FIELD_DECLARATION   =  "CreatePosition sS__CREATE_POSITION__Ss";
+    string constant ADD_FIELD_DECLARATION      =  "AddLiquidity sS__ADD_LIQUIDITY__Ss";
+    string constant REMOVE_FIELD_DECLARATION   =  "RemoveLiquidity sS__REMOVE_LIQUIDITY__Ss";
+    string constant COLLECT_FIELD_DECLARATION  =  "CollectFees sS__COLLECT_FEES__Ss";
 
-    bytes32 constant CREATE_POSITION_EIP712_TYPEHASH  =  keccak256(
-        "CreatePosition(PoolInfo pool_info,int24 tick_lower,int24 tick_upper,uint128 liquidity,uint160 sqrt_price_x96,TokenAmount minimum_deposited_a,TokenAmount minimum_deposited_b)"
-        "PoolInfo(uint16 base_fee_bps,uint8 rebate_percent,int24 tick_spacing)"
-        "TokenAmount(address token,uint256 amount)"
-    );
-
-    uint256 constant CREATE_POSITION_EIP712_TOKEN_AMOUNT_OFFSET  =  347;
-
-    string constant ADD_POSITION_LIQUIDITY_EIP712_TYPE_STRING  =
-        "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,AddLiquidity call)"
-        "AddLiquidity(uint256 token_id,uint128 liquidity,TokenAmount minimum_deposited_a,TokenAmount minimum_deposited_b)"
-        "TokenAmount(address token,uint256 amount)";
-
-    bytes32 constant ADD_POSITION_LIQUIDITY_EIP712_TYPEHASH  =  keccak256(
-        "AddLiquidity(uint256 token_id,uint128 liquidity,TokenAmount minimum_deposited_a,TokenAmount minimum_deposited_b)"
-        "TokenAmount(address token,uint256 amount)"
-    );
-
-    uint256 constant ADD_POSITION_LIQUIDITY_EIP712_TOKEN_AMOUNT_OFFSET  =  215;
-
-    string constant REMOVE_POSITION_LIQUIDITY_EIP712_TYPE_STRING  =
-        "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,RemoveLiquidity call)"
-        "RemoveLiquidity(uint256 token_id,uint128 liquidity,TokenAmount minimum_received_a,TokenAmount minimum_received_b)"
-        "TokenAmount(address token,uint256 amount)";
-
-    bytes32 constant REMOVE_POSITION_LIQUIDITY_EIP712_TYPEHASH  =  keccak256(
-        "RemoveLiquidity(uint256 token_id,uint128 liquidity,TokenAmount minimum_received_a,TokenAmount minimum_received_b)"
-        "TokenAmount(address token,uint256 amount)"
-    );
-
-    uint256 constant REMOVE_POSITION_LIQUIDITY_EIP712_TOKEN_AMOUNT_OFFSET  =  219;
-
-    string constant COLLECT_FEES_EIP712_TYPE_STRING  =
-        "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,CollectFees call)"
-        "CollectFees(uint256 token_id,TokenAmount minimum_received_a,TokenAmount minimum_received_b)"
-        "TokenAmount(address token,uint256 amount)";
-
-    bytes32 constant COLLECT_FEES_EIP712_TYPEHASH  =  keccak256(
-        "CollectFees(uint256 token_id,TokenAmount minimum_received_a,TokenAmount minimum_received_b)"
-        "TokenAmount(address token,uint256 amount)"
-    );
-
-    uint256 constant COLLECT_FEES_EIP712_TOKEN_AMOUNT_OFFSET  =  193;
+    // Resolved pool-token pair: addresses (the raw anchors) plus the once-read symbol / decimals reused across the fields.
+    struct _PoolTokens {
+        address token0;
+        address token1;
+        uint8 decimals0;
+        uint8 decimals1;
+        string symbol0;
+        string symbol1;
+    }
 
     function get_create_position_signing_info( CreatePositionParams memory params )
-    internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
+    internal view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
-        typed_string  =  CREATE_POSITION_EIP712_TYPE_STRING;
+        ( IERC20 token0, uint256 minimum0, IERC20 token1, uint256 minimum1 )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_deposited_a, params.minimum_deposited_b );
+        _PoolTokens memory tokens  =  _resolve_pool_tokens( token0, token1 );
 
-        struct_hash  =  keccak256( abi.encode(
-            CREATE_POSITION_EIP712_TYPEHASH,
-            SafeSwapCommon.hash_pool_info( params.pool_info ),
-            params.tick_lower,
-            params.tick_upper,
-            params.liquidity,
-            params.sqrt_price_x96,
-            SafeSwapCommon.hash_token_amount( params.minimum_deposited_a ),
-            SafeSwapCommon.hash_token_amount( params.minimum_deposited_b )
-        ));
+        string memory inner_definition  =  string.concat(
+            "CreatePosition(string Deposit,string Minimum,string Liquidity,string Range,string Price,string Pool,string Warning,address ",
+            tokens.symbol1, ",address ", tokens.symbol0, ")"
+        );
 
-        token_amount_offset  =  CREATE_POSITION_EIP712_TOKEN_AMOUNT_OFFSET;
+        ( typed_string, token_amount_offset )  =  SigningLib.build_typed_string( CREATE_FIELD_DECLARATION, inner_definition );
+        struct_hash  =  _create_struct_hash( params, tokens, minimum0, minimum1, inner_definition );
     }
 
-    function get_add_liquidity_signing_info( AddPositionLiquidityParams memory params )
-    internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
+    function get_add_liquidity_signing_info( AddPositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info, IPoolManager pool_manager )
+    internal view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
-        typed_string  =  ADD_POSITION_LIQUIDITY_EIP712_TYPE_STRING;
+        _PoolTokens memory tokens  =  _resolve_pool_tokens( position_info.token0, position_info.token1 );
+        ( , uint256 minimum0, , uint256 minimum1 )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_deposited_a, params.minimum_deposited_b );
 
-        struct_hash  =  keccak256( abi.encode(
-            ADD_POSITION_LIQUIDITY_EIP712_TYPEHASH,
-            params.token_id,
-            params.liquidity,
-            SafeSwapCommon.hash_token_amount( params.minimum_deposited_a ),
-            SafeSwapCommon.hash_token_amount( params.minimum_deposited_b )
-        ));
+        string memory inner_definition  =  string.concat(
+            "AddLiquidity(string Position,string Deposit,string Minimum,string Liquidity,string Pool,string Warning,address ",
+            tokens.symbol1, ",address ", tokens.symbol0, ")"
+        );
 
-        token_amount_offset  =  ADD_POSITION_LIQUIDITY_EIP712_TOKEN_AMOUNT_OFFSET;
+        ( typed_string, token_amount_offset )  =  SigningLib.build_typed_string( ADD_FIELD_DECLARATION, inner_definition );
+        struct_hash  =  _add_struct_hash( params, position_info, pool_manager, tokens, minimum0, minimum1, inner_definition );
     }
 
-    function get_remove_liquidity_signing_info( RemovePositionLiquidityParams memory params )
-    internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
+    function get_remove_liquidity_signing_info( RemovePositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info )
+    internal view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
-        typed_string  =  REMOVE_POSITION_LIQUIDITY_EIP712_TYPE_STRING;
+        _PoolTokens memory tokens  =  _resolve_pool_tokens( position_info.token0, position_info.token1 );
+        ( , uint256 received0, , uint256 received1 )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_received_a, params.minimum_received_b );
+
+        string memory inner_definition  =  string.concat(
+            "RemoveLiquidity(string Position,string Burn,string Receive,string Pool,string Warning,address ",
+            tokens.symbol1, ",address ", tokens.symbol0, ")"
+        );
+
+        ( typed_string, token_amount_offset )  =  SigningLib.build_typed_string( REMOVE_FIELD_DECLARATION, inner_definition );
 
         struct_hash  =  keccak256( abi.encode(
-            REMOVE_POSITION_LIQUIDITY_EIP712_TYPEHASH,
-            params.token_id,
-            params.liquidity,
-            SafeSwapCommon.hash_token_amount( params.minimum_received_a ),
-            SafeSwapCommon.hash_token_amount( params.minimum_received_b )
+            keccak256( bytes(inner_definition) ),
+            keccak256( bytes(SigningLib.render_position_value( params.token_id )) ),
+            keccak256( bytes(SigningLib.render_burn_value( params.liquidity )) ),
+            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, received1, tokens.decimals1, tokens.symbol1, received0, tokens.decimals0, tokens.symbol0 )) ),
+            keccak256( bytes(SigningLib.render_pool_value( _pool_info_of( position_info ) )) ),
+            keccak256( bytes(SigningLib.WARNING_VALUE) ),
+            tokens.token1,
+            tokens.token0
         ));
-
-        token_amount_offset  =  REMOVE_POSITION_LIQUIDITY_EIP712_TOKEN_AMOUNT_OFFSET;
     }
 
-    function get_collect_fees_signing_info( CollectFeesParams memory params )
-    internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
+    function get_collect_fees_signing_info( CollectFeesParams memory params, SafeSwapPositionInfo memory position_info )
+    internal view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
-        typed_string  =  COLLECT_FEES_EIP712_TYPE_STRING;
+        _PoolTokens memory tokens  =  _resolve_pool_tokens( position_info.token0, position_info.token1 );
+        ( , uint256 received0, , uint256 received1 )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_received_a, params.minimum_received_b );
+
+        string memory inner_definition  =  string.concat(
+            "CollectFees(string Position,string Receive,string Pool,string Warning,address ",
+            tokens.symbol1, ",address ", tokens.symbol0, ")"
+        );
+
+        ( typed_string, token_amount_offset )  =  SigningLib.build_typed_string( COLLECT_FIELD_DECLARATION, inner_definition );
 
         struct_hash  =  keccak256( abi.encode(
-            COLLECT_FEES_EIP712_TYPEHASH,
-            params.token_id,
-            SafeSwapCommon.hash_token_amount( params.minimum_received_a ),
-            SafeSwapCommon.hash_token_amount( params.minimum_received_b )
+            keccak256( bytes(inner_definition) ),
+            keccak256( bytes(SigningLib.render_position_value( params.token_id )) ),
+            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, received1, tokens.decimals1, tokens.symbol1, received0, tokens.decimals0, tokens.symbol0 )) ),
+            keccak256( bytes(SigningLib.render_pool_value( _pool_info_of( position_info ) )) ),
+            keccak256( bytes(SigningLib.WARNING_VALUE) ),
+            tokens.token1,
+            tokens.token0
         ));
+    }
 
-        token_amount_offset  =  COLLECT_FEES_EIP712_TOKEN_AMOUNT_OFFSET;
+
+    // ━━━━  SIGNING HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    function _resolve_pool_tokens( IERC20 token0, IERC20 token1 ) private view returns ( _PoolTokens memory tokens )
+    {
+        tokens.token0    =  address(token0);
+        tokens.token1    =  address(token1);
+        tokens.decimals0 =  SigningLib.read_token_decimals( token0 );
+        tokens.decimals1 =  SigningLib.read_token_decimals( token1 );
+        tokens.symbol0   =  SigningLib.read_sanitized_symbol( token0 );
+        tokens.symbol1   =  SigningLib.read_sanitized_symbol( token1 );
+    }
+
+    function _create_struct_hash( CreatePositionParams memory params, _PoolTokens memory tokens, uint256 minimum0, uint256 minimum1, string memory inner_definition )
+    private pure returns ( bytes32 )
+    {
+        ( uint256 deposit0, uint256 deposit1 )  =  SigningLib.calculate_amounts_for_liquidity( params.sqrt_price_x96, params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, params.liquidity );
+
+        return keccak256( abi.encode(
+            keccak256( bytes(inner_definition) ),
+            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, deposit1, tokens.decimals1, tokens.symbol1, deposit0, tokens.decimals0, tokens.symbol0 )) ),
+            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 )) ),
+            keccak256( bytes(Strings.toString( params.liquidity )) ),
+            keccak256( bytes(SigningLib.render_range_value( params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, tokens.decimals0, tokens.decimals1, tokens.symbol0, tokens.symbol1 )) ),
+            keccak256( bytes(SigningLib.render_price_value( params.sqrt_price_x96, tokens.decimals0, tokens.decimals1, tokens.symbol0, tokens.symbol1 )) ),
+            keccak256( bytes(SigningLib.render_pool_value( params.pool_info )) ),
+            keccak256( bytes(SigningLib.WARNING_VALUE) ),
+            tokens.token1,
+            tokens.token0
+        ));
+    }
+
+    function _add_struct_hash(
+        AddPositionLiquidityParams memory params,
+        SafeSwapPositionInfo memory position_info,
+        IPoolManager pool_manager,
+        _PoolTokens memory tokens,
+        uint256 minimum0,
+        uint256 minimum1,
+        string memory inner_definition
+    ) private view returns ( bytes32 )
+    {
+        ( uint160 current_sqrt_price_x96, , , )  =  pool_manager.getSlot0( _pool_key_from_position( position_info ).toId( ) );
+        uint160 sqrt_price_lower_x96  =  TickMath.getSqrtPriceAtTick( position_info.tick_lower );
+        uint160 sqrt_price_upper_x96  =  TickMath.getSqrtPriceAtTick( position_info.tick_upper );
+        ( uint256 deposit0, uint256 deposit1 )  =  SigningLib.calculate_amounts_for_liquidity( current_sqrt_price_x96, sqrt_price_lower_x96, sqrt_price_upper_x96, params.liquidity );
+
+        return keccak256( abi.encode(
+            keccak256( bytes(inner_definition) ),
+            keccak256( bytes(SigningLib.render_position_value( params.token_id )) ),
+            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, deposit1, tokens.decimals1, tokens.symbol1, deposit0, tokens.decimals0, tokens.symbol0 )) ),
+            keccak256( bytes(SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 )) ),
+            keccak256( bytes(Strings.toString( params.liquidity )) ),
+            keccak256( bytes(SigningLib.render_pool_value( _pool_info_of( position_info ) )) ),
+            keccak256( bytes(SigningLib.WARNING_VALUE) ),
+            tokens.token1,
+            tokens.token0
+        ));
+    }
+
+    function _pool_info_of( SafeSwapPositionInfo memory position_info ) private pure returns ( PoolInfo memory )
+    {
+        return PoolInfo({ base_fee_bps: position_info.base_fee_bps, rebate_percent: position_info.rebate_percent, tick_spacing: position_info.tick_spacing });
+    }
+
+
+    // ━━━━  PRICE → TICK DERIVATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /**
+     * @notice Derive the position ticks from the signed sqrt-price bounds, snapping to the pool's tick spacing. The lower
+     *         bound floors toward -infinity and the upper bound ceils toward +infinity, so the snapped range always contains
+     *         the signed range and the two ticks never collapse. Result is clamped to the usable tick range for the spacing.
+     * @dev Fixed, deterministic rule — the signed price is the source of truth and these ticks are reproduced from it.
+     */
+    function derive_ticks_from_price_bounds( uint160 sqrt_price_lower_x96, uint160 sqrt_price_upper_x96, int24 tick_spacing )
+    internal pure returns ( int24 tick_lower, int24 tick_upper )
+    {
+        int24 raw_lower  =  TickMath.getTickAtSqrtPrice( sqrt_price_lower_x96 );
+        int24 raw_upper  =  TickMath.getTickAtSqrtPrice( sqrt_price_upper_x96 );
+
+        if(  raw_lower > raw_upper  )  ( raw_lower, raw_upper )  =  ( raw_upper, raw_lower );
+
+        int24 min_usable  =  TickMath.minUsableTick( tick_spacing );
+        int24 max_usable  =  TickMath.maxUsableTick( tick_spacing );
+
+        tick_lower  =  _clamp_tick( _floor_to_spacing( raw_lower, tick_spacing ), min_usable, max_usable );
+        tick_upper  =  _clamp_tick( _ceil_to_spacing( raw_upper, tick_spacing ), min_usable, max_usable );
+    }
+
+    function _floor_to_spacing( int24 tick, int24 tick_spacing ) private pure returns ( int24 )
+    {
+        int24 rounded  =  ( tick / tick_spacing ) * tick_spacing;    // truncates toward zero.
+        if(  tick < 0  &&  tick % tick_spacing != 0  )  rounded  =  rounded - tick_spacing;
+        return rounded;
+    }
+
+    function _ceil_to_spacing( int24 tick, int24 tick_spacing ) private pure returns ( int24 )
+    {
+        int24 rounded  =  ( tick / tick_spacing ) * tick_spacing;    // truncates toward zero.
+        if(  tick > 0  &&  tick % tick_spacing != 0  )  rounded  =  rounded + tick_spacing;
+        return rounded;
+    }
+
+    function _clamp_tick( int24 tick, int24 min_usable, int24 max_usable ) private pure returns ( int24 )
+    {
+        if(  tick < min_usable  )  return min_usable;
+        if(  tick > max_usable  )  return max_usable;
+        return tick;
     }
 
 

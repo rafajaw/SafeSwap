@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import "@BondRouteProtected/BondRouteProtected.sol";
 import "@SafeSwapCommon/SafeSwapCommon.sol";
+import "@SafeSwapCommon/SigningLib.sol";
 import "@SafeSwapCommon/Definitions.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -15,15 +16,20 @@ import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 
 /**
  * @notice Exact-output swap parameters signed by the user.
+ * @param token_in Token the user pays. Must equal the bond's single funding token (validated at execution).
+ * @param maximum_input_amount Maximum input the user pays. Must equal the bond's single funding amount (validated at execution).
  * @param token_out Token the user receives.
  * @param exact_output_amount Exact net output sent to the user after the SafeSwap protocol fee.
  * @param pool_info Target SafeSwap pool configuration (base fee, capture, tick spacing).
  *
- * @dev Input token and maximum input amount come from the bond funding, not from this struct. The LP fee (base + repricing)
- *      is charged on the input by the pool's dynamic-fee override; it (and the protocol-fee gross-up) count against the
- *      committed maximum input.
+ * @dev The maximum input is signed here (it is the receipt's `Pay` field) and is the display source of truth; execution
+ *      reads the actual maximum from the bond funding but reverts if the funding does not match the signed cap, then
+ *      enforces the real required input against it. The LP fee (base + repricing) is charged on the input by the pool's
+ *      dynamic-fee override; it (and the protocol-fee gross-up) count against the committed maximum input.
  */
 struct ExactOutputSwapParams {
+    IERC20 token_in;
+    uint256 maximum_input_amount;
     IERC20 token_out;
     uint256 exact_output_amount;
     PoolInfo pool_info;
@@ -39,34 +45,38 @@ library ExactOutputSwapLib {
     using FundingsLib for BondContext;
 
 
-    // ━━━━  EIP-712 SIGNING  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ━━━━  EIP-712 SIGNING (SIGNING_UX_REFERENCE_2)  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    string constant EIP712_TYPE_STRING  =
-        "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,ExactOutputSwap call)"
-        "ExactOutputSwap(address token_out,uint256 exact_output_amount,PoolInfo pool_info)"
-        "PoolInfo(uint16 base_fee_bps,uint8 rebate_percent,int24 tick_spacing)"
-        "TokenAmount(address token,uint256 amount)";
+    string constant SWAP_FIELD_DECLARATION  =  "ExactOutputSwap sS__SWAP__Ss";
+    string constant INNER_DEFINITION_HEAD   =  "ExactOutputSwap(string Pay,string Receive,string Pool,string Warning,address ";
 
-    bytes32 constant EIP712_TYPEHASH  =  keccak256(
-        "ExactOutputSwap(address token_out,uint256 exact_output_amount,PoolInfo pool_info)"
-        "PoolInfo(uint16 base_fee_bps,uint8 rebate_percent,int24 tick_spacing)"
-    );
-
-    uint256 constant EIP712_TOKEN_AMOUNT_OFFSET  =  256;
-
+    /**
+     * @notice Build the REFERENCE_2 receipt for an exact-output swap: `Pay` (<= max input), `Receive` (= exact output),
+     *         `Pool`, `Warning`, and the received-token address anchored under its sanitized symbol.
+     * @dev `view` (not `pure`) because it reads each token's `symbol()` / `decimals()` defensively once.
+     */
     function get_signing_info( ExactOutputSwapParams memory params )
-    internal pure returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
+    internal view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
-        typed_string  =  EIP712_TYPE_STRING;
+        string memory symbol_in   =  SigningLib.read_sanitized_symbol( params.token_in );
+        string memory symbol_out  =  SigningLib.read_sanitized_symbol( params.token_out );
+
+        string memory pay      =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_AT_MOST, params.maximum_input_amount, SigningLib.read_token_decimals( params.token_in ), symbol_in );
+        string memory receive_value  =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_EXACT, params.exact_output_amount, SigningLib.read_token_decimals( params.token_out ), symbol_out );
+        string memory pool     =  SigningLib.render_pool_value( params.pool_info );
+
+        string memory inner_definition  =  string.concat( INNER_DEFINITION_HEAD, symbol_out, ")" );
+
+        ( typed_string, token_amount_offset )  =  SigningLib.build_typed_string( SWAP_FIELD_DECLARATION, inner_definition );
 
         struct_hash  =  keccak256( abi.encode(
-            EIP712_TYPEHASH,
-            address(params.token_out),
-            params.exact_output_amount,
-            SafeSwapCommon.hash_pool_info( params.pool_info )
+            keccak256( bytes(inner_definition) ),
+            keccak256( bytes(pay) ),
+            keccak256( bytes(receive_value) ),
+            keccak256( bytes(pool) ),
+            keccak256( bytes(SigningLib.WARNING_VALUE) ),
+            address(params.token_out)
         ));
-
-        token_amount_offset  =  EIP712_TOKEN_AMOUNT_OFFSET;
     }
 
 
@@ -90,9 +100,15 @@ library ExactOutputSwapLib {
 
     function execute( BondContext memory context, ExactOutputSwapParams memory params, IPoolManager pool_manager, address hook, address router ) internal
     {
-        // *NOTE*  -  Token in and max amount come from fundings. Multi-funding: pick best at execution time.
         IERC20 token_in            =  context.fundings[ 0 ].token;
         uint256 maximum_amount_in  =  context.fundings[ 0 ].amount;
+
+        // *SECURITY*  -  The signed `Pay` field is the display source of truth. Reject any funding that does not match the
+        //                signed input token and maximum, so a relayer cannot fund a different asset than the user saw.
+        if(  address(token_in) != address(params.token_in)  ||  maximum_amount_in != params.maximum_input_amount  )
+        {
+            revert SignedSwapInputMismatch({ signed_token: address(params.token_in), signed_amount: params.maximum_input_amount, funded_token: address(token_in), funded_amount: maximum_amount_in });
+        }
 
         // Gross up the requested output so the user nets `exact_output_amount` after the SafeSwap protocol fee. The LP fee
         // (base + repricing) is taken separately from the input by the pool, so it is not part of this gross-up.

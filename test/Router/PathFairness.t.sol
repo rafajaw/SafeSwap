@@ -193,8 +193,8 @@ contract PathFairnessTest is IPathFairnessTests, SafeSwapRealEnv {
     {
         CreatePositionParams memory params  =  CreatePositionParams({
             pool_info: _pool_info(),
-            tick_lower: tick_lower,
-            tick_upper: tick_upper,
+            sqrt_price_lower_x96: TickMath.getSqrtPriceAtTick( tick_lower ),
+            sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( tick_upper ),
             liquidity: _RANGE_LIQUIDITY,
             sqrt_price_x96: sqrt_price_x96,
             minimum_deposited_a: TokenAmount({ token: _token0(), amount: 0 }),
@@ -219,6 +219,8 @@ contract PathFairnessTest is IPathFairnessTests, SafeSwapRealEnv {
     function _swap_exact_input( IERC20 token_in, IERC20 token_out, uint256 amount_in ) internal
     {
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
+            token_in: token_in,
+            input_amount: amount_in,
             token_out: token_out,
             minimum_output_amount: 0,
             pool_info: _pool_info()

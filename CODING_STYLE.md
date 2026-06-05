@@ -18,6 +18,8 @@ Write with a lawyer mindset - code must be unambiguous and not open to different
 
 Strongly favor long and descriptive names for functions and variables vs brevity and acronyms.   Good example:  function claim_slash_for_unproved_vote_counting_challenge( uint proposal_id, uint vote_counting_claim_index, uint challenge_id ) public returns ( uint coins_rewarded )
 
+Function names should start with a verb that describes the action or returned computation. Good: `render_position_value`, `calculate_repricing_fee`, `validate_hook_config`. Bad: `position_value`, `repricing_fee`, `hook_config_valid`.
+
 Use named arguments for function calls, events, and reverts when the variable name doesn't match the parameter name.  Good:  `revert AmountMismatch({ sent: msg.value, expected: required_amount })`   Unnecessary:  `emit Transfer( from, to, amount )` (names already match).
 
 Internal or private variables and functions should be prefixed with an underscore. Function arguments should not be prefixed with an underscore.

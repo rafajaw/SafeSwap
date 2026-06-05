@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import { ISafeSwapPositionDescriptorTests } from "@test/Nft/TestManifest.sol";
+import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { SafeSwapRealEnv } from "@test/helpers/SafeSwapRealEnv.t.sol";
 import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
 
@@ -163,8 +164,8 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
     {
         CreatePositionParams memory params  =  CreatePositionParams({
             pool_info: PoolInfo({ base_fee_bps: 30, rebate_percent: 50, tick_spacing: 60 }),
-            tick_lower: tick_lower,
-            tick_upper: tick_upper,
+            sqrt_price_lower_x96: TickMath.getSqrtPriceAtTick( tick_lower ),
+            sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( tick_upper ),
             liquidity: 1 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
             minimum_deposited_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),

@@ -891,7 +891,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     {
         _set_exact_input_delta( token_in, token_out, _AMOUNT_IN, _POOL_OUTPUT );
         _execute(
-            abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(token_out, pool_info, minimum_output_amount)) ),
+            abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(token_in, _AMOUNT_IN, token_out, pool_info, minimum_output_amount)) ),
             _context( token_in, _AMOUNT_IN )
         );
     }
@@ -900,7 +900,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     {
         _set_exact_input_delta( NATIVE_TOKEN, IERC20(address(_token1)), _AMOUNT_IN, _POOL_OUTPUT );
         _execute(
-            abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 0)) ),
+            abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(NATIVE_TOKEN, _AMOUNT_IN, IERC20(address(_token1)), _pool_info( ), 0)) ),
             _context_native_input( _AMOUNT_IN )
         );
     }
@@ -934,7 +934,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
 
         _set_exact_output_delta( NATIVE_TOKEN, IERC20(address(_token1)), required_input, exact_output );
         _execute(
-            abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(IERC20(address(_token1)), exact_output)) ),
+            abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(NATIVE_TOKEN, _AMOUNT_IN, IERC20(address(_token1)), _pool_info( ), exact_output)) ),
             _context_native_input( _AMOUNT_IN )
         );
     }
@@ -950,7 +950,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     {
         _set_exact_output_delta( token_in, token_out, required_input, exact_output );
         _execute(
-            abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(token_out, pool_info, exact_output)) ),
+            abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(token_in, maximum_input, token_out, pool_info, exact_output)) ),
             _context( token_in, maximum_input )
         );
     }
@@ -1054,8 +1054,8 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     {
         CreatePositionParams memory params  =  CreatePositionParams({
             pool_info: _pool_info( ),
-            tick_lower: -6000,
-            tick_upper: 6000,
+            sqrt_price_lower_x96: TickMath.getSqrtPriceAtTick( -6000 ),
+            sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( 6000 ),
             liquidity: 100_000 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
             minimum_deposited_a: TokenAmount({ token: IERC20(address(_real_token_a)), amount: 0 }),
@@ -1080,6 +1080,8 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     function _real_swap_exact_input( uint256 amount_in, uint256 minimum_output_amount ) internal returns ( BondStatus status )
     {
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
+            token_in: IERC20(address(_real_token_a)),
+            input_amount: amount_in,
             token_out: IERC20(address(_real_token_b)),
             minimum_output_amount: minimum_output_amount,
             pool_info: _pool_info( )
@@ -1097,6 +1099,8 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     function _real_swap_exact_output( uint256 exact_output_amount, uint256 maximum_input ) internal returns ( BondStatus status )
     {
         ExactOutputSwapParams memory params  =  ExactOutputSwapParams({
+            token_in: IERC20(address(_real_token_a)),
+            maximum_input_amount: maximum_input,
             token_out: IERC20(address(_real_token_b)),
             exact_output_amount: exact_output_amount,
             pool_info: _pool_info( )
@@ -1150,26 +1154,46 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
 
     // ━━━━  SHARED HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function _exact_input_params( IERC20 token_out, uint256 minimum_output_amount ) internal pure returns ( ExactInputSwapParams memory )
+    // Full builders — the signed `Pay` (token_in + amount) must match the bond funding at execution.
+    function _exact_input_params( IERC20 token_in, uint256 input_amount, IERC20 token_out, PoolInfo memory pool_info, uint256 minimum_output_amount )
+    internal pure returns ( ExactInputSwapParams memory )
     {
-        return _exact_input_params( token_out, _pool_info( ), minimum_output_amount );
+        return ExactInputSwapParams({ token_in: token_in, input_amount: input_amount, token_out: token_out, minimum_output_amount: minimum_output_amount, pool_info: pool_info });
+    }
+
+    function _exact_output_params( IERC20 token_in, uint256 maximum_input_amount, IERC20 token_out, PoolInfo memory pool_info, uint256 exact_output_amount )
+    internal pure returns ( ExactOutputSwapParams memory )
+    {
+        return ExactOutputSwapParams({ token_in: token_in, maximum_input_amount: maximum_input_amount, token_out: token_out, exact_output_amount: exact_output_amount, pool_info: pool_info });
+    }
+
+    // Convenience overloads for quote / signing / revert tests that never reach the funding check: the input defaults to the
+    // other pool token and `_AMOUNT_IN`, which matches the `_context(...)` funding the mock-execution tests build.
+    function _exact_input_params( IERC20 token_out, uint256 minimum_output_amount ) internal view returns ( ExactInputSwapParams memory )
+    {
+        return _exact_input_params( _default_token_in( token_out ), _AMOUNT_IN, token_out, _pool_info( ), minimum_output_amount );
     }
 
     function _exact_input_params( IERC20 token_out, PoolInfo memory pool_info, uint256 minimum_output_amount )
-    internal pure returns ( ExactInputSwapParams memory )
+    internal view returns ( ExactInputSwapParams memory )
     {
-        return ExactInputSwapParams({ token_out: token_out, minimum_output_amount: minimum_output_amount, pool_info: pool_info });
+        return _exact_input_params( _default_token_in( token_out ), _AMOUNT_IN, token_out, pool_info, minimum_output_amount );
     }
 
-    function _exact_output_params( IERC20 token_out, uint256 exact_output_amount ) internal pure returns ( ExactOutputSwapParams memory )
+    function _exact_output_params( IERC20 token_out, uint256 exact_output_amount ) internal view returns ( ExactOutputSwapParams memory )
     {
-        return _exact_output_params( token_out, _pool_info( ), exact_output_amount );
+        return _exact_output_params( _default_token_in( token_out ), _AMOUNT_IN, token_out, _pool_info( ), exact_output_amount );
     }
 
     function _exact_output_params( IERC20 token_out, PoolInfo memory pool_info, uint256 exact_output_amount )
-    internal pure returns ( ExactOutputSwapParams memory )
+    internal view returns ( ExactOutputSwapParams memory )
     {
-        return ExactOutputSwapParams({ token_out: token_out, exact_output_amount: exact_output_amount, pool_info: pool_info });
+        return _exact_output_params( _default_token_in( token_out ), _AMOUNT_IN, token_out, pool_info, exact_output_amount );
+    }
+
+    function _default_token_in( IERC20 token_out ) internal view returns ( IERC20 )
+    {
+        return address(token_out) == address(_token1)  ?  IERC20(address(_token0))  :  IERC20(address(_token1));
     }
 
     function _one_funding( IERC20 token, uint256 amount ) internal pure returns ( TokenAmount[] memory fundings )

@@ -51,6 +51,23 @@ library PriceLib {
     }
 
     /**
+     * @notice Price of one whole token1 expressed in token0, scaled by 1e18 and adjusted for token decimals — the inverse
+     *         orientation of `price1_per_0_scaled`. Used by the signed Create receipt, which quotes Range / Price as
+     *         token0-per-token1 (e.g. "3,002.5 USDC/WETH" where USDC is token0 and WETH is token1).
+     * @dev Computed by inverting the token1-per-token0 price (`1e36 / price1_per_0`). The inversion's rounding is far below
+     *      display precision and is acceptable here: Create's economic safety rests on the committed deposit / minimum
+     *      amounts, not on bit-exact price (see DYNAMIC_FEE_REBATE_PLAN.md / SIGNING_UX_REFERENCE_2.md).
+     */
+    function price0_per_1_scaled( uint160 sqrt_price_x96, uint8 decimals0, uint8 decimals1 )
+    internal pure returns ( uint256 )
+    {
+        uint256 price1_per_0  =  price1_per_0_scaled( sqrt_price_x96, decimals0, decimals1 );
+        if(  price1_per_0 == 0  )  return 0;
+
+        return FullMath.mulDiv( PRICE_SCALE, PRICE_SCALE, price1_per_0 );
+    }
+
+    /**
      * @notice Where the current price sits within [low, high], as a 0..width fill for the range-bar marker.
      *         Clamps to the ends when the price is out of range (price below low → 0, above high → width).
      * @dev Linear in PRICE, not tick — the card shows a price axis, so the marker spacing should track price

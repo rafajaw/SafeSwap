@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import { ISafeSwapRouterTests } from "@test/Router/TestManifest.sol";
+import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { SafeSwapRealEnv } from "@test/helpers/SafeSwapRealEnv.t.sol";
 import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
 
@@ -410,8 +411,8 @@ contract SafeSwapRouterTest is ISafeSwapRouterTests, SafeSwapRealEnv {
     {
         CreatePositionParams memory params  =  CreatePositionParams({
             pool_info: _pool_info(),
-            tick_lower: -6000,
-            tick_upper: 6000,
+            sqrt_price_lower_x96: TickMath.getSqrtPriceAtTick( -6000 ),
+            sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( 6000 ),
             liquidity: 100_000 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
             minimum_deposited_a: TokenAmount({ token: IERC20(address(token_a)), amount: 0 }),
@@ -438,6 +439,8 @@ contract SafeSwapRouterTest is ISafeSwapRouterTests, SafeSwapRealEnv {
     function _swap_exact_input( IERC20 token_in, IERC20 token_out, uint256 amount_in ) internal
     {
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
+            token_in: token_in,
+            input_amount: amount_in,
             token_out: token_out,
             minimum_output_amount: 0,
             pool_info: _pool_info()

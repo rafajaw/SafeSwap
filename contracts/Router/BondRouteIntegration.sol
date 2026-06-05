@@ -61,7 +61,7 @@ abstract contract BondRouteIntegration is User {
      * @notice Return EIP-712 signing information for a protected swap.
      */
     function BondRoute_get_signing_info( bytes calldata call )
-    external  pure override returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
+    external  view override returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
         if(  call.length < 4  )  revert UnsupportedCall( );
 

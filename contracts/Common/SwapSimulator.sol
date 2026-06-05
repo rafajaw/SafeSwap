@@ -48,6 +48,27 @@ library SwapSimulator {
         bool loaded;
     }
 
+    /// @notice Immutable inputs of the price-path walk, bundled so the per-step helper stays shallow on the stack (keeping
+    ///         the loop compilable under both the IR and the legacy codegen pipelines).
+    struct SimEnv {
+        IPoolManager manager;
+        bytes32 ticks_mapping;
+        int24 tick_spacing;
+        bool zero_for_one;
+        int256 amount_specified;
+        uint24 fee_pips;
+        uint160 price_limit;
+    }
+
+    /// @notice Mutable state advanced by each walk step.
+    struct SimState {
+        uint160 sqrt_price_x96;
+        int24 tick;
+        uint128 liquidity;
+        int256 remaining;
+        uint256 amount_calculated;
+    }
+
     /**
      * @notice Estimate where a swap would move the pool price.
      * @param amount_specified Negative for exact-input, positive for exact-output (Uniswap V4 convention).
@@ -78,67 +99,82 @@ library SwapSimulator {
         WordCache memory cache;
         cache.bitmap_mapping_slot  =  bytes32( uint256(state_slot) + TICK_BITMAP_OFFSET );
 
-        int24 tick_spacing  =  key.tickSpacing;
-        int256 remaining    =  amount_specified;
-        uint160 price_limit =  zero_for_one  ?  TickMath.MIN_SQRT_PRICE + 1  :  TickMath.MAX_SQRT_PRICE - 1;
-        amount_calculated   =  0;
+        SimEnv memory env  =  SimEnv({
+            manager:          manager,
+            ticks_mapping:    ticks_mapping,
+            tick_spacing:     key.tickSpacing,
+            zero_for_one:     zero_for_one,
+            amount_specified: amount_specified,
+            fee_pips:         fee_pips,
+            price_limit:      zero_for_one  ?  TickMath.MIN_SQRT_PRICE + 1  :  TickMath.MAX_SQRT_PRICE - 1
+        });
 
-        unchecked
+        SimState memory state  =  SimState({ sqrt_price_x96: sqrt_price_x96, tick: tick, liquidity: liquidity, remaining: amount_specified, amount_calculated: 0 });
+
+        while(  state.remaining != 0  &&  state.sqrt_price_x96 != env.price_limit  )
         {
-            while(  remaining != 0  &&  sqrt_price_x96 != price_limit  )
-            {
-                uint160 start_price_x96  =  sqrt_price_x96;
-
-                ( int24 tick_next, bool initialized )  =  _next_initialized_tick( manager, cache, tick, tick_spacing, zero_for_one );
-
-                if(  tick_next <= TickMath.MIN_TICK  )  tick_next  =  TickMath.MIN_TICK;
-                if(  tick_next >= TickMath.MAX_TICK  )  tick_next  =  TickMath.MAX_TICK;
-
-                uint160 sqrt_price_next_x96  =  TickMath.getSqrtPriceAtTick( tick_next );
-
-                uint256 amount_in;
-                uint256 amount_out;
-                uint256 fee_amount;
-                ( sqrt_price_x96, amount_in, amount_out, fee_amount )  =  SwapMath.computeSwapStep(
-                    sqrt_price_x96,
-                    SwapMath.getSqrtPriceTarget( zero_for_one, sqrt_price_next_x96, price_limit ),
-                    liquidity,
-                    remaining,
-                    fee_pips
-                );
-
-                if(  amount_specified > 0  )
-                {
-                    remaining          -=  int256(amount_out);
-                    amount_calculated  +=  amount_in + fee_amount;     // exact-output: accumulate the required input.
-                }
-                else
-                {
-                    remaining          +=  int256(amount_in + fee_amount);
-                    amount_calculated  +=  amount_out;                 // exact-input: accumulate the produced output.
-                }
-
-                if(  sqrt_price_x96 == sqrt_price_next_x96  )
-                {
-                    if(  initialized  )
-                    {
-                        int128 liquidity_net  =  _liquidity_net( manager, ticks_mapping, tick_next );
-                        if(  zero_for_one  )  liquidity_net  =  -liquidity_net;
-
-                        liquidity  =  LiquidityMath.addDelta( liquidity, liquidity_net );
-                    }
-
-                    tick  =  zero_for_one  ?  tick_next - 1  :  tick_next;
-                }
-                else if(  sqrt_price_x96 != start_price_x96  )
-                {
-                    tick  =  TickMath.getTickAtSqrtPrice( sqrt_price_x96 );
-                }
-            }
+            _walk_step( env, cache, state );
         }
 
-        tick_after            =  tick;
-        sqrt_price_after_x96  =  sqrt_price_x96;
+        tick_after            =  state.tick;
+        sqrt_price_after_x96  =  state.sqrt_price_x96;
+        amount_calculated     =  state.amount_calculated;
+    }
+
+    /// @notice Advance one price-path step (one tick crossing or one within-word move), mirroring a single iteration of
+    ///         `Pool.swap`'s loop. Mutates `cache` (bitmap word reuse) and `state` (price / tick / liquidity / totals).
+    function _walk_step( SimEnv memory env, WordCache memory cache, SimState memory state ) private view
+    {
+        unchecked
+        {
+            uint160 start_price_x96  =  state.sqrt_price_x96;
+
+            ( int24 tick_next, bool initialized )  =  _next_initialized_tick( env.manager, cache, state.tick, env.tick_spacing, env.zero_for_one );
+
+            if(  tick_next <= TickMath.MIN_TICK  )  tick_next  =  TickMath.MIN_TICK;
+            if(  tick_next >= TickMath.MAX_TICK  )  tick_next  =  TickMath.MAX_TICK;
+
+            uint160 sqrt_price_next_x96  =  TickMath.getSqrtPriceAtTick( tick_next );
+
+            uint256 amount_in;
+            uint256 amount_out;
+            uint256 fee_amount;
+            ( state.sqrt_price_x96, amount_in, amount_out, fee_amount )  =  SwapMath.computeSwapStep(
+                state.sqrt_price_x96,
+                SwapMath.getSqrtPriceTarget( env.zero_for_one, sqrt_price_next_x96, env.price_limit ),
+                state.liquidity,
+                state.remaining,
+                env.fee_pips
+            );
+
+            if(  env.amount_specified > 0  )
+            {
+                state.remaining          -=  int256(amount_out);
+                state.amount_calculated  +=  amount_in + fee_amount;     // exact-output: accumulate the required input.
+            }
+            else
+            {
+                state.remaining          +=  int256(amount_in + fee_amount);
+                state.amount_calculated  +=  amount_out;                 // exact-input: accumulate the produced output.
+            }
+
+            if(  state.sqrt_price_x96 == sqrt_price_next_x96  )
+            {
+                if(  initialized  )
+                {
+                    int128 liquidity_net  =  _liquidity_net( env.manager, env.ticks_mapping, tick_next );
+                    if(  env.zero_for_one  )  liquidity_net  =  -liquidity_net;
+
+                    state.liquidity  =  LiquidityMath.addDelta( state.liquidity, liquidity_net );
+                }
+
+                state.tick  =  env.zero_for_one  ?  tick_next - 1  :  tick_next;
+            }
+            else if(  state.sqrt_price_x96 != start_price_x96  )
+            {
+                state.tick  =  TickMath.getTickAtSqrtPrice( state.sqrt_price_x96 );
+            }
+        }
     }
 
 

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import { SafeSwapRealEnv } from "@test/helpers/SafeSwapRealEnv.t.sol";
+import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
 
 import "@SafeSwapCommon/Definitions.sol";
@@ -117,6 +118,8 @@ contract SwapHookOverheadBenchTest is SafeSwapRealEnv {
     function _swap_gas( address user, uint8 rebate ) private returns ( uint256 gas_used )
     {
         ExactInputSwapParams memory params  =  ExactInputSwapParams({
+            token_in: IERC20(address(_token_a)),
+            input_amount: _SWAP_AMOUNT,
             token_out: IERC20(address(_token_b)),
             minimum_output_amount: 0,
             pool_info: _pool_info( rebate )
@@ -154,8 +157,8 @@ contract SwapHookOverheadBenchTest is SafeSwapRealEnv {
     {
         CreatePositionParams memory params  =  CreatePositionParams({
             pool_info: _pool_info( rebate ),
-            tick_lower: -6000,
-            tick_upper: 6000,
+            sqrt_price_lower_x96: TickMath.getSqrtPriceAtTick( -6000 ),
+            sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( 6000 ),
             liquidity: 100_000 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
             minimum_deposited_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),

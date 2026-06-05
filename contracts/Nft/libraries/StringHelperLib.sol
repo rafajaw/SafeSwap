@@ -127,6 +127,23 @@ library StringHelperLib {
         return string.concat( "0.", trimmed_fraction( sig, places ) );
     }
 
+    // Render a token1-per-token0 (or token0-per-token1) price scaled by 1e18 for the SIGNED Create receipt. Unlike the
+    // cosmetic `format_price` (which drops the fraction entirely once the whole part reaches 1,000 to keep the card tidy),
+    // this keeps up to 4 trailing-zero-trimmed fractional digits at every magnitude, so "3,002.5 USDC/WETH" survives.
+    // Sub-1 prices reuse `format_price`'s significant-figure tiers (already lossless enough at that magnitude).
+    function format_price_full( uint256 scaled ) internal pure returns ( string memory )
+    {
+        if(  scaled == 0  )  return "0";
+
+        uint256 whole  =  scaled / 1e18;
+        if(  whole == 0  )  return format_price( scaled );
+
+        uint256 frac_digits  =  ( scaled % 1e18 ) / 1e14;    // first 4 decimals
+        if(  frac_digits == 0  )  return group_thousands( Strings.toString( whole ) );
+
+        return string.concat( group_thousands( Strings.toString( whole ) ), ".", trimmed_fraction( frac_digits, 4 ) );
+    }
+
     // Zero-pad `value` to `width` digits, then drop trailing zeros (e.g. value=500,width=4 -> "05").
     function trimmed_fraction( uint256 value, uint256 width ) internal pure returns ( string memory )
     {

@@ -20,6 +20,10 @@ error MaximumInputExceeded( uint256 required_input, uint256 maximum_required );
 error OneSidedDepositMismatch( address expected_token, uint256 minimum_required );
 error RepricingFeeExceedsV4Limit( uint256 total_fee_pips, uint256 maximum_fee_pips );
 
+// The swap funding the bond carries must match the input the user signed in the receipt (`Pay`). The signed input is the
+// display source of truth; a relayer cannot fund a different token or amount than the one the user saw and signed.
+error SignedSwapInputMismatch( address signed_token, uint256 signed_amount, address funded_token, uint256 funded_amount );
+
 
 /**
  * @title SafeSwapCommon

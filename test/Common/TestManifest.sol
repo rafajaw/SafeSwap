@@ -139,3 +139,32 @@ interface IPoolManagerIntegrationTests {
     function test_constructor_reverts_when_pool_manager_does_not_support_erc6909() external;
     function test_constructor_accepts_valid_pool_manager_shape() external;
 }
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SIGNINGLIB.SOL - Locked SIGNING_UX_REFERENCE_2 receipt notation: symbolic display values, the `|`-separated pool line,
+//   token0-per-token1 prices, and the EIP-712 type-string assembly / TokenAmount offset.
+// Implemented in: test/Common/SigningLib.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface ISigningLibTests {
+    // ─── Symbolic value notation (matches the REFERENCE_2 samples) ───────────────
+    function test_render_pool_value_matches_reference_layout() external;
+    function test_warning_value_is_the_locked_ascii_prose() external;
+    function test_render_single_amount_value_carries_the_exact_operator() external;
+    function test_render_single_amount_value_carries_the_floor_operator() external;
+    function test_render_single_amount_value_carries_the_cap_operator() external;
+    function test_render_pair_amount_value_orders_token1_first_with_plus_separator() external;
+    function test_render_position_value_renders_lp_hash() external;
+    function test_render_burn_value_appends_liquidity_word() external;
+
+    // ─── Prices (token0-per-token1) ──────────────────────────────────────────────
+    function test_format_price_full_keeps_fraction_above_one_thousand() external;
+    function test_price0_per_1_is_the_inverse_orientation() external;
+    function test_render_range_value_renders_low_to_high_token0_per_token1() external;
+    function test_render_price_value_renders_token0_per_token1() external;
+
+    // ─── Type string assembly ────────────────────────────────────────────────────
+    function test_build_typed_string_starts_with_envelope_and_ends_with_token_amount() external;
+    function test_build_typed_string_offset_points_at_token_amount_definition() external;
+}

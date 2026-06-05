@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import { ISafeSwapNftWorkflowTests } from "@test/Nft/TestManifest.sol";
+import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { SafeSwapRealEnv } from "@test/helpers/SafeSwapRealEnv.t.sol";
 import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
 import { Vm } from "forge-std/Vm.sol";
@@ -255,8 +256,8 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
     {
         return CreatePositionParams({
             pool_info: PoolInfo({ base_fee_bps: 30, rebate_percent: 50, tick_spacing: 60 }),
-            tick_lower: -120,
-            tick_upper: 120,
+            sqrt_price_lower_x96: TickMath.getSqrtPriceAtTick( -120 ),
+            sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( 120 ),
             liquidity: 1 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
             minimum_deposited_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),

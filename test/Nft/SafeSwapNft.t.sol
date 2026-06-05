@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import { ChainConfigTestHelper } from "@test/helpers/ChainConfigTestHelper.t.sol";
+import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { SafeSwapTestHelper } from "@test/helpers/SafeSwapTestHelper.t.sol";
 import {
     MockBondRouteForNft,
@@ -311,15 +312,19 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     }
 
     function test_bondroute_signing_info_hashes_position_params_readably( )
-    external  view
+    external
     {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
         ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
             abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) )
         );
 
         assertGt( bytes(typed_string).length, 0, "signing info should expose a readable EIP-712 type string." );
+        assertTrue( _contains( typed_string, "AddLiquidity(string Position,string Deposit,string Minimum,string Liquidity,string Pool,string Warning,address " ), "add signing info should use REFERENCE_2 role fields." );
         assertNotEq( struct_hash, bytes32(0), "signing info should hash the position params." );
         assertGt( token_amount_offset, 0, "signing info should include a TokenAmount offset." );
+        _assert_token_amount_offset( typed_string, token_amount_offset );
     }
 
     function test_bondroute_signing_info_returns_create_position_offset( )
@@ -330,38 +335,49 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         );
 
         assertGt( bytes(typed_string).length, 0, "create signing info should return a readable EIP-712 type string." );
+        assertTrue( _contains( typed_string, "CreatePosition(string Deposit,string Minimum,string Liquidity,string Range,string Price,string Pool,string Warning,address " ), "create signing info should use REFERENCE_2 role fields." );
         assertNotEq( struct_hash, bytes32(0), "create signing info should hash the signed params." );
-        assertEq( token_amount_offset, 347, "create signing info should return the TokenAmount type offset." );
+        assertEq( token_amount_offset, 265, "create signing info should return the TokenAmount type offset." );
+        _assert_token_amount_offset( typed_string, token_amount_offset );
     }
 
     function test_bondroute_signing_info_returns_add_liquidity_offset( )
-    external  view
+    external
     {
-        ( , , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        ( string memory typed_string, , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
             abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) )
         );
 
-        assertEq( token_amount_offset, 215, "add-liquidity signing info should return the TokenAmount type offset." );
+        assertEq( token_amount_offset, 249, "add-liquidity signing info should return the TokenAmount type offset." );
+        _assert_token_amount_offset( typed_string, token_amount_offset );
     }
 
     function test_bondroute_signing_info_returns_remove_liquidity_offset( )
-    external  view
+    external
     {
-        ( , , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        ( string memory typed_string, , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
             abi.encodeCall( _nft.remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) )
         );
 
-        assertEq( token_amount_offset, 219, "remove-liquidity signing info should return the TokenAmount type offset." );
+        assertEq( token_amount_offset, 238, "remove-liquidity signing info should return the TokenAmount type offset." );
+        _assert_token_amount_offset( typed_string, token_amount_offset );
     }
 
     function test_bondroute_signing_info_returns_collect_fees_offset( )
-    external  view
+    external
     {
-        ( , , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        ( string memory typed_string, , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
             abi.encodeCall( _nft.collect_fees, (_collect_params(_minted_token_id)) )
         );
 
-        assertEq( token_amount_offset, 193, "collect-fees signing info should return the TokenAmount type offset." );
+        assertEq( token_amount_offset, 214, "collect-fees signing info should return the TokenAmount type offset." );
+        _assert_token_amount_offset( typed_string, token_amount_offset );
     }
 
     function test_bondroute_signing_info_reverts_for_unsupported_call( )
@@ -901,8 +917,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         return CreatePositionParams({
             pool_info: PoolInfo({ base_fee_bps: 30, rebate_percent: 50, tick_spacing: 60 }),
-            tick_lower: -120,
-            tick_upper: 120,
+            sqrt_price_lower_x96: TickMath.getSqrtPriceAtTick( -120 ),
+            sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( 120 ),
             liquidity: 1 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
             minimum_deposited_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),
@@ -990,5 +1006,41 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         bytes32 position_mapping_slot =  bytes32(uint256(state_slot) + 6);
 
         position_slot  =  keccak256( abi.encodePacked( position_key, position_mapping_slot ) );
+    }
+
+    function _assert_token_amount_offset( string memory typed_string, uint256 token_amount_offset ) internal pure
+    {
+        bytes memory raw  =  bytes(typed_string);
+
+        assertEq( raw[ token_amount_offset - 1 ], bytes1(")"), "the byte before the offset should close the action struct definition." );
+        assertEq( _slice( raw, token_amount_offset, 12 ), "TokenAmount(", "offset should point at the TokenAmount definition." );
+    }
+
+    function _contains( string memory value, string memory needle ) internal pure returns ( bool )
+    {
+        bytes memory v  =  bytes(value);
+        bytes memory n  =  bytes(needle);
+        if(  n.length == 0  ||  v.length < n.length  )  return false;
+
+        for(  uint256 i = 0  ;  i <= v.length - n.length  ;  i = i + 1  )
+        {
+            bool matched  =  true;
+            for(  uint256 j = 0  ;  j < n.length  ;  j = j + 1  )
+            {
+                if(  v[ i + j ] != n[ j ]  )  {  matched  =  false;  break;  }
+            }
+            if(  matched  )  return true;
+        }
+        return false;
+    }
+
+    function _slice( bytes memory data, uint256 offset, uint256 length ) internal pure returns ( string memory )
+    {
+        bytes memory out  =  new bytes( length );
+        for(  uint256 i = 0  ;  i < length  ;  i = i + 1  )
+        {
+            out[ i ]  =  data[ offset + i ];
+        }
+        return string(out);
     }
 }
