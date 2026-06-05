@@ -14,6 +14,12 @@ library StringHelperLib {
 
     uint256 internal constant MAX_SYMBOL_LENGTH  =  12;
 
+    /// @notice Pass as `max_decimals_to_render` to render every fractional digit the token carries — a lossless,
+    ///         canonical rendering in which distinct raw amounts always map to distinct strings. Use this
+    ///         for signed display strings (canonical commitments); use a small cap only for cosmetic display.
+    /// @dev    Resolves to `token_decimals` via the `>= token_decimals` clamp in `format_token_amount`.
+    uint8 internal constant FULL_PRECISION  =  type(uint8).max;
+
     function attribute( string memory trait, string memory value ) internal pure returns ( string memory )
     {
         return string.concat( '{"trait_type":"', trait, '","value":"', value, '"}' );
@@ -23,18 +29,20 @@ library StringHelperLib {
     {
         uint256 whole       =  uint256(base_fee_bps) / 100;
         uint256 fractional  =  uint256(base_fee_bps) % 100;
-        string memory pad   =  fractional < 10  ?  "0"  :  "";
 
-        return string.concat( Strings.toString( whole ), ".", pad, Strings.toString( fractional ) );
+        if(  fractional == 0  )  return Strings.toString( whole );
+
+        return string.concat( Strings.toString( whole ), ".", trimmed_fraction( fractional, 2 ) );
     }
 
     function format_bps_as_percent_string( uint256 value_bps ) internal pure returns ( string memory )
     {
         uint256 whole       =  value_bps / 100;
         uint256 fractional  =  value_bps % 100;
-        string memory pad   =  fractional < 10  ?  "0"  :  "";
 
-        return string.concat( Strings.toString( whole ), ".", pad, Strings.toString( fractional ), "%" );
+        if(  fractional == 0  )  return string.concat( Strings.toString( whole ), "%" );
+
+        return string.concat( Strings.toString( whole ), ".", trimmed_fraction( fractional, 2 ), "%" );
     }
 
     function format_age( uint40 opened_at ) internal view returns ( string memory )
@@ -43,27 +51,35 @@ library StringHelperLib {
         return string.concat( Strings.toString( age_days ), "d" );
     }
 
-    function format_symbol_amount( uint256 amount, uint8 decimals, string memory symbol ) internal pure returns ( string memory )
+    function format_symbol_amount( uint256 token_amount, uint8 token_decimals, uint8 max_decimals_to_render, string memory symbol ) internal pure returns ( string memory )
     {
-        return string.concat( format_token_amount( amount, decimals ), " ", symbol );
+        return string.concat( format_token_amount( token_amount, token_decimals, max_decimals_to_render ), " ", symbol );
     }
 
-    function format_token_amount( uint256 amount, uint8 decimals ) internal pure returns ( string memory )
+    /// @param max_decimals_to_render  Maximum fractional digits to render; 0 renders the integer part only. A
+    ///                      small cap (e.g. 4) keeps cosmetic displays readable but is LOSSY — distinct amounts can
+    ///                      collapse to the same string, so it must never anchor a signed commitment. Pass
+    ///                      `FULL_PRECISION` for a lossless rendering.
+    function format_token_amount( uint256 token_amount, uint8 token_decimals, uint8 max_decimals_to_render ) internal pure returns ( string memory )
     {
-        if(  amount == 0  )  return "0";
+        if(  token_amount == 0  )  return "0";
 
-        if(  decimals == 0  )  return Strings.toString( amount );
-        if(  decimals > 36  )  decimals = 36;
+        if(  token_decimals == 0  )  return Strings.toString( token_amount );
 
-        uint256 scale       =  pow10( decimals );
-        uint256 whole       =  amount / scale;
-        uint256 remainder   =  amount % scale;
-        uint8 display       =  decimals < 4  ?  decimals  :  4;
-        uint256 divisor     =  pow10( decimals - display );
+        // No real token reports 78+ decimals (10^78 overflows uint256). Invariant, not a real-usage failure, so
+        // assert keeps it out of the ABI (see CODING_STYLE.md).
+        assert(  token_decimals <= 77  );
+
+        uint256 scale       =  pow10( token_decimals );
+        uint256 whole       =  token_amount / scale;
+        uint256 remainder   =  token_amount % scale;
+        uint8 display       =  max_decimals_to_render >= token_decimals  ?  token_decimals  :  max_decimals_to_render;
+        uint256 divisor     =  pow10( token_decimals - display );
         uint256 fractional  =  remainder / divisor;
 
         if(  fractional == 0  )
         {
+            if(  whole == 0  &&  display == 0  )  return "<1";
             if(  whole == 0  )  return string.concat( "<0.", fractional_floor( display ) );
             return group_thousands( Strings.toString( whole ) );
         }

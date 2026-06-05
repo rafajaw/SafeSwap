@@ -124,6 +124,34 @@
       `Hook`, and `Pool Id` for V4 `PoolKey` verifiability. Kept these **out of the SVG card**; descriptor tests assert
       exact JSON traits and absence from the rendered SVG.
 
+## Signing UX (WIP — see `SIGNING_UX_SAMPLES.md`)
+
+Goal: render the gasless BondRoute envelope (`ExecuteBondAs`) so the wallet shows readable, *canonical-commitment* display
+strings (`Action` / `Pool` / `Warning`) generated on-chain by `BondRoute_get_signing_info`, hashed as `keccak256(bytes(value))`
+inside the SafeSwap action struct. `SIGNING_UX_SAMPLES.md` has the per-action type strings + sample wallet receipts.
+
+- [x] Trim insignificant zeroes in the bps percent formatters. `StringHelperLib.format_bps_as_percent` and
+      `format_bps_as_percent_string` now drop a zero fraction entirely and trim trailing zeroes via `trimmed_fraction`:
+      `5 -> 0.05 / 0.05%`, `30 -> 0.3 / 0.3%`, `100 -> 1 / 1%`, `125 -> 1.25 / 1.25%`. Updated NFT descriptor expectations
+      to `0.3%`, cleaned `0.30%` comments/samples, added direct formatter tests, and **registered `IStringHelperLibTests` in
+      `test/Nft/TestManifest.sol`** (verified present: two new bps tests + the five date tests). Verified:
+      `forge test --match-contract "StringHelperLibTest|SafeSwapPositionDescriptorTest"` → 13 passed, 0 failed.
+
+- [x] **Make `format_token_amount` precision explicit (was the canonical-signing blocker).** The old 4-decimal cap was
+      fine for the SVG card but **unsafe for signed `Action` strings**: the signing notes require that if a raw param
+      changes, a signed display field must change. A 4-decimal cap silently collapses any sub-0.0001 delta, so two distinct
+      raw amounts could hash to the same `Action`. FIXED: `format_token_amount`/`format_symbol_amount` now take an explicit
+      `max_decimals_to_render` arg (no overload — single signature), with the named sentinel
+      `StringHelperLib.FULL_PRECISION` (`type(uint8).max`) for lossless/canonical rendering, and `0` for integer-only
+      (sub-unit nonzero amounts show `<1`). One impossible-in-real-usage guard is an `assert` (Panic, not an ABI error —
+      see CODING_STYLE.md): `token_decimals <= 77` (10^78 overflows uint256; replaces the old silent `>36` clamp that
+      misrendered). The SVG card routes every amount through NFT-side helpers
+      `_display_amount` / `_display_symbol_amount` (single chokepoint) using `DISPLAY_AMOUNTS_MAX_DECIMALS = 4`, so the lossy
+      cap can never leak into a signing context. Tests: 8 new in `test/Nft/StringHelperLib.t.sol` (cap vs FULL_PRECISION
+      side-by-side, the sub-cap injectivity/keccak distinctness proof, one-wei exact, zero-max-decimals revert via external
+      wrapper), registered in `TestManifest.sol`. Full suite green (319 passed). NOTE for the signing path: render `Action`
+      amounts with `FULL_PRECISION`, never the card helpers; the raw `uint256` typed envelope field stays the hard anchor.
+
 ## Review
 
 - [ ] Review the signing path for bonded calls: `BondRoute_get_signing_info` typed strings + struct hashes across the router

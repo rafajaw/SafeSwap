@@ -141,3 +141,30 @@ interface ISafeSwapPositionDescriptorTests {
     function test_contract_uri_returns_collection_metadata() external;
     function test_token_uri_reverts_for_nonexistent_token() external;
 }
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STRINGHELPERLIB.SOL - Shared NFT metadata string formatting helpers.
+// Implemented in: test/Nft/StringHelperLib.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface IStringHelperLibTests {
+    function test_epoch_zero() external;
+    function test_one_day() external;
+    function test_leap_year_date() external;
+    function test_time_of_day() external;
+    function test_zero_padding() external;
+    function test_format_bps_as_percent_trims_insignificant_zeroes() external;
+    function test_format_bps_as_percent_string_trims_insignificant_zeroes() external;
+
+    // ─── Token amount formatting (display cap vs canonical FULL_PRECISION) ────────
+    function test_format_token_amount_handles_zero_and_zero_decimal_tokens() external;
+    function test_format_token_amount_caps_fraction_at_max_decimals() external;
+    function test_format_token_amount_full_precision_is_lossless() external;
+    function test_format_token_amount_full_precision_distinguishes_sub_cap_amounts() external;
+    function test_format_token_amount_full_precision_renders_exact_sub_unit() external;
+    function test_format_token_amount_groups_thousands() external;
+    function test_format_token_amount_zero_max_decimals_renders_integer_only() external;
+    function test_format_token_amount_reverts_on_unsupported_decimals() external;
+    function test_format_symbol_amount_appends_symbol() external;
+}

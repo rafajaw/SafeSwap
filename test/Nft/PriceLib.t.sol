@@ -109,7 +109,7 @@ contract PriceLibTest is Test {
 
     function test_format_token_amount_groups_thousands( ) external pure
     {
-        assertEq( StringHelperLib.format_token_amount( 12450000 * 1e18, 18 ), "12,450,000" );
-        assertEq( StringHelperLib.format_token_amount( 8900000000 * 1e6, 6 ), "8,900,000,000" );
+        assertEq( StringHelperLib.format_token_amount( 12450000 * 1e18, 18, StringHelperLib.FULL_PRECISION ), "12,450,000" );
+        assertEq( StringHelperLib.format_token_amount( 8900000000 * 1e6, 6, StringHelperLib.FULL_PRECISION ), "8,900,000,000" );
     }
 }

@@ -53,6 +53,11 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     IPoolManager public immutable PoolManager;
 
+    /// @notice Fractional-digit cap for token amounts shown on the cosmetic position card. The card is
+    ///         display-only, so a 4-decimal cap keeps it readable. This rendering is intentionally LOSSY and
+    ///         must never back a signed commitment — signing paths render with `StringHelperLib.FULL_PRECISION`.
+    uint8 internal constant DISPLAY_AMOUNTS_MAX_DECIMALS  =  4;
+
     struct PositionIdentity {
         uint256 token_id;
         address nft_contract;
@@ -319,8 +324,8 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     function _render_hero( PositionView memory position ) internal pure returns ( string memory )
     {
-        string memory position0  =  StringHelperLib.format_token_amount( position.amounts.position0, position.tokens.decimals0 );
-        string memory position1  =  StringHelperLib.format_token_amount( position.amounts.position1, position.tokens.decimals1 );
+        string memory position0  =  _display_amount( position.amounts.position0, position.tokens.decimals0 );
+        string memory position1  =  _display_amount( position.amounts.position1, position.tokens.decimals1 );
 
         return string.concat(
             "<text x='175' y='88' text-anchor='middle' class='t w4 lbl' font-size='11'>CURRENT POSITION</text>",
@@ -400,8 +405,8 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     function _render_earned_fees( PositionView memory position ) internal pure returns ( string memory )
     {
-        string memory earned0  =  StringHelperLib.format_token_amount( position.amounts.earned0, position.tokens.decimals0 );
-        string memory earned1  =  StringHelperLib.format_token_amount( position.amounts.earned1, position.tokens.decimals1 );
+        string memory earned0  =  _display_amount( position.amounts.earned0, position.tokens.decimals0 );
+        string memory earned1  =  _display_amount( position.amounts.earned1, position.tokens.decimals1 );
 
         return string.concat(
             "<line x1='175' y1='312' x2='175' y2='394' class='rule' stroke-opacity='.08'/>",
@@ -416,8 +421,8 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     function _render_claimable_fees( PositionView memory position, string memory marker_subclass ) internal pure returns ( string memory )
     {
-        string memory claimable0  =  StringHelperLib.format_token_amount( position.amounts.claimable0, position.tokens.decimals0 );
-        string memory claimable1  =  StringHelperLib.format_token_amount( position.amounts.claimable1, position.tokens.decimals1 );
+        string memory claimable0  =  _display_amount( position.amounts.claimable0, position.tokens.decimals0 );
+        string memory claimable1  =  _display_amount( position.amounts.claimable1, position.tokens.decimals1 );
 
         return string.concat(
             "<path d='M213 319 v7 m-3 -3 l3 3 l3 -3' stroke='#37d6a3' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/>",
@@ -485,8 +490,8 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     function _render_position_attributes( PositionView memory position ) internal pure returns ( string memory )
     {
-        string memory position0       =  StringHelperLib.format_symbol_amount( position.amounts.position0, position.tokens.decimals0, position.tokens.symbol0 );
-        string memory position1       =  StringHelperLib.format_symbol_amount( position.amounts.position1, position.tokens.decimals1, position.tokens.symbol1 );
+        string memory position0       =  _display_symbol_amount( position.amounts.position0, position.tokens.decimals0, position.tokens.symbol0 );
+        string memory position1       =  _display_symbol_amount( position.amounts.position1, position.tokens.decimals1, position.tokens.symbol1 );
 
         return string.concat(
             StringHelperLib.attribute( "Base Fee", string.concat( position.config.base_fee_percent, "%" ) ), ",",
@@ -501,10 +506,10 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     function _render_fee_attributes( PositionView memory position ) internal pure returns ( string memory )
     {
-        string memory claimable0      =  StringHelperLib.format_symbol_amount( position.amounts.claimable0, position.tokens.decimals0, position.tokens.symbol0 );
-        string memory claimable1      =  StringHelperLib.format_symbol_amount( position.amounts.claimable1, position.tokens.decimals1, position.tokens.symbol1 );
-        string memory earned0         =  StringHelperLib.format_symbol_amount( position.amounts.earned0, position.tokens.decimals0, position.tokens.symbol0 );
-        string memory earned1         =  StringHelperLib.format_symbol_amount( position.amounts.earned1, position.tokens.decimals1, position.tokens.symbol1 );
+        string memory claimable0      =  _display_symbol_amount( position.amounts.claimable0, position.tokens.decimals0, position.tokens.symbol0 );
+        string memory claimable1      =  _display_symbol_amount( position.amounts.claimable1, position.tokens.decimals1, position.tokens.symbol1 );
+        string memory earned0         =  _display_symbol_amount( position.amounts.earned0, position.tokens.decimals0, position.tokens.symbol0 );
+        string memory earned1         =  _display_symbol_amount( position.amounts.earned1, position.tokens.decimals1, position.tokens.symbol1 );
 
         return string.concat(
             StringHelperLib.attribute( "Claimable Fees", string.concat( claimable0, " / ", claimable1 ) ), ",",
@@ -524,6 +529,18 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
     function _short_token_id_hex( uint256 token_id ) internal pure returns ( string memory )
     {
         return Strings.toHexString( token_id & ( ( uint256(1) << 64 ) - 1 ), 8 );
+    }
+
+    // The card always renders amounts at the cosmetic cap; these wrappers are the single chokepoint so a
+    // lossy display cap can never leak into a context that needs canonical precision.
+    function _display_amount( uint256 amount, uint8 decimals ) internal pure returns ( string memory )
+    {
+        return StringHelperLib.format_token_amount( amount, decimals, DISPLAY_AMOUNTS_MAX_DECIMALS );
+    }
+
+    function _display_symbol_amount( uint256 amount, uint8 decimals, string memory symbol ) internal pure returns ( string memory )
+    {
+        return StringHelperLib.format_symbol_amount( amount, decimals, DISPLAY_AMOUNTS_MAX_DECIMALS, symbol );
     }
 
 

@@ -14,7 +14,7 @@ pragma solidity ^0.8.30;
  *                │    └───────── 3 base-fee digits     → base fee bps = 100·d2 + 10·d1 + d0   (0..999 → 0.00%..9.99%)
  *                └────────────── fee marker (0xF), also marks the address as a SafeSwap config hook
  *
- *         Example: 0xF030C5… → base fee 0.30%, capture 50%. The markers 0xF and 0xC are both greater than 9, so they can
+ *         Example: 0xF030C5… → base fee 0.3%, capture 50%. The markers 0xF and 0xC are both greater than 9, so they can
  *         never be confused with a 0..9 data digit. Base fee is open (any value the digits express); capture is 10%-quantized.
  */
 library HookAddress {

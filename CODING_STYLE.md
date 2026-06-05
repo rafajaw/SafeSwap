@@ -48,6 +48,8 @@ Wherever there is a point in code that could be susceptible to a security concer
 
 Custom errors: Always include relevant input arguments or computed values. Gas is only spent when the revert occurs, and the extra context helps frontends, developers, and auditors quickly understand and debug issues.   Good:  `error InsufficientBalance( address token, uint256 available, uint256 required )`   Bad:  `error InsufficientBalance( )`
 
+Reserve custom errors for conditions that can actually occur in real usage (input validation, business rules) — they live in the ABI so frontends and the SDK can decode them. For invariants that can only break through a programming mistake and never under real usage — a value that is always passed as one of our own constants, a token reporting an impossible decimals count, etc. — use `assert()` instead. It still reverts safely (Panic) so no corrupt value escapes, but keeps the ABI lean instead of polluting it with an error that will never realistically fire.   Good:  `assert(  token_decimals <= 77  );` (10^78 would overflow uint256 — no real token reaches it)   Bad: a dedicated custom ABI error for that impossible case.
+
 Do not rely on implicit zero-initialization of memory, structs, or named return variables. For gas efficiency, this codebase treats uninitialized memory as undefined and requires explicit assignment.
 
 Code must be indented perfectly. Opening braces follow this convention:
@@ -88,6 +90,7 @@ Avoid the negate operator (!) in boolean comparisons. Make explicit comparisons 
 
 Avoid the post-increment or pre-increment operator bc non-tech users may not clearly understand that.  Bad:  somevar++   Bad:  ++somevar   Good:  somevar  =  somevar + 1;
 You may use the += or -= or any of those operators if the line would get too long otherwise.
+Inside `for` loops the pre or post increment operators are fine bc for loops are already exquisite enough.
 
 if possible and the line doesnt get too long in contrast with the others keep a singular intent expression in one line like this: if(  stored_token_amount < amount  ) revert Error( "message" );
 

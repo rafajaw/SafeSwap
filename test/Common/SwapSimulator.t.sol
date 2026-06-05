@@ -61,7 +61,7 @@ contract SwapSimulatorTest is ISwapSimulatorTests, Test {
     using StateLibrary for IPoolManager;
     using BalanceDeltaLibrary for BalanceDelta;
 
-    uint24  internal constant _STATIC_FEE      =  3000;            // 0.30% static LP fee — the simulator is told this fee.
+    uint24  internal constant _STATIC_FEE      =  3000;            // 0.3% static LP fee — the simulator is told this fee.
     int24   internal constant _TICK_SPACING    =  60;
     uint160 internal constant _SQRT_PRICE_1_1  =  79228162514264337593543950336;
     uint256 internal constant _MINT_AMOUNT     =  1_000_000_000 ether;

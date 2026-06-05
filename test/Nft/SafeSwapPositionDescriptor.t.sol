@@ -70,7 +70,7 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         assertTrue( _contains( json, string.concat( '"description":"', SAFESWAP_POSITIONS_DESCRIPTION, '"' ) ), "description should match the constant." );
         assertTrue( _contains( json, string.concat( '"image":"', _SVG_PREFIX ) ), "image should be an on-chain svg data uri." );
 
-        assertTrue( _contains( json, '"trait_type":"Base Fee","value":"0.30%"' ), "base fee attribute should render bps as a percent." );
+        assertTrue( _contains( json, '"trait_type":"Base Fee","value":"0.3%"' ), "base fee attribute should render bps as a canonical percent." );
         assertTrue( _contains( json, '"trait_type":"LP Rebate","value":"50%"' ), "rebate attribute should render the capture percent." );
         assertTrue( _contains( json, '"trait_type":"Tick Lower","value":"-120"' ), "tick lower attribute should render the signed tick." );
         assertTrue( _contains( json, '"trait_type":"Tick Upper","value":"120"' ), "tick upper attribute should render the signed tick." );
@@ -107,7 +107,7 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         assertTrue( _contains( svg, "TKNB / TKNA" )  ||  _contains( svg, "TKNA / TKNB" ), "svg card should render the market pair row." );
         assertTrue( _contains( svg, "EARNED" ), "svg card should render lifetime earned fees." );
         assertTrue( _contains( svg, "CLAIMABLE" ), "svg card should prioritize currently claimable fees." );
-        assertTrue( _contains( svg, "FEE</tspan><tspan class='m w9 val' dx='5'>0.30%" ), "svg card should render the base fee stats band." );
+        assertTrue( _contains( svg, "FEE</tspan><tspan class='m w9 val' dx='5'>0.3%" ), "svg card should render the base fee stats band." );
         assertTrue( _contains( svg, "REBATE</tspan><tspan class='m w9 val' dx='5'>50%" ), "svg card should render the rebate stats band." );
         assertTrue( _contains( svg, "YIELD" ), "svg card should render the yield closing line." );
         assertTrue( _contains( svg, "as of " ), "svg card should include a live-data snapshot timestamp." );

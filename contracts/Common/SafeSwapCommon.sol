@@ -75,7 +75,7 @@ library SafeSwapCommon {
 
     /**
      * @notice Convert a base LP fee in basis points into Uniswap V4 fee units (pips).
-     * @dev 100 v4 pips = 1 bps. E.g. 30 bps (0.30%) → 3000 pips.
+     * @dev 100 v4 pips = 1 bps. E.g. 30 bps (0.3%) → 3000 pips.
      */
     function compute_base_fee_pips( uint16 base_fee_bps ) internal pure returns ( uint24 )
     {

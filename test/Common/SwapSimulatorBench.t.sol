@@ -55,7 +55,7 @@ contract SwapSimulatorBenchTest is Test {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
-    uint24  internal constant _STATIC_FEE      =  3000;            // 0.30% LP fee — the simulator is told this fee.
+    uint24  internal constant _STATIC_FEE      =  3000;            // 0.3% LP fee — the simulator is told this fee.
     int24   internal constant _TICK_SPACING    =  10;
     int24   internal constant _TOP_TICK        =  2000;           // 200 initialized boundaries each side of tick 0.
     uint160 internal constant _SQRT_PRICE_1_1  =  79228162514264337593543950336;
