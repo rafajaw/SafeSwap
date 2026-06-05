@@ -6,7 +6,7 @@ import { ChainConfigTestHelper } from "@test/helpers/ChainConfigTestHelper.t.sol
 import { SafeSwapTestHelper } from "@test/helpers/SafeSwapTestHelper.t.sol";
 import "@SafeSwapCommon/Definitions.sol";
 import { HookAddress } from "@SafeSwapCommon/HookAddress.sol";
-import { SafeSwapCommon } from "@SafeSwapCommon/SafeSwapCommon.sol";
+import { SafeSwapCommon, RepricingFeeExceedsV4Limit } from "@SafeSwapCommon/SafeSwapCommon.sol";
 import {
     SafeSwapHookImpl,
     DirectImplementationCallForbidden,
@@ -458,18 +458,17 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
         assertEq( selector, IHooks.beforeSwap.selector, "beforeSwap should identify the callback selector." );
     }
 
-    function test_before_swap_caps_total_fee_below_uniswap_max_swap_fee( )
+    function test_before_swap_reverts_when_repricing_fee_exceeds_v4_limit( )
     external
     {
         address expensive_hook  =  _hook_address( 999, 90, HookAddress.REQUIRED_PERMISSIONS );
         _etch_hook_clone( expensive_hook, address(_implementation) );
+        PoolKey memory key  =  _pool_key( expensive_hook );
+        _seed_pool_state( key, _DEFAULT_TICK, _SQRT_PRICE_1_1, 1_000 ether );
 
-        uint24 fee  =  _before_swap_fee( expensive_hook, -100_000 ether, _DEFAULT_TICK );
-        uint24 fee_without_flag  =  fee & LPFeeLibrary.REMOVE_OVERRIDE_MASK;
-        uint24 maximum_fee_from_repricing_cap  =  SafeSwapCommon.compute_base_fee_pips( 999 ) + MAX_REPRICING_FEE_PIPS;
-
-        assertEq( fee_without_flag, maximum_fee_from_repricing_cap, "repricing component cap should bind before the total-fee hard ceiling." );
-        assertLt( fee_without_flag, LPFeeLibrary.MAX_LP_FEE, "total fee should stay below Uniswap's max swap fee." );
+        vm.expectRevert( abi.encodeWithSelector( RepricingFeeExceedsV4Limit.selector, 7_301_610, 999_999 ) );
+        vm.prank( address(_pool_manager) );
+        SafeSwapHookImpl(expensive_hook).beforeSwap( address(_router), key, _swap_params( -10_000 ether ), "" );
     }
 
     function test_before_swap_uses_config_from_hook_address_not_hook_data( )

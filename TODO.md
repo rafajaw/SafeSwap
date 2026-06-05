@@ -4,9 +4,8 @@
 - [x] Rewrite the design docs to the surplus framing (capture% = share of repricing surplus, not a rate on displacement):
       `LVR_DETERRENCE.md`, `REPRICING_REBATE_ADDRESS_CONFIG.md`, `DYNAMIC_FEE_REBATE_PLAN.md` (binding), `CLAUDE.md`.
 - [x] Fix the displacement-rate fee in code → surplus-based: rewrote `SafeSwapCommon.compute_repricing_fee_pips`
-      (`+ swap_legs`, FullMath surplus valuation), swapped `MAX_REPRICING_REBATE_BPS` → `MAX_REPRICING_FEE_PIPS`, updated
-      `SafeSwapHookImpl.beforeSwap` + both `User.sol` quoters, and rewrote the unit tests (capture% of surplus + symmetry +
-      caps). 148 Common/Hook/Nft tests green.
+      (`+ swap_legs`, FullMath surplus valuation), updated `SafeSwapHookImpl.beforeSwap` + both `User.sol` quoters, and
+      rewrote the unit tests (capture% of surplus + symmetry + V4-limit guard).
 - [x] Split exact-output max-input failures into `MaximumInputExceeded(required_input, maximum_required)`, keeping
       `SlippageExceeded(amount_received, minimum_required)` for minimum-output/minimum-received paths.
 - [x] C0 fast path: `SafeSwapHookImpl.beforeSwap` skips the `SwapSimulator` walk entirely when `capture == 0` (guard
@@ -82,8 +81,9 @@
 - [ ] Replace the `CONFIG_SIGNER` placeholder (`0xDeaDbeef…`, flagged in `AUDIT_REPORT.md` / `Definitions.sol`) and publish
       per-chain ChainConfig: V4 PoolManager address + signer for each target chain. (Standing deploy blocker.)
 - [x] Remove `legacy_tests/` — deleted after the coverage cross-check.
-- [ ] Decide quoter precision (1-pass exact-fee vs 2-pass exact-output) and confirm the final `MAX_REPRICING_FEE_PIPS` /
-      `MAX_TOTAL_FEE_PIPS` values.
+- [x] Decide quoter precision + fee ceilings: keep two-pass quote simulation for exact-input and exact-output so quotes match
+      execution, remove the low SafeSwap-specific repricing/total fee caps, and explicitly revert when configured surplus
+      capture would require a V4 fee at or above 100%.
 - [x] Split deployment optimizer profiles by deployable contract family. `foundry.toml` now has separate artifact dirs and
       optimizer runs for `deploy_hook`, `deploy_router`, `deploy_nft`, and `deploy_descriptor`, so the NFT descriptor can keep
       the full investor-card render at lower runs without forcing router/hook/NFT core bytecode down to the same setting.

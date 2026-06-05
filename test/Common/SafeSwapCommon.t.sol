@@ -357,18 +357,19 @@ contract SafeSwapCommonTest is ISafeSwapCommonTests, SafeSwapTestHelper {
         assertEq( fee_zero_for_one, 53000, "Both directions should charge 50% of the surplus." );
     }
 
-    function test_compute_repricing_fee_pips_caps_repricing_component( )
+    function test_compute_repricing_fee_pips_captures_full_surplus_below_v4_limit( )
     external  view
     {
-        // in 100, out 300 at price 1 → surplus 200 (200% of input); 90% capture would be 1_800_000 pips → capped at 100_000.
-        assertEq( harness.compute_repricing_fee_pips( 100, 300, _SQRT_PRICE_1_1, true, 90, 3000 ), 103000, "Repricing component should cap at MAX_REPRICING_FEE_PIPS." );
+        // in 100, out 200 at price 1 → surplus 100 (100% of input). Capture 90% → 900_000 pips; + base 3_000.
+        assertEq( harness.compute_repricing_fee_pips( 100, 200, _SQRT_PRICE_1_1, true, 90, 3000 ), 903000, "Repricing should preserve the configured capture below the V4 limit." );
     }
 
-    function test_compute_repricing_fee_pips_caps_total_swap_fee( )
-    external  view
+    function test_compute_repricing_fee_pips_reverts_at_v4_fee_limit( )
+    external
     {
-        // Base 450_000 + capped repricing 100_000 = 550_000 → clamped to MAX_TOTAL_FEE_PIPS.
-        assertEq( harness.compute_repricing_fee_pips( 100, 300, _SQRT_PRICE_1_1, true, 90, 450000 ), MAX_TOTAL_FEE_PIPS, "Total swap fee should cap at MAX_TOTAL_FEE_PIPS." );
+        // in 100, out 300 at price 1 → surplus 200 (200% of input). Capture 90% → 1_800_000 pips; + base 3_000.
+        vm.expectRevert( abi.encodeWithSelector( RepricingFeeExceedsV4Limit.selector, 1_803_000, 999_999 ) );
+        harness.compute_repricing_fee_pips( 100, 300, _SQRT_PRICE_1_1, true, 90, 3000 );
     }
 
     function test_compute_repricing_fee_pips_allows_zero_capture_percent( )

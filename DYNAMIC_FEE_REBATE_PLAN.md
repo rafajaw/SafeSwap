@@ -55,8 +55,9 @@ beforeSwap(sender, key, params, hookData):
 
     # Express the captured surplus as the single flat V4 fee rate the swap needs:
     #   repricing_pips = capture% · (surplus / amount_in) · 1e6  =  surplus · capture_percent · 10_000 / amount_in
-    repricing_pips = min( surplus * capture_percent * 10_000 / amount_in, MAX_REPRICING_FEE_PIPS )
-    swap_fee_pips  = min( base_fee_pips + repricing_pips, MAX_TOTAL_FEE_PIPS )
+    repricing_pips = surplus * capture_percent * 10_000 / amount_in
+    swap_fee_pips  = base_fee_pips + repricing_pips
+    require( swap_fee_pips < 1_000_000 )
 
     return ( selector, ZERO_DELTA, OVERRIDE_FEE_FLAG | swap_fee_pips )
 ```
@@ -66,7 +67,7 @@ beforeSwap(sender, key, params, hookData):
 - Simulating with the base fee is a deliberate second-order approximation (the fee-vs-movement feedback is small); the swap
   then reads the same warmed slots. Quote uses the identical path.
 - Zero movement, zero liquidity, or non-positive surplus → `repricing_pips = 0` → just the base fee.
-- `MAX_TOTAL_FEE_PIPS < SwapMath.MAX_SWAP_FEE` (1e6) keeps exact-output swaps feasible.
+- `swap_fee_pips >= SwapMath.MAX_SWAP_FEE` (1e6) reverts instead of silently under-capturing LPs.
 
 ## Work breakdown (deltas from the current displacement-rate code)
 
@@ -79,13 +80,13 @@ beforeSwap(sender, key, params, hookData):
 ### `contracts/Common/SafeSwapCommon.sol`
 - Replace `compute_repricing_fee_pips(tick_before, tick_after, rebate_percent, base_fee_pips)` with the **surplus** version:
   `compute_repricing_fee_pips(amount_in, amount_out, sqrt_price_after_x96, zero_for_one, capture_percent, base_fee_pips) →
-  uint24 swap_fee_pips`. Use `FullMath.mulDiv` for `value_at(...)` and the pip conversion; clamp surplus at 0; apply both caps.
+  uint24 swap_fee_pips`. Use `FullMath.mulDiv` for `value_at(...)` and the pip conversion; clamp surplus at 0; revert when
+  the configured capture would require a 100%+ V4 fee.
 - `base_fee_units` stays.
 
 ### `contracts/Common/Definitions.sol`
-- Replace `MAX_REPRICING_REBATE_BPS` (a cap on the displacement-derived fee *rate*) with **`MAX_REPRICING_FEE_PIPS`** (cap on
-  the repricing component of the fee, in V4 pips). Keep `MAX_TOTAL_FEE_PIPS`, `PIPS_PER_BPS`, `PERCENT_DENOMINATOR`,
-  `BPS_DENOMINATOR`. Rewrite the "LP REPRICING REBATE" comment block to the surplus framing.
+- Remove the old displacement-derived fee-rate caps. Keep `PIPS_PER_BPS`, `PERCENT_DENOMINATOR`, and `BPS_DENOMINATOR`.
+  Rewrite the "LP REPRICING REBATE" comment block to the surplus framing.
 
 ### `contracts/Hook/SafeSwapHookImpl.sol`
 - `beforeSwap`: call `simulate`, derive legs, call the new `compute_repricing_fee_pips`, return the override. Update the
@@ -125,8 +126,8 @@ beforeSwap(sender, key, params, hookData):
 
 ## Open items
 
-- **`MAX_REPRICING_FEE_PIPS`** value (cap on the repricing fee component; must keep `total ≤ MAX_TOTAL_FEE_PIPS < 1e6`).
-- **Quoter precision:** 2-pass (exact output) vs 1-pass (exact fee, ~2nd-order output error).
+- **Resolved:** no low SafeSwap-specific repricing cap; revert at the V4 100% fee boundary.
+- **Resolved:** use two-pass quote simulation for exact input and exact output.
 - **`SafeSwapHookProxy`**: the EIP-1167 stub contract + deploy script + published codehash are not built yet (tests synthesize
   the clone via `vm.etch`).
 - Keep the donate branch as a fallback only until path-fairness + calibration are confirmed end-to-end.

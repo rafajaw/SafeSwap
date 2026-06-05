@@ -58,9 +58,9 @@ event HookSpawned( address indexed new_hook, uint16 indexed base_fee_bps, uint8 
  *         clone address on every call — no per-clone storage, no constructor.
  *
  * @dev The hook prices the swap (design A): `beforeSwap` simulates the swap with `SwapSimulator`, computes
- *      `baseFee + repricingFee` from the estimated tick movement, and returns it as a Uniswap V4 dynamic-fee override so the
- *      fee accrues natively (path-fairly) to the LPs the swap crosses. The hook never holds funds and only gates every pool
- *      action to the canonical router.
+ *      `baseFee + repricingFee` from the estimated repricing surplus, and returns it as a Uniswap V4 dynamic-fee override so
+ *      the fee accrues natively (path-fairly) to the LPs the swap crosses. The hook never holds funds and only gates every
+ *      pool action to the canonical router.
  */
 contract SafeSwapHookImpl is ISafeSwapHook {
 

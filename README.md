@@ -2,7 +2,10 @@
 
 **Trustless MEV-protected swaps and liquidity on Uniswap V4, with oracle-free LP repricing rebates.**
 
-SafeSwap enforces every swap and liquidity operation through [BondRoute](https://bondroute.xyz)'s commit-reveal bond mechanism, eliminating MEV extraction at the protocol level. On top of that, when a swap moves the pool price, SafeSwap charges an extra fee proportional to the real tick movement and **rebates it to LPs** — turning repricing from arbitrageur extraction into LP revenue, without an oracle or trusted sequencer. See `LVR_DETERRENCE.md` and `REPRICING_REBATE_ADDRESS_CONFIG.md`.
+SafeSwap enforces every swap and liquidity operation through [BondRoute](https://bondroute.xyz)'s commit-reveal bond
+mechanism, eliminating MEV extraction at the protocol level. On top of that, when a swap moves the pool price, SafeSwap
+charges a configured share of the estimated repricing surplus to LPs — turning repricing from arbitrageur extraction into
+LP revenue, without an oracle or trusted sequencer. See `LVR_DETERRENCE.md` and `REPRICING_REBATE_ADDRESS_CONFIG.md`.
 
 ## How it works
 
@@ -48,13 +51,18 @@ SafeSwapNft (standalone, shared)
 
 Libraries (external, delegatecall-linked `execute`): `ExactInputSwapLib`, `ExactOutputSwapLib`, `ModifyLiquidityLib`, `DonateLib`, `SafeSwapCommon`
 
-### Pool identity & rebate profiles
+### Pool identity & capture profiles
 
-A SafeSwap pool is a static-fee Uniswap V4 pool whose hook is a `SafeSwapHook` config instance. The rebate profile is encoded in the hook's CREATE2 address (magic byte `0x55`, 4-bit profile, V4 permission bits), so each profile yields a distinct `PoolId` for otherwise-identical pool parameters. Users select a pool by `(base_fee_bps, rebate_profile, tick_spacing)`; the router resolves the hook from its registry.
+A SafeSwap pool is a dynamic-fee Uniswap V4 pool whose hook clone address encodes `(base_fee_bps, capture_percent)`, so each
+profile yields a distinct `PoolId` for otherwise-identical pool parameters. Users select a pool by `(base_fee_bps,
+capture_percent, tick_spacing)`; the router resolves the hook from its registry.
 
 ### LP repricing rebate
 
-`total fee = base LP fee + protocol fee + repricing rebate`, where `repricing rebate = pool price movement × rebate_profile × 1000 / 10_000` (capped). The rebate is measured from the swap's **real** tick movement and donated to in-range LPs (charged on the output for exact-input swaps, on the input for exact-output). Rebate profiles range `0..10` → `0%..100%`.
+`total fee = base LP fee + protocol fee + repricing fee`, where `repricing fee = capture_percent × estimated repricing
+surplus`. The surplus is valued at the simulated post-swap price and paid through V4's dynamic LP fee path, so LPs earn from
+the repricing they make possible while swappers keep explicit minimum-output / maximum-input protection. Capture profiles
+range `0%..90%`.
 
 ## Operations
 

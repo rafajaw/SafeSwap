@@ -10,6 +10,7 @@ import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { Currency } from "@UniswapV4Core/types/Currency.sol";
 import { FullMath } from "@UniswapV4Core/libraries/FullMath.sol";
 import { FixedPoint96 } from "@UniswapV4Core/libraries/FixedPoint96.sol";
+import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -17,6 +18,7 @@ import { FixedPoint96 } from "@UniswapV4Core/libraries/FixedPoint96.sol";
 error SlippageExceeded( uint256 amount_received, uint256 minimum_required );
 error MaximumInputExceeded( uint256 required_input, uint256 maximum_required );
 error OneSidedDepositMismatch( address expected_token, uint256 minimum_required );
+error RepricingFeeExceedsV4Limit( uint256 total_fee_pips, uint256 maximum_fee_pips );
 
 
 /**
@@ -205,12 +207,12 @@ library SafeSwapCommon {
      * @param zero_for_one Swap direction (token0 → token1 when true).
      * @param capture_percent LP capture share in percent (0..90): the share of SURPLUS paid to LPs.
      * @param base_fee_pips Base LP fee in v4 pips.
-     * @return swap_fee_pips Base fee plus the capped repricing fee, in v4 pips, to be returned as the dynamic-fee override.
+     * @return swap_fee_pips Base fee plus the repricing fee, in v4 pips, to be returned as the dynamic-fee override.
      *
      * @dev `surplus = (output valued at the post-swap price) − input`, in input-token units (clamped at 0). The repricing
-     *      fee is `capture% × surplus`, expressed as a flat rate over the input: `capture% × surplus / amount_in × 1e6`,
-     *      capped at `MAX_REPRICING_FEE_PIPS`. Direction-neutral. Total capped at `MAX_TOTAL_FEE_PIPS` so exact-output stays
-     *      feasible. This is NOT `capture% × displacement`: that over-captures by ~2× (see Definitions.sol / LVR_DETERRENCE.md).
+     *      fee is `capture% × surplus`, expressed as a flat rate over the input: `capture% × surplus / amount_in × 1e6`.
+     *      Direction-neutral. If enforcing the configured capture would require a 100%+ V4 fee, the swap reverts instead of
+     *      silently under-capturing LPs. This is NOT `capture% × displacement`: that over-captures by ~2×.
      */
     function compute_repricing_fee_pips(
         uint256 amount_in,
@@ -222,10 +224,12 @@ library SafeSwapCommon {
     ) internal pure returns ( uint24 swap_fee_pips )
     {
         uint256 repricing_pips  =  _repricing_fee_pips( amount_in, amount_out, sqrt_price_after_x96, zero_for_one, capture_percent );
-        if(  repricing_pips > MAX_REPRICING_FEE_PIPS  )  repricing_pips  =  MAX_REPRICING_FEE_PIPS;
-
         uint256 total_pips  =  uint256(base_fee_pips) + repricing_pips;
-        if(  total_pips > MAX_TOTAL_FEE_PIPS  )  total_pips  =  MAX_TOTAL_FEE_PIPS;
+
+        if(  total_pips >= LPFeeLibrary.MAX_LP_FEE  )
+        {
+            revert RepricingFeeExceedsV4Limit({ total_fee_pips: total_pips, maximum_fee_pips: LPFeeLibrary.MAX_LP_FEE - 1 });
+        }
 
         swap_fee_pips  =  uint24(total_pips);
     }

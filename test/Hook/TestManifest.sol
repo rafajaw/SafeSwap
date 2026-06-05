@@ -67,7 +67,7 @@ interface ISafeSwapHookImplTests {
     function test_before_swap_returns_override_fee_with_repricing_component_when_swap_moves_price() external;
     function test_before_swap_returns_zero_before_swap_delta() external;
     function test_before_swap_returns_before_swap_selector() external;
-    function test_before_swap_caps_total_fee_below_uniswap_max_swap_fee() external;
+    function test_before_swap_reverts_when_repricing_fee_exceeds_v4_limit() external;
     function test_before_swap_uses_config_from_hook_address_not_hook_data() external;
     function test_before_swap_uses_pre_swap_pool_state() external;
 

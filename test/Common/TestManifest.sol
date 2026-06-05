@@ -61,8 +61,8 @@ interface ISafeSwapCommonTests {
     function test_compute_repricing_fee_pips_returns_base_fee_when_no_surplus() external;
     function test_compute_repricing_fee_pips_charges_capture_percent_of_surplus() external;
     function test_compute_repricing_fee_pips_is_symmetric_across_swap_direction() external;
-    function test_compute_repricing_fee_pips_caps_repricing_component() external;
-    function test_compute_repricing_fee_pips_caps_total_swap_fee() external;
+    function test_compute_repricing_fee_pips_captures_full_surplus_below_v4_limit() external;
+    function test_compute_repricing_fee_pips_reverts_at_v4_fee_limit() external;
     function test_compute_repricing_fee_pips_allows_zero_capture_percent() external;
     function test_compute_repricing_fee_pips_allows_ninety_percent_capture() external;
 
