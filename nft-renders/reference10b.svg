@@ -10,7 +10,7 @@
       .t{font-family:'Inter','Helvetica Neue',Arial,sans-serif}
       .m{font-family:'Roboto Mono',ui-monospace,monospace}
       .w{fill:#fff}.w9{fill:#fff;fill-opacity:.9}.w6{fill:#fff;fill-opacity:.6}.w5{fill:#fff;fill-opacity:.5}.w4{fill:#fff;fill-opacity:.4}
-      .g{fill:#37d6a3}.gs{fill:#37d6a3;fill-opacity:.6}
+      .g{fill:#37d6a3}.n{fill:#b7c0cf}.gs{fill:#37d6a3;fill-opacity:.6}
       .val{font-weight:700}.lbl{font-weight:600;letter-spacing:.4}
       .rule{stroke:#fff;stroke-opacity:.1}
     </style>
@@ -68,14 +68,14 @@
 
   <!-- market: centered status pill (left) + inline price-range bar (right) -->
   <text x='326' y='404' text-anchor='end' class='t w4 lbl' font-size='9'>TKNB / TKNA</text>
-  <text x='244' y='417' text-anchor='middle' class='m g' font-size='12'>3,002</text>
-  <rect x='40' y='402' width='104' height='30' rx='15' fill='#000' fill-opacity='.14'/>
-  <circle cx='62' cy='417' r='3.5' fill='#37d6a3'/>
-  <text x='98' y='421' text-anchor='middle' class='t g' font-size='12' font-weight='600'>In Range</text>
+  <text x='244' y='417' text-anchor='middle' class='m n' font-size='12'>3,002</text>
+  <rect x='33' y='402' width='118' height='30' rx='15' fill='#000' fill-opacity='.14'/>
+  <circle cx='51' cy='417' r='3.5' fill='#b7c0cf'/>
+  <text x='99' y='421' text-anchor='middle' class='t n' font-size='12' font-weight='600'>Out of Range</text>
   <text x='193' y='431' text-anchor='end' class='m w5' font-size='10'>2,850</text>
   <rect x='201' y='426.5' width='85' height='3' rx='1.5' fill='#fff' fill-opacity='.08'/>
   <rect x='201' y='426.5' width='43' height='3' rx='1.5' fill='#fff' fill-opacity='.16'/>
-  <circle cx='244' cy='428' r='2.5' fill='#37d6a3' fill-opacity='.9'/>
+  <circle cx='244' cy='428' r='2.5' fill='#b7c0cf' fill-opacity='.9'/>
   <text x='294' y='431' text-anchor='start' class='m w5' font-size='10'>3,150</text>
 
   <!-- snapshot stamp: the 'as of' time of all live values (block.timestamp at render); flags marketplace-cached staleness -->

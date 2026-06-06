@@ -144,7 +144,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         assertEq( _nft.ownerOf( token_id ), _USER, "first minted LP token should be owned by the bonded user." );
         assertTrue( token_id != 1, "token id should be derived (hashed), not the sequential counter." );
         assertTrue( token_id != 0, "derived token id is never zero." );
-        assertLt( token_id, 1 << 80, "derived token id keeps only the low 10 bytes." );
+        assertLt( token_id, 1 << 64, "derived token id keeps only the low 8 bytes." );
     }
 
     function test_inherits_bondroute_native_receive_for_native_fundings( )

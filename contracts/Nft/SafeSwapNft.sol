@@ -77,7 +77,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     address public immutable PositionDescriptor;    // external on-chain metadata renderer (keeps this contract under EIP-170).
 
     // Token ids are derived (not sequential): each mint bumps this counter and hashes it with the chain id and this
-    // contract address, keeping the low 10 bytes (see `_compute_next_token_id`). The counter itself is never a token id.
+    // contract address, keeping the low 8 bytes (see `_compute_next_token_id`). The counter itself is never a token id.
     uint96 private _token_counter;
 
     mapping( uint256 => SafeSwapPositionInfo ) private _position_infos;
@@ -466,11 +466,11 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     }
 
     /**
-     * @notice Derive the next token id: bump the counter, then keep the low 10 bytes of
+     * @notice Derive the next token id: bump the counter, then keep the low 8 bytes of
      *         `keccak256( chain id, this address, counter )` so ids read as opaque hex instead of 1, 2, 3 — and the
      *         same Nth position differs across chains / deployments. The collision loop is defensive: truncating the
-     *         hash makes a clash astronomically unlikely (10 bytes = 2^80) but not impossible, and `_mint` reverts on a
-     *         duplicate id, so we re-roll until the id is unused (and non-zero). It executes once in practice.
+     *         hash makes a clash unlikely at realistic mint counts (8 bytes = 2^64) but not impossible, and `_mint`
+     *         reverts on a duplicate id, so we re-roll until the id is unused (and non-zero). It executes once in practice.
      */
     function _compute_next_token_id( ) private returns ( uint256 token_id )
     {
@@ -486,7 +486,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
                 // 0x20..0x3f  [ address(this) 20 bytes ][   token_counter 12 bytes      ] 32 bytes
                 mstore( 0x00, chainid() )
                 mstore( 0x20, or( shl( 96, address() ), token_counter ) )
-                token_id  :=  and( keccak256( 0x00, 64 ), sub( shl( 80, 1 ), 1 ) )
+                token_id  :=  and( keccak256( 0x00, 64 ), sub( shl( 64, 1 ), 1 ) )
             }
 
             if(  token_id != 0  &&  _ownerOf( token_id ) == address(0)  )  break;

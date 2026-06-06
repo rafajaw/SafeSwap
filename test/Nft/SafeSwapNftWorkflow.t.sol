@@ -72,7 +72,7 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
 
         assertEq( uint256(status), uint256(BondStatus.EXECUTED), "create bond should execute." );
         assertEq( nft.ownerOf( token_id ), _USER, "LP NFT should mint to the bonded user." );
-        assertTrue( token_id != 0  &&  token_id < 1 << 80, "LP NFT id should be a non-zero 10-byte derived id." );
+        assertTrue( token_id != 0  &&  token_id < 1 << 64, "LP NFT id should be a non-zero 8-byte derived id." );
 
         ( uint160 sqrt_price, , , )  =  poolManager.getSlot0( _pool_id() );
         assertEq( sqrt_price, _SQRT_PRICE_1_1, "pool should initialize at the signed price." );

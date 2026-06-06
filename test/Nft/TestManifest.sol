@@ -139,7 +139,7 @@ interface ISafeSwapPositionDescriptorTests {
     function test_token_uri_returns_base64_json_with_name_description_and_attributes() external;
     function test_token_uri_attributes_self_locate_position() external;
     function test_token_uri_image_matches_investor_card_layout() external;
-    function test_token_uri_image_renders_out_of_range_red_variant() external;
+    function test_token_uri_image_renders_out_of_range_neutral_variant() external;
     function test_contract_uri_returns_collection_metadata() external;
     function test_token_uri_reverts_for_nonexistent_token() external;
 }

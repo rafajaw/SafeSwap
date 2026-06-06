@@ -100,24 +100,25 @@
 - [x] Add `contractURI()` - collection name + description, on-chain base64 JSON. Banner / external link / royalty fields
       deferred (hosting TBD); v1 ships name + description.
 - [x] Derive LP NFT token ids from a chain-aware hash instead of a sequential counter. Each mint hashes scratch-space
-      preimage `[chainid()][address(this) | uint96 counter]`, keeps the low 10 bytes for the ERC721 id / V4 salt, and
+      preimage `[chainid()][address(this) | uint96 counter]`, keeps the low 8 bytes for the ERC721 id / V4 salt, and
       re-rolls only on zero or an actual minted-id collision. Focused, workflow, and descriptor tests now capture the mint
       `Transfer` event instead of assuming token ids `1`, `2`, ...
-- [x] Investor-card redesign (mock locked in `nft-renders/reference9.svg`): ported the new layout into
+- [x] Investor-certificate redesign (mock locked in `nft-renders/reference9.svg`): ported the new layout into
       `SafeSwapPositionDescriptor._render_svg` + `StringHelperLib`. Section order (the "arc"): header (8-byte hex token id +
-      SafeSwap brand) / hero (pair name highlighted, muted amount beneath) / market row (inline price-range bar with live
-      emerald price marker + In Range) / full-bleed FEE|REBATE|AGE stats band / earned|claimable line-grid (coin + download
-      icons) / yield closing line (life | ann, grouped right). On-chain math/formatters DONE:
+      SafeSwap brand) / hero (pair name highlighted, muted amount beneath) / earned|claimable line-grid (coin + download
+      icons) / yield (life | ann) / full-bleed FEE|REBATE|AGE stats band / market row (centered status pill + inline
+      price-range bar). On-chain math/formatters DONE:
       `contracts/Nft/libraries/PriceLib.sol` (`price1_per_0_scaled` sqrtPriceX96->1e18 price decimal-adjusted,
       `price_at_tick_scaled` for bounds, `fill_width` marker clamp) + `StringHelperLib.format_price` / `group_thousands` /
       comma-grouped `format_token_amount`, proven by `test/Nft/PriceLib.t.sol` (16 tests, incl. ETH/USDC~3000 within 1%).
       Snapshot-stamp DONE: `StringHelperLib.format_utc_datetime(block.timestamp)` -> "YYYY-MM-DD HH:MM UTC" (Hinnant
       civil-from-days, `test/Nft/StringHelperLib.t.sol`, 5 tests). DECIDED: render it as faint bottom fine-print
       ("as of <datetime> UTC") so a marketplace-cached card visibly carries the as-of time of its live data.
-      DONE: `_load_position` wires price fields into `PositionView`, `_render_svg` uses the reference9 350x480 layout,
-      out-of-range positions use the red accent, and descriptor tests assert the layout, status variants, and snapshot
-      footer. Descriptor still builds under the normal Foundry profile; EIP-170 deploy-profile tuning remains tracked in
-      Pre-deploy.
+      DONE: `_load_position` wires price fields into `PositionView`; `_render_svg` uses the locked reference9 350x480
+      rounded portrait layout; in-range status is emerald while out-of-range is neutral slate (inactive, not danger); both use
+      centered translucent-black pills; and descriptor tests assert the layout, status variants, and readable snapshot
+      footer. `reference10.svg` / `reference10b.svg` preserve the active/inactive visual state mocks. Descriptor still builds
+      under the normal Foundry profile; EIP-170 deploy-profile tuning remains tracked in Pre-deploy.
 - [x] **Self-locating attributes** - a snapshot of the `attributes` JSON now says *where* the position lives, not just what
       it is. Added `Chain Id` (`block.chainid`), `NFT Contract` (the `SafeSwapNft` address), `Token Id`, `Tick Spacing`,
       `Hook`, and `Pool Id` for V4 `PoolKey` verifiability. Kept these **out of the SVG card**; descriptor tests assert

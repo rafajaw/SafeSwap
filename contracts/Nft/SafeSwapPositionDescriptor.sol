@@ -291,7 +291,7 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
             "<style>",
             ".t{font-family:Arial,sans-serif}.m{font-family:monospace}.w{fill:#fff}",
             ".w9{fill:#fff;fill-opacity:.9}.w6{fill:#fff;fill-opacity:.6}.w5{fill:#fff;fill-opacity:.5}.w4{fill:#fff;fill-opacity:.4}",
-            ".g{fill:#37d6a3}.r{fill:#ff8a8a}.gs{fill:#37d6a3;fill-opacity:.6}.rs{fill:#ff8a8a;fill-opacity:.6}",
+            ".g{fill:#37d6a3}.n{fill:#b7c0cf}.gs{fill:#37d6a3;fill-opacity:.6}",
             ".val{font-weight:700}.lbl{font-weight:600;letter-spacing:0}.rule{stroke:#fff;stroke-opacity:.1}",
             "</style>",
             "</defs>"
@@ -304,7 +304,7 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
             "<rect width='350' height='480' rx='24' fill='url(#bg)'/>",
             "<rect width='350' height='480' rx='24' fill='url(#glow)'/>",
             "<rect x='.5' y='.5' width='349' height='479' rx='23.5' fill='none' stroke='#fff' stroke-opacity='.1'/>",
-            "<text x='24' y='43' class='m w9 val' font-size='15'>", _short_token_id_hex( position.identity.token_id ), "</text>",
+            "<text x='24' y='43' class='m w9 val' font-size='15'>", _token_id_hex( position.identity.token_id ), "</text>",
             "<text x='326' y='43' text-anchor='end' class='t' font-size='13' font-weight='700'><tspan class='w9'>Safe</tspan><tspan class='g'>Swap</tspan></text>",
             "<line x1='24' y1='58' x2='326' y2='58' class='rule'/>"
         );
@@ -314,11 +314,11 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
     {
         return string.concat(
             _render_hero( position ),
-            _render_market_row( position ),
-            _render_stats_band( position ),
             _render_fee_grid( position ),
             _render_yield_line( position ),
-            "<text x='175' y='472' text-anchor='middle' class='m w4' font-size='7'>as of ", StringHelperLib.format_utc_datetime( block.timestamp ), "</text>"
+            _render_stats_band( position ),
+            _render_market_row( position ),
+            "<text x='175' y='468' text-anchor='middle' class='m w5' font-size='9'>as of ", StringHelperLib.format_utc_datetime( block.timestamp ), "</text>"
         );
     }
 
@@ -329,18 +329,18 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
         return string.concat(
             "<text x='175' y='88' text-anchor='middle' class='t w4 lbl' font-size='11'>CURRENT POSITION</text>",
-            "<text x='90' y='124' text-anchor='middle' class='t w val' font-size='24'>", position.tokens.symbol0, "</text>",
-            "<text x='90' y='153' text-anchor='middle' class='m w6' font-size='19'>", position0, "</text>",
-            "<text x='260' y='124' text-anchor='middle' class='t w val' font-size='24'>", position.tokens.symbol1, "</text>",
-            "<text x='260' y='153' text-anchor='middle' class='m w6' font-size='19'>", position1, "</text>",
-            "<line x1='24' y1='180' x2='326' y2='180' class='rule'/>"
+            "<text x='90' y='126' text-anchor='middle' class='t w val' font-size='24'>", position.tokens.symbol0, "</text>",
+            "<text x='90' y='155' text-anchor='middle' class='m w6' font-size='19'>", position0, "</text>",
+            "<text x='260' y='126' text-anchor='middle' class='t w val' font-size='24'>", position.tokens.symbol1, "</text>",
+            "<text x='260' y='155' text-anchor='middle' class='m w6' font-size='19'>", position1, "</text>",
+            "<line x1='24' y1='184' x2='326' y2='184' class='rule'/>"
         );
     }
 
     function _render_market_row( PositionView memory position ) internal pure returns ( string memory )
     {
-        string memory marker_color  =  position.config.in_range  ?  "#37d6a3"  :  "#ff8a8a";
-        string memory marker_class  =  position.config.in_range  ?  "g"  :  "r";
+        string memory marker_color  =  position.config.in_range  ?  "#37d6a3"  :  "#b7c0cf";
+        string memory marker_class  =  position.config.in_range  ?  "g"  :  "n";
         string memory price_fill    =  LibString.toString( position.prices.fill );
         string memory price_marker  =  LibString.toString( 201 + position.prices.fill );
 
@@ -352,12 +352,18 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     function _render_market_labels( PositionView memory position, string memory marker_color, string memory marker_class ) internal pure returns ( string memory )
     {
+        string memory badge_x     =  position.config.in_range  ?  "40"  :  "33";
+        string memory badge_width =  position.config.in_range  ?  "104" :  "118";
+        string memory dot_x       =  position.config.in_range  ?  "62"  :  "51";
+        string memory text_x      =  position.config.in_range  ?  "98"  :  "99";
+
         return string.concat(
-            "<text x='326' y='200' text-anchor='end' class='t w4 lbl' font-size='9'>", position.tokens.symbol1, " / ", position.tokens.symbol0, "</text>",
-            "<text x='244' y='218' text-anchor='middle' class='m ", marker_class, "' font-size='12'>", StringHelperLib.format_price( position.prices.current ), "</text>",
-            "<circle cx='30' cy='217' r='4' fill='", marker_color, "'/>",
-            "<text x='40' y='221' class='t ", marker_class, "' font-size='12' font-weight='600'>", _status_label( position ), "</text>",
-            "<text x='193' y='234' text-anchor='end' class='m w5' font-size='10'>", StringHelperLib.format_price( position.prices.lower ), "</text>"
+            "<text x='326' y='404' text-anchor='end' class='t w4 lbl' font-size='9'>", position.tokens.symbol1, " / ", position.tokens.symbol0, "</text>",
+            "<text x='244' y='417' text-anchor='middle' class='m ", marker_class, "' font-size='12'>", StringHelperLib.format_price( position.prices.current ), "</text>",
+            "<rect x='", badge_x, "' y='402' width='", badge_width, "' height='30' rx='15' fill='#000' fill-opacity='.14'/>",
+            "<circle cx='", dot_x, "' cy='417' r='3.5' fill='", marker_color, "'/>",
+            "<text x='", text_x, "' y='421' text-anchor='middle' class='t ", marker_class, "' font-size='12' font-weight='600'>", _status_label( position ), "</text>",
+            "<text x='193' y='431' text-anchor='end' class='m w5' font-size='10'>", StringHelperLib.format_price( position.prices.lower ), "</text>"
         );
     }
 
@@ -369,37 +375,34 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
     ) internal pure returns ( string memory )
     {
         return string.concat(
-            "<rect x='201' y='229.5' width='85' height='3' rx='1.5' fill='#fff' fill-opacity='.08'/>",
-            "<rect x='201' y='229.5' width='", price_fill, "' height='3' rx='1.5' fill='#fff' fill-opacity='.16'/>",
-            "<circle cx='", price_marker, "' cy='231' r='2.5' fill='", marker_color, "' fill-opacity='.9'/>",
-            "<text x='294' y='234' text-anchor='start' class='m w5' font-size='10'>", StringHelperLib.format_price( position.prices.upper ), "</text>"
+            "<rect x='201' y='426.5' width='85' height='3' rx='1.5' fill='#fff' fill-opacity='.08'/>",
+            "<rect x='201' y='426.5' width='", price_fill, "' height='3' rx='1.5' fill='#fff' fill-opacity='.16'/>",
+            "<circle cx='", price_marker, "' cy='428' r='2.5' fill='", marker_color, "' fill-opacity='.9'/>",
+            "<text x='294' y='431' text-anchor='start' class='m w5' font-size='10'>", StringHelperLib.format_price( position.prices.upper ), "</text>"
         );
     }
 
     function _render_stats_band( PositionView memory position ) internal view returns ( string memory )
     {
         return string.concat(
-            "<rect x='0' y='254' width='350' height='42' fill='#fff' fill-opacity='.05'/>",
-            "<line x1='0' y1='254' x2='350' y2='254' class='rule'/>",
-            "<line x1='117' y1='262' x2='117' y2='288' class='rule' stroke-opacity='.12'/>",
-            "<line x1='233' y1='262' x2='233' y2='288' class='rule' stroke-opacity='.12'/>",
-            "<text x='58' y='279' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>FEE</tspan><tspan class='m w9 val' dx='5'>",
+            "<rect x='0' y='338' width='350' height='42' fill='#fff' fill-opacity='.05'/>",
+            "<line x1='0' y1='338' x2='350' y2='338' class='rule'/>",
+            "<line x1='117' y1='348' x2='117' y2='370' class='rule' stroke-opacity='.12'/>",
+            "<line x1='233' y1='348' x2='233' y2='370' class='rule' stroke-opacity='.12'/>",
+            "<text x='58' y='363' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>FEE</tspan><tspan class='m w9 val' dx='5'>",
             position.config.base_fee_percent, "%</tspan></text>",
-            "<text x='175' y='279' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>REBATE</tspan><tspan class='m w9 val' dx='5'>",
+            "<text x='175' y='363' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>REBATE</tspan><tspan class='m w9 val' dx='5'>",
             LibString.toString( uint256(position.config.rebate_percent) ), "%</tspan></text>",
-            "<text x='292' y='279' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>AGE</tspan><tspan class='m w9 val' dx='5'>",
+            "<text x='292' y='363' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>AGE</tspan><tspan class='m w9 val' dx='5'>",
             StringHelperLib.format_age( position.config.opened_at ), "</tspan></text>"
         );
     }
 
     function _render_fee_grid( PositionView memory position ) internal pure returns ( string memory )
     {
-        string memory marker_subclass  =  position.config.in_range  ?  "gs"  :  "rs";
-
         return string.concat(
             _render_earned_fees( position ),
-            _render_claimable_fees( position, marker_subclass ),
-            "<line x1='24' y1='402' x2='326' y2='402' class='rule'/>"
+            _render_claimable_fees( position, "gs" )
         );
     }
 
@@ -409,13 +412,13 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
         string memory earned1  =  _display_amount( position.amounts.earned1, position.tokens.decimals1 );
 
         return string.concat(
-            "<line x1='175' y1='312' x2='175' y2='394' class='rule' stroke-opacity='.08'/>",
-            "<ellipse cx='72' cy='328' rx='6' ry='4' fill='#1f9d77'/>",
-            "<ellipse cx='72' cy='326' rx='6' ry='4' fill='#37d6a3'/>",
-            "<ellipse cx='70' cy='325' rx='2' ry='1.2' fill='#fff' fill-opacity='.5'/>",
-            "<text x='104' y='330' text-anchor='middle' class='t w4 lbl' font-size='11'>EARNED</text>",
-            _render_amount_line( 99, 358, earned0, position.tokens.symbol0, "w", "w5" ),
-            _render_amount_line( 99, 380, earned1, position.tokens.symbol1, "w", "w5" )
+            "<line x1='175' y1='196' x2='175' y2='278' class='rule' stroke-opacity='.08'/>",
+            "<ellipse cx='72' cy='211' rx='6' ry='4' fill='#1f9d77'/>",
+            "<ellipse cx='72' cy='209' rx='6' ry='4' fill='#37d6a3'/>",
+            "<ellipse cx='70' cy='208' rx='2' ry='1.2' fill='#fff' fill-opacity='.5'/>",
+            "<text x='104' y='213' text-anchor='middle' class='t w4 lbl' font-size='11'>EARNED</text>",
+            _render_amount_line( 99, 241, earned0, position.tokens.symbol0, "w", "w5" ),
+            _render_amount_line( 99, 263, earned1, position.tokens.symbol1, "w", "w5" )
         );
     }
 
@@ -425,11 +428,11 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
         string memory claimable1  =  _display_amount( position.amounts.claimable1, position.tokens.decimals1 );
 
         return string.concat(
-            "<path d='M213 319 v7 m-3 -3 l3 3 l3 -3' stroke='#37d6a3' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/>",
-            "<path d='M209 330 h8' stroke='#37d6a3' stroke-width='1.6' stroke-linecap='round'/>",
-            "<text x='256' y='330' text-anchor='middle' class='t w4 lbl' font-size='11'>CLAIMABLE</text>",
-            _render_amount_line( 251, 358, claimable0, position.tokens.symbol0, "g", marker_subclass ),
-            _render_amount_line( 251, 380, claimable1, position.tokens.symbol1, "g", marker_subclass )
+            "<path d='M213 202 v7 m-3 -3 l3 3 l3 -3' stroke='#37d6a3' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/>",
+            "<path d='M209 213 h8' stroke='#37d6a3' stroke-width='1.6' stroke-linecap='round'/>",
+            "<text x='256' y='213' text-anchor='middle' class='t w4 lbl' font-size='11'>CLAIMABLE</text>",
+            _render_amount_line( 251, 241, claimable0, position.tokens.symbol0, "g", marker_subclass ),
+            _render_amount_line( 251, 263, claimable1, position.tokens.symbol1, "g", marker_subclass )
         );
     }
 
@@ -452,11 +455,12 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
     function _render_yield_line( PositionView memory position ) internal pure returns ( string memory )
     {
         return string.concat(
-            "<text x='24' y='436' class='t w4 lbl' font-size='11'>YIELD</text>",
-            "<text x='188' y='437' text-anchor='end' class='m w val' font-size='20'>", StringHelperLib.format_bps_as_percent_string( position.yield.lifetime_bps ), "</text>",
-            "<text x='194' y='437' class='t w5' font-size='11'>life</text>",
-            "<text x='288' y='437' text-anchor='end' class='m w val' font-size='20'>", StringHelperLib.format_bps_as_percent_string( position.yield.annualized_bps ), "</text>",
-            "<text x='294' y='437' class='t w5' font-size='11'>ann.</text>"
+            "<line x1='24' y1='288' x2='326' y2='288' class='rule'/>",
+            "<text x='58' y='320' text-anchor='middle' class='t w4 lbl' font-size='11'>YIELD</text>",
+            "<text x='196' y='320' text-anchor='end' class='m w val' font-size='18'>", StringHelperLib.format_bps_as_percent_string( position.yield.lifetime_bps ), "</text>",
+            "<text x='202' y='320' class='t w5' font-size='11'>life</text>",
+            "<text x='290' y='320' text-anchor='end' class='m w val' font-size='18'>", StringHelperLib.format_bps_as_percent_string( position.yield.annualized_bps ), "</text>",
+            "<text x='296' y='320' class='t w5' font-size='11'>ann.</text>"
         );
     }
 
@@ -526,9 +530,9 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
         return position.config.in_range  ?  "In Range"  :  "Out of Range";
     }
 
-    function _short_token_id_hex( uint256 token_id ) internal pure returns ( string memory )
+    function _token_id_hex( uint256 token_id ) internal pure returns ( string memory )
     {
-        return LibString.toHexString( token_id & ( ( uint256(1) << 64 ) - 1 ), 8 );
+        return LibString.toHexString( token_id, 8 );
     }
 
     // The card always renders amounts at the cosmetic cap; these wrappers are the single chokepoint so a

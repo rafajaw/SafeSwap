@@ -102,7 +102,8 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         string memory svg    =  string( _base64_decode( _strip_prefix( image, _SVG_PREFIX ) ) );
 
         assertTrue( _contains( svg, "<svg" ), "image should decode to an inline svg." );
-        assertTrue( _contains( svg, "width='350' height='480'" ), "svg should use the investor-card canvas." );
+        assertTrue( _contains( svg, "width='350' height='480'" ), "svg should use the locked portrait investor-certificate canvas." );
+        assertTrue( _contains( svg, "width='350' height='480' rx='24'" ), "svg should use the locked rounded outer silhouette." );
         assertTrue( _contains( svg, "Safe</tspan><tspan class='g'>Swap" ), "svg should render the SafeSwap brand in the header." );
         assertTrue( _contains( svg, "CURRENT POSITION" ), "svg card should use current token inventory as the hero." );
         assertTrue( _contains( svg, "TKNB / TKNA" )  ||  _contains( svg, "TKNA / TKNB" ), "svg card should render the market pair row." );
@@ -110,15 +111,17 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         assertTrue( _contains( svg, "CLAIMABLE" ), "svg card should prioritize currently claimable fees." );
         assertTrue( _contains( svg, "FEE</tspan><tspan class='m w9 val' dx='5'>0.3%" ), "svg card should render the base fee stats band." );
         assertTrue( _contains( svg, "REBATE</tspan><tspan class='m w9 val' dx='5'>50%" ), "svg card should render the rebate stats band." );
-        assertTrue( _contains( svg, "YIELD" ), "svg card should render the yield closing line." );
+        assertTrue( _contains( svg, "x='58' y='320' text-anchor='middle' class='t w4 lbl' font-size='11'>YIELD" ), "yield label should align with the fee column." );
         assertTrue( _contains( svg, "as of " ), "svg card should include a live-data snapshot timestamp." );
         assertTrue( _contains( svg, "In Range" ), "svg card should render the in-range status." );
+        assertTrue( _contains( svg, "x='40' y='402' width='104' height='30' rx='15' fill='#000' fill-opacity='.14'" ), "svg card should center the active status pill in the wider market column." );
+        assertTrue( _contains( svg, "class='m w5' font-size='9'>as of " ), "svg card should render a readable snapshot timestamp." );
         assertTrue( _contains( svg, "TKNA" )  &&  _contains( svg, "TKNB" ), "svg card should render both token symbols." );
         assertTrue( _contains( svg, "NFT Contract" ) == false, "machine-readable location traits should stay out of the SVG." );
         assertTrue( _contains( svg, "Pool Id" ) == false, "machine-readable pool id should stay out of the SVG." );
     }
 
-    function test_token_uri_image_renders_out_of_range_red_variant( )
+    function test_token_uri_image_renders_out_of_range_neutral_variant( )
     external
     {
         vm.recordLogs( );
@@ -132,7 +135,8 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
 
         assertTrue( _contains( json, '"trait_type":"Status","value":"Out of Range"' ), "metadata should report the out-of-range status." );
         assertTrue( _contains( svg, "Out of Range" ), "svg card should render the out-of-range status." );
-        assertTrue( _contains( svg, "#ff8a8a" ), "out-of-range card should use the red accent." );
+        assertTrue( _contains( svg, "#b7c0cf" ), "out-of-range status should use a neutral inactive accent." );
+        assertTrue( _contains( svg, "x='33' y='402' width='118' height='30' rx='15' fill='#000' fill-opacity='.14'" ), "out-of-range status should render in a compact centered pill." );
     }
 
 
