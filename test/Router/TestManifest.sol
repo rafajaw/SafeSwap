@@ -44,6 +44,7 @@ interface ISafeSwapRouterTests {
     function test_constructor_reads_pool_manager_and_treasury_from_chain_config() external;
     function test_constructor_reverts_when_pool_manager_is_invalid() external;
     function test_constructor_reverts_when_initial_treasury_is_zero() external;
+    function test_constructor_reverts_when_signing_descriptor_has_no_code() external;
     function test_receive_accepts_native_token_from_bondroute() external;
     function test_receive_accepts_native_token_from_pool_manager() external;
     function test_receive_reverts_for_unknown_sender() external;

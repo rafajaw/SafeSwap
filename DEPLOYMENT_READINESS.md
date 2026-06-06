@@ -38,9 +38,10 @@ SafeSwapHookImpl
 SafeSwapPositionDescriptor
   external on-chain tokenURI/contractURI renderer
 
-SafeSwapNftSigningDescriptor
+SafeSwapSigningDescriptor
   external immutable REFERENCE_2 renderer
-  keeps signing strings and price/liquidity math out of SafeSwapNft runtime
+  shared by router and NFT through one ChainConfig address
+  keeps signing strings and price/liquidity math out of both runtimes
 ```
 
 Pools are Uniswap V4 **dynamic-fee** pools. SafeSwap has no bonded `donate` action. Repricing capture is delivered as a native
@@ -48,11 +49,10 @@ dynamic LP fee. Protocol fees accrue to `SafeSwapRouter` and are withdrawn by th
 
 ## P0: Code and Review
 
-### NFT Deployability: Resolved
+### Router and NFT Deployability: Resolved
 
-The canonical BondRoute signing ABI remains unchanged; the NFT now has 29 functions because the immutable signing
-descriptor adds a getter. The fix keeps `SafeSwapNft.BondRoute_get_signing_info` as the canonical surface and forwards to
-an immutable `SafeSwapNftSigningDescriptor` configured through ChainConfig.
+The canonical BondRoute signing ABI remains unchanged. Both `BondRoute_get_signing_info` surfaces forward to one immutable
+`SafeSwapSigningDescriptor` configured through ChainConfig. Each router/NFT ABI adds a `SigningDescriptor` getter.
 
 Measured runtime sizes:
 
@@ -61,11 +61,13 @@ Measured runtime sizes:
 | Pre-signing `fe1d68f`, 25,000 runs | 24,462 bytes | +114 |
 | Pre-fix NFT, 10,000 runs | 33,018 bytes | -8,442 |
 | Fixed NFT, 10,000 runs | 22,942 bytes | +1,634 |
-| Signing descriptor, 10,000 runs | 13,270 bytes | +11,306 |
+| Pre-fix router, 25,000 runs | 24,369 bytes | +207 |
+| Fixed router, 25,000 runs | 19,439 bytes | +5,137 |
+| Shared signing descriptor, 10,000 runs | 14,632 bytes | +9,944 |
 | Current descriptor, 1,000 runs | 24,284 bytes | +292 |
 
-Existing NFT signing tests pass through the forwarding boundary and preserve typed strings, struct hashes, offsets,
-token-metadata behavior, and unsupported-call reverts.
+Existing router and NFT signing tests pass through the forwarding boundary and preserve typed strings, struct hashes,
+offsets, token-metadata behavior, and unsupported-call reverts.
 
 ### Complete Signing Review
 
@@ -123,7 +125,7 @@ publish/archive:
 - `safeswap/nft`;
 - `safeswap/hook_codehash`;
 - `safeswap/position_descriptor`;
-- `safeswap/nft_signing_descriptor`.
+- `safeswap/signing_descriptor`.
 
 The deployment script must encode and enforce the actual constructor/dependency order.
 

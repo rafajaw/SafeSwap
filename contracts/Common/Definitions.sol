@@ -8,13 +8,13 @@ pragma solidity ^0.8.30;
 // Keyspace under which the PoolManager (and other chain-scoped) entries must be signed in ChainConfig.
 // Decoupled from the operational protocol treasury so each role can rotate independently.
 address constant CONFIG_SIGNER  =  0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;  // ***TODO*** - Fix before deployment!
-bytes32 constant POOL_MANAGER_KEY        =  bytes32("uniswap_v4/pool_manager");
-bytes32 constant INITIAL_TREASURY_KEY    =  bytes32("safeswap/initial_treasury");
-bytes32 constant SAFESWAP_ROUTER_KEY     =  bytes32("safeswap/router");
-bytes32 constant SAFESWAP_NFT_KEY        =  bytes32("safeswap/nft");
-bytes32 constant SAFESWAP_HOOK_CODEHASH_KEY  =  bytes32("safeswap/hook_codehash");
-bytes32 constant SAFESWAP_POSITION_DESCRIPTOR_KEY  =  bytes32("safeswap/position_descriptor");
-bytes32 constant SAFESWAP_NFT_SIGNING_DESCRIPTOR_KEY  =  bytes32("safeswap/nft_signing_descriptor");
+bytes32 constant POOL_MANAGER_KEY                      =  bytes32("uniswap_v4/pool_manager");
+bytes32 constant INITIAL_TREASURY_KEY                  =  bytes32("safeswap/initial_treasury");
+bytes32 constant SAFESWAP_ROUTER_KEY                   =  bytes32("safeswap/router");
+bytes32 constant SAFESWAP_NFT_KEY                      =  bytes32("safeswap/nft");
+bytes32 constant SAFESWAP_HOOK_CODEHASH_KEY            =  bytes32("safeswap/hook_codehash");
+bytes32 constant SAFESWAP_POSITION_DESCRIPTOR_KEY      =  bytes32("safeswap/position_descriptor");
+bytes32 constant SAFESWAP_SIGNING_DESCRIPTOR_KEY       =  bytes32("safeswap/signing_descriptor");
 
 
 // ━━━━  SAFESWAP ECONOMICS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

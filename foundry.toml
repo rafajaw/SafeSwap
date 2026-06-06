@@ -47,7 +47,13 @@ skip = ["test/**", "script/**", "contracts/Router/**", "contracts/Nft/**"]
 [profile.deploy_router]
 out = "out-deploy-router"
 optimizer_runs = 25_000
-skip = ["test/**", "script/**", "contracts/Nft/**", "contracts/Hook/**"]
+skip = [
+    "test/**",
+    "script/**",
+    "contracts/Nft/**",
+    "contracts/Hook/**",
+    "contracts/Common/SafeSwapSigningDescriptor.sol"
+]
 
 [profile.deploy_nft]
 out = "out-deploy-nft"
@@ -58,7 +64,7 @@ skip = [
     "contracts/Router/**",
     "contracts/Hook/**",
     "contracts/Nft/SafeSwapPositionDescriptor.sol",
-    "contracts/Nft/SafeSwapNftSigningDescriptor.sol"
+    "contracts/Common/SafeSwapSigningDescriptor.sol"
 ]
 
 [profile.deploy_descriptor]
@@ -70,7 +76,7 @@ skip = [
     "contracts/Router/**",
     "contracts/Hook/**",
     "contracts/Nft/SafeSwapNft.sol",
-    "contracts/Nft/SafeSwapNftSigningDescriptor.sol"
+    "contracts/Common/SafeSwapSigningDescriptor.sol"
 ]
 
 [profile.deploy_signing_descriptor]

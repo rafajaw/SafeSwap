@@ -12,15 +12,15 @@ SafeSwapRouter      canonical user entrypoint; BondRoute-protected swaps; hook r
                     Owns no positions.
 SafeSwapNft         BondRoute-protected position lifecycle (create / add / remove / collect); ERC721 LP registry.
                     OWNS the V4 positions (it is the modifyLiquidity caller; salt = tokenId). Resolves the hook via the router.
-SafeSwapNftSigningDescriptor
-                    Immutable external REFERENCE_2 renderer used by SafeSwapNft.BondRoute_get_signing_info.
+SafeSwapSigningDescriptor
+                    Immutable external REFERENCE_2 renderer shared by the router and NFT signing-info surfaces.
 SafeSwapHook        one audited implementation (SafeSwapHookImpl) + many permissionlessly-deployed config clones, one per
                     (base fee, capture) profile, all sharing one runtime codehash. Dynamic-fee override logic.
 ```
 
 Both `SafeSwapRouter` and `SafeSwapNft` are `BondRouteProtected`. Shared primitives (pool-key building, fee math, the swap
-simulator, ChainConfig wiring, types, constants) live under `contracts/Common/`. NFT receipt rendering is externalized so
-the size-bound NFT forwards its BondRoute signing-info call without embedding dynamic string and price/liquidity math.
+simulator, ChainConfig wiring, types, constants) live under `contracts/Common/`. Both contracts forward their BondRoute
+signing-info calls to one immutable descriptor, keeping dynamic string and price/liquidity math out of their runtimes.
 
 **`donate` is removed**, not relabeled: the rebate is a native dynamic fee, so there is no bonded donate and the hook does not
 request the `beforeDonate` permission. Pools still accept permissionless `PoolManager.donate` (a harmless V4 primitive that

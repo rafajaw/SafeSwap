@@ -9,6 +9,7 @@ import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
 import "@SafeSwapCommon/Definitions.sol";
 import { PoolInfo } from "@SafeSwapCommon/Types.sol";
 import { SafeSwapRouter } from "@SafeSwapRouter/SafeSwapRouter.sol";
+import { SafeSwapSigningDescriptor } from "@SafeSwapCommon/SafeSwapSigningDescriptor.sol";
 import { Invalid, TransferFailed } from "@SafeSwapRouter/Treasury.sol";
 import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
 import { ExactInputSwapParams } from "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
@@ -111,6 +112,16 @@ contract SafeSwapRouterTest is ISafeSwapRouterTests, SafeSwapRealEnv {
 
         vm.expectRevert( bytes("SafeSwap: Invalid initial_treasury") );
         new SafeSwapRouter();
+    }
+
+    function test_constructor_reverts_when_signing_descriptor_has_no_code( )
+    external
+    {
+        _set_up_router_constructor_config( address(0), _TREASURY );
+        _publish_config_address( SAFESWAP_SIGNING_DESCRIPTOR_KEY, _OTHER );
+
+        vm.expectRevert( bytes("SafeSwapRouter: Invalid signing_descriptor") );
+        new SafeSwapRouter( );
     }
 
     function test_receive_accepts_native_token_from_bondroute( )
@@ -384,9 +395,13 @@ contract SafeSwapRouterTest is ISafeSwapRouterTests, SafeSwapRealEnv {
         _deploy_chain_config( );
         _set_up_bond_route( );
 
+        RouterMockPoolManager descriptor_pool_manager  =  new RouterMockPoolManager( );
+        _publish_config_address( POOL_MANAGER_KEY, address(descriptor_pool_manager) );
+        _publish_config_address( SAFESWAP_SIGNING_DESCRIPTOR_KEY, address(new SafeSwapSigningDescriptor( )) );
+
         if(  pool_manager == address(0)  )
         {
-            _mock_pool_manager  =  new RouterMockPoolManager();
+            _mock_pool_manager  =  descriptor_pool_manager;
             pool_manager        =  address(_mock_pool_manager);
         }
         else

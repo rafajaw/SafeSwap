@@ -49,7 +49,7 @@
 - [x] Run each suite subset independently. Common (incl. SwapSimulator), Hook, Nft (both tiers), and Router
       HookRegistry / SafeSwapRouter / User Tier 2 / workflow suites (UserSwap + PathFairness) are green.
       NOTE: `forge test --match-path` cold-compiles sparsely and skips the string-referenced `ForceCompileV4.sol` (deployCode); run a full `forge test` or `forge build` first for suites that deploy real V4.
-- [x] Run the full active test suite. Latest checkpoint: 18 suites, 335 tests passed, 0 failed.
+- [x] Run the full active test suite. Latest checkpoint: 18 suites, 336 tests passed, 0 failed.
 - [x] Use archived legacy tests as a final coverage checklist. Cross-checked all 25 legacy files vs the four manifests:
       pre-rewrite suite is mostly obsolete (donate, transient protected-context, old memory-layout structs); remaining
       behaviors already covered. Found and filled one real gap - router `unlockCallback` caller guard
@@ -64,15 +64,16 @@
 
 ## Pre-deploy (outstanding)
 
-- [x] **P0 - Restore `SafeSwapNft` EIP-170 deployability after REFERENCE_2 signing.** This was a pre-existing regression from
-      the on-chain signing implementation, not the NFT card / 64-bit-id work. The canonical BondRoute signing ABI is
-      unchanged; the total NFT ABI is now 29 functions because the immutable signing descriptor adds a getter. Previously,
-      `BondRoute_get_signing_info` pulled dynamic type-string construction, token metadata sanitization, full-precision
-      amount/price formatting, liquidity math, and V4 price reads into the NFT runtime through internal libraries. FIXED:
-      added immutable `SafeSwapNftSigningDescriptor` via `SAFESWAP_NFT_SIGNING_DESCRIPTOR_KEY`; the NFT keeps the canonical
-      BondRoute ABI and forwards one high-level call while the descriptor owns action decoding and rendering. Existing
-      signing tests pass unchanged through the forwarding boundary. Deploy sizes at 10,000 runs: NFT 22,942 bytes
-      (1,634-byte margin), signing descriptor 13,270 bytes (11,306-byte margin).
+- [x] **P0 - Restore router/NFT EIP-170 margin after REFERENCE_2 signing.** This was a pre-existing regression from the
+      on-chain signing implementation, not the NFT card / 64-bit-id work. The canonical BondRoute signing ABIs remain
+      unchanged. Previously, `BondRoute_get_signing_info` pulled dynamic type-string construction, token metadata
+      sanitization, full-precision amount/price formatting, liquidity math, and V4 price reads into the protected contract
+      runtimes. FIXED: added one immutable `contracts/Common/SafeSwapSigningDescriptor.sol` via
+      `SAFESWAP_SIGNING_DESCRIPTOR_KEY`; both router and NFT forward one high-level call while the shared descriptor owns
+      all six action decoders and signing-info builders. Existing signing tests pass unchanged through both forwarding
+      boundaries. Deploy sizes: NFT 22,942 bytes at 10,000 runs
+      (1,634-byte margin), router 19,439 bytes at 25,000 runs (5,137-byte margin), shared signing descriptor 14,632 bytes at
+      10,000 runs (9,944-byte margin).
 - [ ] **P0 - Review the complete bonded signing path** after the extraction: verify every
       `BondRoute_get_signing_info` typed string, struct hash, display value, and token-address anchor against the parameters
       that actually execute for both router swaps and all four NFT lifecycle calls.
@@ -94,7 +95,7 @@
       a signer-control runbook. For each launch chain, verify canonical PoolManager / BondRoute / ChainConfig addresses and
       publish/archive `POOL_MANAGER_KEY`, `INITIAL_TREASURY_KEY`, `SAFESWAP_ROUTER_KEY`, `SAFESWAP_NFT_KEY`,
       `SAFESWAP_HOOK_CODEHASH_KEY`, `SAFESWAP_POSITION_DESCRIPTOR_KEY`, and
-      `SAFESWAP_NFT_SIGNING_DESCRIPTOR_KEY`.
+      `SAFESWAP_SIGNING_DESCRIPTOR_KEY`.
 - [x] Remove `legacy_tests/` - deleted after the coverage cross-check.
 - [x] Decide quoter precision + fee ceilings: keep two-pass quote simulation for exact-input and exact-output so quotes match
       execution, remove the low SafeSwap-specific repricing/total fee caps, and explicitly revert when configured surplus
@@ -172,11 +173,11 @@ Decisions already baked into both references (see the docs for the why):
       `TokenAmount` offset; swap and LP action libraries emit role-named fields, `FULL_PRECISION` amounts, sanitized
       symbol-labeled address anchors, human pool/range/price values, and exact EIP-712 action struct hashes. Hashing now uses
       Solady `EfficientHashLib` for fixed-width word hashes and string hashes, with the warning hash derived from
-      `WARNING_VALUE`. Tests are registered in the relevant manifests. Verified full suite: 335 passed.
+      `WARNING_VALUE`. Tests are registered in the relevant manifests. Verified full suite: 336 passed.
 
 - [x] Normalize signing / metadata string rendering on Solady: replaced OpenZeppelin `Strings` with `LibString`, replaced
       the descriptor's hand-rolled UTC conversion with `DateTimeLib`, and use `string.concat` (not `abi.encodePacked`) for
-      JSON text assembly. Binary `abi.encodePacked` uses remain binary-only. Verified full suite: 335 passed.
+      JSON text assembly. Binary `abi.encodePacked` uses remain binary-only. Verified full suite: 336 passed.
 
 - [x] Measure the create-position price-bound -> tick derivation tradeoff. Two `TickMath.getTickAtSqrtPrice` calls plus
       snapping/clamping cost ~4.7k-4.9k gas: ~1% of first-pool execution or ~2% when the pool already exists. Keep the signed

@@ -4,6 +4,12 @@ pragma solidity ^0.8.30;
 import "@SafeSwapRouter/User.sol";
 import "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
 import "@SafeSwapRouter/libraries/ExactOutputSwapLib.sol";
+import { ISafeSwapSigningDescriptor } from "@SafeSwapCommon/ISafeSwapSigningDescriptor.sol";
+import {
+    CONFIG_SIGNER,
+    SAFESWAP_SIGNING_DESCRIPTOR_KEY
+} from "@SafeSwapCommon/Definitions.sol";
+import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
 
 
 /**
@@ -13,8 +19,16 @@ import "@SafeSwapRouter/libraries/ExactOutputSwapLib.sol";
  */
 abstract contract BondRouteIntegration is User {
 
+    address public immutable SigningDescriptor;    // external on-chain EIP-712 signing-info builder.
+
     constructor( )
-    User( ) { }
+    User( )
+    {
+        address signing_descriptor  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_SIGNING_DESCRIPTOR_KEY );
+        if(  signing_descriptor.code.length == 0  )  revert( "SafeSwapRouter: Invalid signing_descriptor" );
+
+        SigningDescriptor  =  signing_descriptor;
+    }
 
     /**
      * @notice Return the swap selectors that require BondRoute execution.
@@ -35,7 +49,7 @@ abstract contract BondRouteIntegration is User {
      *      - `UnsupportedCall()` if `call` does not target a protected swap.
      */
     function BondRoute_quote_call( bytes calldata call, IERC20, TokenAmount[] memory preferred_fundings )
-    public  view override returns ( BondConstraints memory constraints )
+    public  pure override returns ( BondConstraints memory constraints )
     {
         if(  call.length < 4  )  revert UnsupportedCall( );
 
@@ -63,23 +77,8 @@ abstract contract BondRouteIntegration is User {
     function BondRoute_get_signing_info( bytes calldata call )
     external  view override returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
-        if(  call.length < 4  )  revert UnsupportedCall( );
-
-        bytes4 selector  =  bytes4(call);
-
-        if(  selector == this.swap_exact_input.selector  )
-        {
-            ExactInputSwapParams memory params  =  abi.decode( call[ 4: ], (ExactInputSwapParams) );
-            return ExactInputSwapLib.get_signing_info( params );
-        }
-        else if(  selector == this.swap_exact_output.selector  )
-        {
-            ExactOutputSwapParams memory params  =  abi.decode( call[ 4: ], (ExactOutputSwapParams) );
-            return ExactOutputSwapLib.get_signing_info( params );
-        }
-        else
-        {
-            revert UnsupportedCall( );
-        }
+        return ISafeSwapSigningDescriptor(SigningDescriptor).build_router_signing_info({
+            protected_call: call
+        });
     }
 }

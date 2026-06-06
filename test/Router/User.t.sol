@@ -12,6 +12,7 @@ import { MaximumInputExceeded, SafeSwapCommon, SlippageExceeded } from "@SafeSwa
 import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
 import { SafeSwapHookImpl } from "@SafeSwapHook/SafeSwapHookImpl.sol";
 import { SafeSwapRouter } from "@SafeSwapRouter/SafeSwapRouter.sol";
+import { SafeSwapSigningDescriptor } from "@SafeSwapCommon/SafeSwapSigningDescriptor.sol";
 import { HookConfigNotRegistered } from "@SafeSwapRouter/HookRegistry.sol";
 import { ExactInputSwapParams } from "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
 import { ExactOutputSwapParams } from "@SafeSwapRouter/libraries/ExactOutputSwapLib.sol";
@@ -855,6 +856,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         _mock_pool_manager  =  new MockSwapPoolManager();
         _publish_config_address( POOL_MANAGER_KEY, address(_mock_pool_manager) );
         _publish_config_address( INITIAL_TREASURY_KEY, _TREASURY );
+        _publish_config_address( SAFESWAP_SIGNING_DESCRIPTOR_KEY, address(new SafeSwapSigningDescriptor( )) );
 
         _mock_router  =  new SafeSwapRouter();
 

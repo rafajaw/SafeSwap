@@ -15,7 +15,7 @@ pragma solidity ^0.8.30;
 
 import "@SafeSwapNft/ISafeSwapNft.sol";
 import { ISafeSwapPositionDescriptor } from "@SafeSwapNft/ISafeSwapPositionDescriptor.sol";
-import { ISafeSwapNftSigningDescriptor } from "@SafeSwapNft/ISafeSwapNftSigningDescriptor.sol";
+import { ISafeSwapSigningDescriptor } from "@SafeSwapCommon/ISafeSwapSigningDescriptor.sol";
 import "@SafeSwapCommon/PoolManagerIntegration.sol";
 import "@SafeSwapCommon/SafeSwapCommon.sol";
 import "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
@@ -24,7 +24,7 @@ import {
     CONFIG_SIGNER,
     SAFESWAP_ROUTER_KEY,
     SAFESWAP_POSITION_DESCRIPTOR_KEY,
-    SAFESWAP_NFT_SIGNING_DESCRIPTOR_KEY,
+    SAFESWAP_SIGNING_DESCRIPTOR_KEY,
     SAFESWAP_POSITIONS_NAME,
     SAFESWAP_POSITIONS_DESCRIPTION
 } from "@SafeSwapCommon/Definitions.sol";
@@ -76,8 +76,8 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     }
 
     address public immutable SafeSwapRouter;
-    address public immutable PositionDescriptor;    // external on-chain metadata renderer.
-    address public immutable SigningDescriptor;     // external REFERENCE_2 renderer; both descriptors keep this under EIP-170.
+    address public immutable PositionDescriptor;    // external on-chain metadata builder.
+    address public immutable SigningDescriptor;     // external on-chain EIP-712 signing-info builder.
 
     // Token ids are derived (not sequential): each mint bumps this counter and hashes it with the chain id and this
     // contract address, keeping the low 8 bytes (see `_compute_next_token_id`). The counter itself is never a token id.
@@ -97,7 +97,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         address position_descriptor  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_POSITION_DESCRIPTOR_KEY );
         if(  position_descriptor.code.length == 0  )  revert( "SafeSwapNft: Invalid descriptor" );
 
-        address signing_descriptor  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_NFT_SIGNING_DESCRIPTOR_KEY );
+        address signing_descriptor  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_SIGNING_DESCRIPTOR_KEY );
         if(  signing_descriptor.code.length == 0  )  revert( "SafeSwapNft: Invalid signing_descriptor" );
 
         SafeSwapRouter      =  safe_swap_router;
@@ -239,7 +239,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     function BondRoute_get_signing_info( bytes calldata call )
     external  view override returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
-        return ISafeSwapNftSigningDescriptor(SigningDescriptor).build_signing_info({
+        return ISafeSwapSigningDescriptor(SigningDescriptor).build_nft_signing_info({
             safe_swap_nft: this,
             protected_call: call
         });
