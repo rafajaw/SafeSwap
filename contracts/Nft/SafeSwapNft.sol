@@ -15,6 +15,7 @@ pragma solidity ^0.8.30;
 
 import "@SafeSwapNft/ISafeSwapNft.sol";
 import { ISafeSwapPositionDescriptor } from "@SafeSwapNft/ISafeSwapPositionDescriptor.sol";
+import { ISafeSwapNftSigningDescriptor } from "@SafeSwapNft/ISafeSwapNftSigningDescriptor.sol";
 import "@SafeSwapCommon/PoolManagerIntegration.sol";
 import "@SafeSwapCommon/SafeSwapCommon.sol";
 import "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
@@ -23,6 +24,7 @@ import {
     CONFIG_SIGNER,
     SAFESWAP_ROUTER_KEY,
     SAFESWAP_POSITION_DESCRIPTOR_KEY,
+    SAFESWAP_NFT_SIGNING_DESCRIPTOR_KEY,
     SAFESWAP_POSITIONS_NAME,
     SAFESWAP_POSITIONS_DESCRIPTION
 } from "@SafeSwapCommon/Definitions.sol";
@@ -74,7 +76,8 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     }
 
     address public immutable SafeSwapRouter;
-    address public immutable PositionDescriptor;    // external on-chain metadata renderer (keeps this contract under EIP-170).
+    address public immutable PositionDescriptor;    // external on-chain metadata renderer.
+    address public immutable SigningDescriptor;     // external REFERENCE_2 renderer; both descriptors keep this under EIP-170.
 
     // Token ids are derived (not sequential): each mint bumps this counter and hashes it with the chain id and this
     // contract address, keeping the low 8 bytes (see `_compute_next_token_id`). The counter itself is never a token id.
@@ -88,14 +91,18 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     PoolManagerIntegration( )
     BondRouteProtected( SAFESWAP_POSITIONS_NAME, SAFESWAP_POSITIONS_DESCRIPTION )
     {
-        address router  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_ROUTER_KEY );
-        if(  router.code.length == 0  )  revert( "SafeSwapNft: Invalid router" );
+        address safe_swap_router  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_ROUTER_KEY );
+        if(  safe_swap_router.code.length == 0  )  revert( "SafeSwapNft: Invalid router" );
 
-        address descriptor  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_POSITION_DESCRIPTOR_KEY );
-        if(  descriptor.code.length == 0  )  revert( "SafeSwapNft: Invalid descriptor" );
+        address position_descriptor  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_POSITION_DESCRIPTOR_KEY );
+        if(  position_descriptor.code.length == 0  )  revert( "SafeSwapNft: Invalid descriptor" );
 
-        SafeSwapRouter      =  router;
-        PositionDescriptor  =  descriptor;
+        address signing_descriptor  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_NFT_SIGNING_DESCRIPTOR_KEY );
+        if(  signing_descriptor.code.length == 0  )  revert( "SafeSwapNft: Invalid signing_descriptor" );
+
+        SafeSwapRouter      =  safe_swap_router;
+        PositionDescriptor  =  position_descriptor;
+        SigningDescriptor   =  signing_descriptor;
     }
 
 
@@ -103,7 +110,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
 
     /**
      * @notice ERC721 token metadata as an on-chain `data:application/json;base64,...` URI. Delegates rendering to the
-     *         external `PositionDescriptor` so this contract stays under the EIP-170 size limit.
+     *         external `PositionDescriptor`.
      */
     function tokenURI( uint256 token_id )
     public  view override returns ( string memory )
@@ -232,34 +239,10 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     function BondRoute_get_signing_info( bytes calldata call )
     external  view override returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
-        if(  call.length < 4  )  revert UnsupportedCall( );
-
-        bytes4 selector  =  bytes4(call);
-
-        if(  selector == this.create_position.selector  )
-        {
-            CreatePositionParams memory params  =  abi.decode( call[ 4: ], (CreatePositionParams) );
-            return ModifyLiquidityLib.get_create_position_signing_info( params );
-        }
-        else if(  selector == this.add_liquidity.selector  )
-        {
-            AddPositionLiquidityParams memory params  =  abi.decode( call[ 4: ], (AddPositionLiquidityParams) );
-            return ModifyLiquidityLib.get_add_liquidity_signing_info( params, get_lp_position( params.token_id ), PoolManager );
-        }
-        else if(  selector == this.remove_liquidity.selector  )
-        {
-            RemovePositionLiquidityParams memory params  =  abi.decode( call[ 4: ], (RemovePositionLiquidityParams) );
-            return ModifyLiquidityLib.get_remove_liquidity_signing_info( params, get_lp_position( params.token_id ) );
-        }
-        else if(  selector == this.collect_fees.selector  )
-        {
-            CollectFeesParams memory params  =  abi.decode( call[ 4: ], (CollectFeesParams) );
-            return ModifyLiquidityLib.get_collect_fees_signing_info( params, get_lp_position( params.token_id ) );
-        }
-        else
-        {
-            revert UnsupportedCall( );
-        }
+        return ISafeSwapNftSigningDescriptor(SigningDescriptor).build_signing_info({
+            safe_swap_nft: this,
+            protected_call: call
+        });
     }
 
 

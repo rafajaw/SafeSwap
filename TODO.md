@@ -49,7 +49,7 @@
 - [x] Run each suite subset independently. Common (incl. SwapSimulator), Hook, Nft (both tiers), and Router
       HookRegistry / SafeSwapRouter / User Tier 2 / workflow suites (UserSwap + PathFairness) are green.
       NOTE: `forge test --match-path` cold-compiles sparsely and skips the string-referenced `ForceCompileV4.sol` (deployCode); run a full `forge test` or `forge build` first for suites that deploy real V4.
-- [x] Run the full active test suite. Latest checkpoint: 18 suites, 334 tests passed, 0 failed.
+- [x] Run the full active test suite. Latest checkpoint: 18 suites, 335 tests passed, 0 failed.
 - [x] Use archived legacy tests as a final coverage checklist. Cross-checked all 25 legacy files vs the four manifests:
       pre-rewrite suite is mostly obsolete (donate, transient protected-context, old memory-layout structs); remaining
       behaviors already covered. Found and filled one real gap - router `unlockCallback` caller guard
@@ -64,6 +64,18 @@
 
 ## Pre-deploy (outstanding)
 
+- [x] **P0 - Restore `SafeSwapNft` EIP-170 deployability after REFERENCE_2 signing.** This was a pre-existing regression from
+      the on-chain signing implementation, not the NFT card / 64-bit-id work. The canonical BondRoute signing ABI is
+      unchanged; the total NFT ABI is now 29 functions because the immutable signing descriptor adds a getter. Previously,
+      `BondRoute_get_signing_info` pulled dynamic type-string construction, token metadata sanitization, full-precision
+      amount/price formatting, liquidity math, and V4 price reads into the NFT runtime through internal libraries. FIXED:
+      added immutable `SafeSwapNftSigningDescriptor` via `SAFESWAP_NFT_SIGNING_DESCRIPTOR_KEY`; the NFT keeps the canonical
+      BondRoute ABI and forwards one high-level call while the descriptor owns action decoding and rendering. Existing
+      signing tests pass unchanged through the forwarding boundary. Deploy sizes at 10,000 runs: NFT 22,942 bytes
+      (1,634-byte margin), signing descriptor 13,270 bytes (11,306-byte margin).
+- [ ] **P0 - Review the complete bonded signing path** after the extraction: verify every
+      `BondRoute_get_signing_info` typed string, struct hash, display value, and token-address anchor against the parameters
+      that actually execute for both router swaps and all four NFT lifecycle calls.
 - [x] **Config-hook deployment** - solved by the self-replicating `SafeSwapHookImpl.deploy_hook(base_fee_bps,
       rebate_percent, salt)`: deploys the canonical EIP-1167 clone (OZ `Clones`, this impl baked in) at a mined salt,
       pre-flights BCD config + V4 permission bits (`HookSpawnRejected`), then `initialize_once` registers it. Callable on
@@ -73,24 +85,29 @@
       so clones pass the registry `extcodehash` gate. The impl's clone runtime codehash is published once to ChainConfig
       (`SAFESWAP_HOOK_CODEHASH_KEY`) after the impl is deployed - authorizing the bytecode, not addresses. The real-env test
       harness intentionally keeps synthesizing clones via `vm.etch` - it gives the most flexibility for testing.
-- [ ] Deploy tooling: `script/` is empty. Needs the off-chain salt miner (BCD config + exact V4 permission bits, ~2^38 per
-      profile), the per-profile `deploy_hook` call, publishing the impl's clone runtime codehash to ChainConfig, and
-      router / NFT / treasury wiring from ChainConfig. Also the home for `deploy_hook`'s success / `CONFIG_MISMATCH` /
-      `PERMISSIONS` paths that the unit suite can't mine (see `test/Hook/TestManifest.sol` note).
+- [ ] Deploy tooling: `script/` currently contains only the NFT example renderer. Add the off-chain salt miner (BCD config +
+      exact V4 permission bits, ~2^38 per profile), the per-profile `deploy_hook` call, publishing the impl's clone runtime
+      codehash to ChainConfig, and signing descriptor / metadata descriptor / router / NFT / treasury wiring from ChainConfig.
+      Also the home for `deploy_hook`'s success / `CONFIG_MISMATCH` / `PERMISSIONS` paths that the unit suite can't mine
+      (see `test/Hook/TestManifest.sol` note).
 - [ ] Replace the `CONFIG_SIGNER` placeholder (`0xDeaDbeef...`, flagged in `AUDIT_REPORT.md` / `Definitions.sol`) and publish
-      per-chain ChainConfig: V4 PoolManager address + signer for each target chain. (Standing deploy blocker.)
+      a signer-control runbook. For each launch chain, verify canonical PoolManager / BondRoute / ChainConfig addresses and
+      publish/archive `POOL_MANAGER_KEY`, `INITIAL_TREASURY_KEY`, `SAFESWAP_ROUTER_KEY`, `SAFESWAP_NFT_KEY`,
+      `SAFESWAP_HOOK_CODEHASH_KEY`, `SAFESWAP_POSITION_DESCRIPTOR_KEY`, and
+      `SAFESWAP_NFT_SIGNING_DESCRIPTOR_KEY`.
 - [x] Remove `legacy_tests/` - deleted after the coverage cross-check.
 - [x] Decide quoter precision + fee ceilings: keep two-pass quote simulation for exact-input and exact-output so quotes match
       execution, remove the low SafeSwap-specific repricing/total fee caps, and explicitly revert when configured surplus
       capture would require a V4 fee at or above 100%.
 - [x] Split deployment optimizer profiles by deployable contract family. `foundry.toml` now has separate artifact dirs and
-      optimizer runs for `deploy_hook`, `deploy_router`, `deploy_nft`, and `deploy_descriptor`, so the NFT descriptor can keep
-      the full investor-card render at lower runs without forcing router/hook/NFT core bytecode down to the same setting.
+      optimizer runs for `deploy_hook`, `deploy_router`, `deploy_nft`, `deploy_descriptor`, and
+      `deploy_signing_descriptor`, so each deployable family can be size-checked and tuned independently.
 
 ## NFT presentation
 
-- [x] Implement `tokenURI` via an external `SafeSwapPositionDescriptor` (keeps `SafeSwapNft` off the EIP-170 cliff - it only
-      forwards). `tokenURI` returns `data:application/json;base64,<json>` whose `image` is a fully on-chain
+- [x] Implement `tokenURI` via an external `SafeSwapPositionDescriptor` (removes metadata rendering from the size-bound NFT;
+      the later REFERENCE_2 signing growth is tracked separately under Pre-deploy). `tokenURI` returns
+      `data:application/json;base64,<json>` whose `image` is a fully on-chain
       `data:image/svg+xml;base64,<svg>` card built from `get_lp_position` + live V4 state (current tick / position liquidity /
       in-range), plus an `attributes` array (token0/1 symbols, base fee %, rebate %, tick range, liquidity, status). NFT side
       is a 3-line `tokenURI`/`contractURI` delegating to the descriptor. DECIDED: descriptor address is **immutable** from
@@ -117,8 +134,8 @@
       DONE: `_load_position` wires price fields into `PositionView`; `_render_svg` uses the locked reference9 350x480
       rounded portrait layout; in-range status is emerald while out-of-range is neutral slate (inactive, not danger); both use
       centered translucent-black pills; and descriptor tests assert the layout, status variants, and readable snapshot
-      footer. `reference10.svg` / `reference10b.svg` preserve the active/inactive visual state mocks. Descriptor still builds
-      under the normal Foundry profile; EIP-170 deploy-profile tuning remains tracked in Pre-deploy.
+      footer. `reference10.svg` / `reference10b.svg` preserve the active/inactive visual state mocks. The descriptor deploy
+      profile builds at 24,284 bytes (292-byte EIP-170 margin); the separate oversized NFT core is tracked in Pre-deploy.
 - [x] **Self-locating attributes** - a snapshot of the `attributes` JSON now says *where* the position lives, not just what
       it is. Added `Chain Id` (`block.chainid`), `NFT Contract` (the `SafeSwapNft` address), `Token Id`, `Tick Spacing`,
       `Hook`, and `Pool Id` for V4 `PoolKey` verifiability. Kept these **out of the SVG card**; descriptor tests assert
@@ -155,18 +172,19 @@ Decisions already baked into both references (see the docs for the why):
       `TokenAmount` offset; swap and LP action libraries emit role-named fields, `FULL_PRECISION` amounts, sanitized
       symbol-labeled address anchors, human pool/range/price values, and exact EIP-712 action struct hashes. Hashing now uses
       Solady `EfficientHashLib` for fixed-width word hashes and string hashes, with the warning hash derived from
-      `WARNING_VALUE`. Tests are registered in the relevant manifests. Verified full suite: 334 passed.
+      `WARNING_VALUE`. Tests are registered in the relevant manifests. Verified full suite: 335 passed.
 
 - [x] Normalize signing / metadata string rendering on Solady: replaced OpenZeppelin `Strings` with `LibString`, replaced
       the descriptor's hand-rolled UTC conversion with `DateTimeLib`, and use `string.concat` (not `abi.encodePacked`) for
-      JSON text assembly. Binary `abi.encodePacked` uses remain binary-only. Verified full suite: 334 passed.
+      JSON text assembly. Binary `abi.encodePacked` uses remain binary-only. Verified full suite: 335 passed.
 
 - [x] Measure the create-position price-bound -> tick derivation tradeoff. Two `TickMath.getTickAtSqrtPrice` calls plus
       snapping/clamping cost ~4.7k-4.9k gas: ~1% of first-pool execution or ~2% when the pool already exists. Keep the signed
       human `Range` / `Price` source of truth; the one-time UX cost is small relative to BondRoute + NFT + V4 position setup.
 
 - [ ] Build the companion BondRoute SDK message-values path so wallets can render these on-chain-generated REFERENCE_2 fields
-      (see the SDK note in `SIGNING_UX_REFERENCE_2.md`).
+      (see the SDK note in `SIGNING_UX_REFERENCE_2.md`). Publish the canonical router/NFT addresses in the SDK only after
+      deterministic deployment artifacts are finalized.
 
 - [x] Trim insignificant zeroes in the bps percent formatters. `StringHelperLib.format_bps_as_percent` and
       `format_bps_as_percent_string` now drop a zero fraction entirely and trim trailing zeroes via `trimmed_fraction`:
@@ -190,7 +208,14 @@ Decisions already baked into both references (see the docs for the why):
       wrapper), registered in `TestManifest.sol`. NOTE for the signing path: render `Action` amounts with `FULL_PRECISION`,
       never the card helpers; the raw `uint256` typed envelope field stays the hard anchor.
 
-## Review
+## Release readiness
 
-- [ ] Review the signing path for bonded calls: `BondRoute_get_signing_info` typed strings + struct hashes across the router
-      and NFT entrypoints - correctness, EIP-712 readability, and that the hashed params match what executes.
+- [ ] Add deployed-address / target-chain-fork tests for canonical BondRoute + ChainConfig + V4 PoolManager, including native
+      ETH funding/escrow, swaps, create/add/remove/collect liquidity, bytecode parity, and timing enforcement.
+- [ ] Produce the launch-chain and initial-pool policy: Cancun/transient-storage support, canonical infrastructure addresses,
+      V4-compatible token behavior, pool depth, stake economics, supported profiles, and frontend/indexer rejection rules.
+- [ ] Refresh public and audit docs after the architecture is frozen. `README.md`, `AUDIT_REPORT.md`, and
+      `DEPLOYMENT_READINESS.md` contain or previously contained old monolith/hook-owned-position, donate, collector,
+      static-fee, path, test-count, or runtime-size claims; reconcile them with router + NFT + config-hook-clone reality.
+- [ ] Run the final verification pass: full Foundry suite, SDK tests/build, all deploy-profile size checks, gas benchmarks,
+      Slither triage, deployment dry run, explorer verification rehearsal, and external-audit package.

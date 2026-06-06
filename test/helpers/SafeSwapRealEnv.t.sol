@@ -10,6 +10,7 @@ import { HookAddress } from "@SafeSwapCommon/HookAddress.sol";
 import { SafeSwapRouter } from "@SafeSwapRouter/SafeSwapRouter.sol";
 import { SafeSwapNft } from "@SafeSwapNft/SafeSwapNft.sol";
 import { SafeSwapPositionDescriptor } from "@SafeSwapNft/SafeSwapPositionDescriptor.sol";
+import { SafeSwapNftSigningDescriptor } from "@SafeSwapNft/SafeSwapNftSigningDescriptor.sol";
 import { SafeSwapHookImpl } from "@SafeSwapHook/SafeSwapHookImpl.sol";
 
 import { BondRoute } from "@BondRoute/BondRoute.sol";
@@ -53,6 +54,7 @@ abstract contract SafeSwapRealEnv is ChainConfigTestHelper, SafeSwapTestHelper, 
     SafeSwapRouter              internal router;
     SafeSwapNft                 internal nft;
     SafeSwapPositionDescriptor  internal descriptor;
+    SafeSwapNftSigningDescriptor internal _signing_descriptor;
     SafeSwapHookImpl            internal hookImpl;
     bytes32                     internal hookRuntimeCodehash;
 
@@ -96,9 +98,12 @@ abstract contract SafeSwapRealEnv is ChainConfigTestHelper, SafeSwapTestHelper, 
         router  =  new SafeSwapRouter( );
         _publish_config_address( SAFESWAP_ROUTER_KEY, address(router) );
 
-        // Descriptor reads PoolManager from ChainConfig; the NFT requires it at construction.
+        // Both descriptors read PoolManager from ChainConfig; the NFT requires their addresses at construction.
         descriptor  =  new SafeSwapPositionDescriptor( );
         _publish_config_address( SAFESWAP_POSITION_DESCRIPTOR_KEY, address(descriptor) );
+
+        _signing_descriptor  =  new SafeSwapNftSigningDescriptor( );
+        _publish_config_address( SAFESWAP_NFT_SIGNING_DESCRIPTOR_KEY, address(_signing_descriptor) );
 
         nft  =  new SafeSwapNft( );
         _publish_config_address( SAFESWAP_NFT_KEY, address(nft) );

@@ -34,6 +34,7 @@ fs_permissions = [
     { access = "read", path = "./out-deploy-router" },
     { access = "read", path = "./out-deploy-nft" },
     { access = "read", path = "./out-deploy-descriptor" },
+    { access = "read", path = "./out-deploy-signing-descriptor" },
 ]
 
 # Deployment profiles compile one deployable contract family per artifact dir, so each deployed bytecode can use the
@@ -51,12 +52,38 @@ skip = ["test/**", "script/**", "contracts/Nft/**", "contracts/Hook/**"]
 [profile.deploy_nft]
 out = "out-deploy-nft"
 optimizer_runs = 10_000
-skip = ["test/**", "script/**", "contracts/Router/**", "contracts/Hook/**", "contracts/Nft/SafeSwapPositionDescriptor.sol"]
+skip = [
+    "test/**",
+    "script/**",
+    "contracts/Router/**",
+    "contracts/Hook/**",
+    "contracts/Nft/SafeSwapPositionDescriptor.sol",
+    "contracts/Nft/SafeSwapNftSigningDescriptor.sol"
+]
 
 [profile.deploy_descriptor]
 out = "out-deploy-descriptor"
 optimizer_runs = 1_000
-skip = ["test/**", "script/**", "contracts/Router/**", "contracts/Hook/**", "contracts/Nft/SafeSwapNft.sol"]
+skip = [
+    "test/**",
+    "script/**",
+    "contracts/Router/**",
+    "contracts/Hook/**",
+    "contracts/Nft/SafeSwapNft.sol",
+    "contracts/Nft/SafeSwapNftSigningDescriptor.sol"
+]
+
+[profile.deploy_signing_descriptor]
+out = "out-deploy-signing-descriptor"
+optimizer_runs = 10_000
+skip = [
+    "test/**",
+    "script/**",
+    "contracts/Router/**",
+    "contracts/Hook/**",
+    "contracts/Nft/SafeSwapNft.sol",
+    "contracts/Nft/SafeSwapPositionDescriptor.sol"
+]
 
 [invariant]
 runs = 32

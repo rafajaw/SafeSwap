@@ -18,6 +18,7 @@ interface ISafeSwapNftTests {
     function test_constructor_reads_canonical_router_from_chain_config() external;
     function test_constructor_reverts_when_router_has_no_code() external;
     function test_constructor_reverts_when_descriptor_has_no_code() external;
+    function test_constructor_reverts_when_signing_descriptor_has_no_code() external;
     function test_first_token_id_is_derived_not_sequential() external;
     function test_constructor_uses_shared_pool_manager_from_chain_config() external;
     function test_inherits_bondroute_native_receive_for_native_fundings() external;
