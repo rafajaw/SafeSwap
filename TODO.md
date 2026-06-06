@@ -106,6 +106,11 @@
 
 ## NFT presentation
 
+- [x] Centralize the collection identity in `Definitions.sol`: ERC-721 and BondRoute now share
+      `SAFESWAP_POSITIONS_NAME` / `SAFESWAP_POSITIONS_DESCRIPTION`, and the collection symbol is the canonical `SSLP`
+      (`SAFESWAP_POSITIONS_SYMBOL`) instead of the hardcoded `SSWAP-LP`. Adopt
+      **"MEV protection for traders. Repricing revenue for LPs."** as the protocol motto and apply it consistently across
+      the on-chain protocol description, Solidity banners, root README, and SDK branding.
 - [x] Implement `tokenURI` via an external `SafeSwapPositionDescriptor` (removes metadata rendering from the size-bound NFT;
       the later REFERENCE_2 signing growth is tracked separately under Pre-deploy). `tokenURI` returns
       `data:application/json;base64,<json>` whose `image` is a fully on-chain

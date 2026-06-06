@@ -6,7 +6,7 @@
 //  ╚════██║██╔══██║██╔══╝  ██╔══╝  ╚════██║██║███╗██║██╔══██║██╔═══╝
 //  ███████║██║  ██║██║     ███████╗███████║╚███╔███╔╝██║  ██║██║
 //  ╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝
-//  ━━━━━━━━━━━━━━━━━━━━━  Trustless MEV-protected Uniswap pools  ━━━━━━━━━━━━━━━━━━━━━
+//  ━━━━━━━━━━━━━━━  MEV protection for traders. Repricing revenue for LPs.  ━━━━━━━━━━━━━━━
 //
 // SafeSwap SDK — single-file TypeScript client wrapping BondRoute for SafeSwap operations.
 //

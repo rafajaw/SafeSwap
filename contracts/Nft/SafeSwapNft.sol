@@ -26,6 +26,7 @@ import {
     SAFESWAP_POSITION_DESCRIPTOR_KEY,
     SAFESWAP_SIGNING_DESCRIPTOR_KEY,
     SAFESWAP_POSITIONS_NAME,
+    SAFESWAP_POSITIONS_SYMBOL,
     SAFESWAP_POSITIONS_DESCRIPTION
 } from "@SafeSwapCommon/Definitions.sol";
 import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
@@ -87,7 +88,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     mapping( uint256 => FeeTotals ) private _fee_totals;
 
     constructor( )
-    ERC721( "SafeSwap LP Positions", "SSWAP-LP" )
+    ERC721( SAFESWAP_POSITIONS_NAME, SAFESWAP_POSITIONS_SYMBOL )
     PoolManagerIntegration( )
     BondRouteProtected( SAFESWAP_POSITIONS_NAME, SAFESWAP_POSITIONS_DESCRIPTION )
     {

@@ -9,7 +9,7 @@ pragma solidity ^0.8.30;
         ╚════██║██╔══██║██╔══╝  ██╔══╝  ╚════██║██║███╗██║██╔══██║██╔═══╝
         ███████║██║  ██║██║     ███████╗███████║╚███╔███╔╝██║  ██║██║
         ╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝
-        ━━━━━━  MEV-protected Uniswap pools with LP repricing rebates  ━━━━━━
+        ━━━━━━━  MEV protection for traders. Repricing revenue for LPs.  ━━━━━━━
 
 */
 

@@ -1,5 +1,7 @@
 # @safeswap/sdk
 
+**MEV protection for traders. Repricing revenue for LPs.**
+
 TypeScript client SDK for SafeSwap — BondRoute-protected Uniswap V4 pool operations.
 
 Single-file, viem-based wrapper around `@bondroute/sdk`.
