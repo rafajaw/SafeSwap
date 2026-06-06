@@ -69,6 +69,7 @@ interface ISafeSwapNftTests {
     function test_remove_liquidity_reverts_when_funding_count_is_not_zero() external;
     function test_remove_liquidity_reverts_when_minimum_token_addresses_do_not_match_position_tokens() external;
     function test_remove_liquidity_handles_native_token_outputs_directly_to_user() external;
+    function test_remove_liquidity_records_earned_fees_without_counting_principal() external;
 
     // ─── Collect Fees ───────────────────────────────────────────────────────────
     function test_collect_fees_requires_owner_or_approved_operator() external;
@@ -76,6 +77,7 @@ interface ISafeSwapNftTests {
     function test_collect_fees_allows_approved_operator() external;
     function test_collect_fees_uses_zero_liquidity_delta() external;
     function test_collect_fees_sends_tokens_directly_to_bond_context_user() external;
+    function test_collect_fees_records_earned_fee_totals() external;
     function test_collect_fees_enforces_minimum_received_amounts() external;
     function test_collect_fees_reverts_when_funding_count_is_not_zero() external;
     function test_collect_fees_reverts_when_minimum_token_addresses_do_not_match_position_tokens() external;

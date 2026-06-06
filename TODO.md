@@ -49,7 +49,7 @@
 - [x] Run each suite subset independently. Common (incl. SwapSimulator), Hook, Nft (both tiers), and Router
       HookRegistry / SafeSwapRouter / User Tier 2 / workflow suites (UserSwap + PathFairness) are green.
       NOTE: `forge test --match-path` cold-compiles sparsely and skips the string-referenced `ForceCompileV4.sol` (deployCode); run a full `forge test` or `forge build` first for suites that deploy real V4.
-- [x] Run the full active test suite. (12 suites, 266 tests passed, 0 failed.)
+- [x] Run the full active test suite. Latest checkpoint: 18 suites, 334 tests passed, 0 failed.
 - [x] Use archived legacy tests as a final coverage checklist. Cross-checked all 25 legacy files vs the four manifests:
       pre-rewrite suite is mostly obsolete (donate, transient protected-context, old memory-layout structs); remaining
       behaviors already covered. Found and filled one real gap - router `unlockCallback` caller guard
@@ -60,8 +60,7 @@
       success / `CONFIG_MISMATCH` / `PERMISSIONS` paths need a mined valid address and are deferred to the deploy script.
 - [x] Fix `SafeSwapRealEnv._create_and_execute_bond` multi-bond timing: the test frame reads `block.number` / `block.timestamp`
       stale after a deep BondRoute call, so drive vm.roll/vm.warp from absolute monotonic counters seeded once before any
-      bond. Unblocks tests running >=2 bonds in a single test body (e.g. `test_protocol_fee_recipient_is_router`). Full suite
-      now 279 passing.
+      bond. Unblocks tests running >=2 bonds in a single test body (e.g. `test_protocol_fee_recipient_is_router`).
 
 ## Pre-deploy (outstanding)
 
@@ -124,7 +123,7 @@
       `Hook`, and `Pool Id` for V4 `PoolKey` verifiability. Kept these **out of the SVG card**; descriptor tests assert
       exact JSON traits and absence from the rendered SVG.
 
-## Signing UX (WIP - see `SIGNING_UX_REFERENCE_1.md` / `SIGNING_UX_REFERENCE_2.md`)
+## Signing UX (REFERENCE_2 implemented - see `SIGNING_UX_REFERENCE_1.md` / `SIGNING_UX_REFERENCE_2.md`)
 
 Goal: render the gasless BondRoute envelope (`ExecuteBondAs`) so the wallet shows readable, *canonical-commitment* display
 strings generated on-chain by `BondRoute_get_signing_info`, hashed as `keccak256(bytes(value))` inside the SafeSwap action
@@ -147,47 +146,18 @@ Decisions already baked into both references (see the docs for the why):
 - `Warning` leads with `protocol` then token addresses. `protocol` is the root of trust - it both executes and generates the
   receipt, so a rogue `protocol` can spoof a byte-identical receipt; it must be checked against published ChainConfig
   addresses, never against the receipt itself.
-- Create shows human `Range` / `Price` only; raw ticks / sqrtPriceX96 are dropped. **Open contract requirement:** this makes
-  the signed price the source of truth, so `SafeSwapNft.create` must derive tick / sqrtPrice from the signed price on-chain
-  (snapping to tick spacing); the committed `Deposit`/`Minimum` amounts are the economic anchor.
+- Create shows human `Range` / `Price` only; raw ticks are dropped. The signed price/bounds are the source of truth:
+  `ModifyLiquidityLib.derive_ticks_from_price_bounds` derives snapped ticks from signed sqrt prices on-chain, and the signed
+  `Deposit`/`Minimum` amounts are the economic anchor.
 
-Open decisions: confirm the price-as-source-of-truth create change; then implement `BondRoute_get_signing_info` to emit the
-REFERENCE_2 layout (pure ASCII, `|` pool separator) + the companion SDK message-values path.
+- [x] Implement the locked on-chain signing model (REFERENCE_2). `SigningLib` builds the shared receipt notation and
+      `TokenAmount` offset; swap and LP action libraries emit role-named fields, `FULL_PRECISION` amounts, sanitized
+      symbol-labeled address anchors, human pool/range/price values, and exact EIP-712 action struct hashes. Hashing now uses
+      Solady `EfficientHashLib` for fixed-width word hashes and string hashes, with the warning hash derived from
+      `WARNING_VALUE`. Tests are registered in the relevant manifests. Verified full suite: 334 passed.
 
-- [ ] **NEW AGENT - START HERE: implement the locked signing model (REFERENCE_2).** Self-contained task; everything you need
-      is below.
-
-      *Read first (in this order):* `lib/BondRoute/README.md` and `lib/BondRoute/src/integrations/BondRouteProtected.sol` -
-      you must fully understand the `ExecuteBondAs` envelope, how the protected protocol contributes its custom action field
-      name + type, exactly how the final struct hash is composed (`typeHash, fundingsHash, stakeHash, salt, protocol,
-      actionHash`), and the precise return contract of `BondRoute_get_signing_info` (`typed_string`, `struct_hash`,
-      `token_amount_offset`). Then `SIGNING_UX_REFERENCE_2.md` (the binding spec - field layout, values, and the design notes
-      explaining each choice), then this repo's CLAUDE.md read order and `CODING_STYLE.md`.
-
-      *What to build:* rewrite the on-chain signing-info generation so every bonded entrypoint emits the REFERENCE_2 receipt
-      exactly (per-action type string + display values). Sites:
-      - Swaps: `contracts/Router/BondRouteIntegration.sol:63` (`BondRoute_get_signing_info`) + the action libs'
-        `get_signing_info` (`ExactInputSwapLib`, `ExactOutputSwapLib`).
-      - LP: `contracts/Nft/SafeSwapNft.sol:232` + `ModifyLiquidityLib` for create / add / remove / collect.
-      Cover all six actions. Honor every locked decision: role-named single-word fields; each token symbol once per role;
-      amounts at `StringHelperLib.FULL_PRECISION`; human `Range`/`Price` for create (NOT raw ticks/sqrtPrice); token address
-      fields labeled with the sanitized symbol (reuse the NFT descriptor's symbol sanitizer - the symbol is embedded in the
-      on-chain-generated EIP-712 type string, so an unsanitized `symbol()` can corrupt it); `Warning` leading with
-      `protocol`; pure ASCII with `|` pool separator.
-
-      *Dependent contract change:* dropping raw ticks/sqrtPrice makes the signed `Range`/`Price` the source of truth, so
-      `SafeSwapNft` create (via `ModifyLiquidityLib`) must derive `tickLower`/`tickUpper`/`sqrtPriceX96` from the signed price
-      on-chain (snapping to tick spacing by a fixed rule), not consume raw ticks from calldata. Confirm this before coding.
-
-      *Gas - this runs on-chain during bond execution:* use inline assembly for the hot paths where the code stays easy to
-      follow - building/concatenating the type string and display strings, and the keccak hashing of fields and the struct
-      hash. Keep it readable and commented per CODING_STYLE.md (assembly only where it is a clear win and still legible);
-      do not obfuscate the security-relevant hashing.
-
-      *Verify:* the generated `typed_string` + `struct_hash` must match an independent EIP-712 encoding of the REFERENCE_2
-      sample for each action (compute the digest off the documented samples and assert equality), and `token_amount_offset`
-      must point at the right field. Register tests in the relevant manifests. Then build the companion BondRoute SDK
-      message-values path so wallets can render these on-chain-generated fields (see the SDK note in REFERENCE_2).
+- [ ] Build the companion BondRoute SDK message-values path so wallets can render these on-chain-generated REFERENCE_2 fields
+      (see the SDK note in `SIGNING_UX_REFERENCE_2.md`).
 
 - [x] Trim insignificant zeroes in the bps percent formatters. `StringHelperLib.format_bps_as_percent` and
       `format_bps_as_percent_string` now drop a zero fraction entirely and trim trailing zeroes via `trimmed_fraction`:
@@ -208,8 +178,8 @@ REFERENCE_2 layout (pure ASCII, `|` pool separator) + the companion SDK message-
       `_display_amount` / `_display_symbol_amount` (single chokepoint) using `DISPLAY_AMOUNTS_MAX_DECIMALS = 4`, so the lossy
       cap can never leak into a signing context. Tests: 8 new in `test/Nft/StringHelperLib.t.sol` (cap vs FULL_PRECISION
       side-by-side, the sub-cap injectivity/keccak distinctness proof, one-wei exact, zero-max-decimals revert via external
-      wrapper), registered in `TestManifest.sol`. Full suite green (319 passed). NOTE for the signing path: render `Action`
-      amounts with `FULL_PRECISION`, never the card helpers; the raw `uint256` typed envelope field stays the hard anchor.
+      wrapper), registered in `TestManifest.sol`. NOTE for the signing path: render `Action` amounts with `FULL_PRECISION`,
+      never the card helpers; the raw `uint256` typed envelope field stays the hard anchor.
 
 ## Review
 
