@@ -6,7 +6,7 @@ import "@SafeSwapCommon/Types.sol";
 import "@SafeSwapCommon/SafeSwapCommon.sol";
 import "@SafeSwapCommon/SigningLib.sol";
 import "@SafeSwapCommon/Definitions.sol";
-import { Strings } from "@OpenZeppelin/utils/Strings.sol";
+import { LibString } from "@Solady/utils/LibString.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { IHooks } from "@UniswapV4Core/interfaces/IHooks.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
@@ -260,7 +260,7 @@ library ModifyLiquidityLib {
             SigningLib.hash_string( inner_definition ),
             SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, deposit1, tokens.decimals1, tokens.symbol1, deposit0, tokens.decimals0, tokens.symbol0 ) ),
             SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 ) ),
-            SigningLib.hash_string( Strings.toString( params.liquidity ) ),
+            SigningLib.hash_string( LibString.toString( uint256(params.liquidity) ) ),
             SigningLib.hash_string( SigningLib.render_range_value( params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, tokens.decimals0, tokens.decimals1, tokens.symbol0, tokens.symbol1 ) ),
             SigningLib.hash_string( SigningLib.render_price_value( params.sqrt_price_x96, tokens.decimals0, tokens.decimals1, tokens.symbol0, tokens.symbol1 ) ),
             SigningLib.hash_string( SigningLib.render_pool_value( params.pool_info ) ),
@@ -290,7 +290,7 @@ library ModifyLiquidityLib {
             SigningLib.hash_string( SigningLib.render_position_value( params.token_id ) ),
             SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, deposit1, tokens.decimals1, tokens.symbol1, deposit0, tokens.decimals0, tokens.symbol0 ) ),
             SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 ) ),
-            SigningLib.hash_string( Strings.toString( params.liquidity ) ),
+            SigningLib.hash_string( LibString.toString( uint256(params.liquidity) ) ),
             SigningLib.hash_string( SigningLib.render_pool_value( _pool_info_of( position_info ) ) ),
             SigningLib.WARNING_VALUE_HASH,
             SigningLib.encode_address_word( tokens.token1 ),

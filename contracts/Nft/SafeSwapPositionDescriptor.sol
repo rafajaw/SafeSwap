@@ -27,7 +27,7 @@ import {
 } from "@SafeSwapCommon/Definitions.sol";
 import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
 import { Base64 } from "@OpenZeppelin/utils/Base64.sol";
-import { Strings } from "@OpenZeppelin/utils/Strings.sol";
+import { LibString } from "@Solady/utils/LibString.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
@@ -133,26 +133,26 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
         string memory image  =  string.concat( "data:image/svg+xml;base64,", Base64.encode( bytes(_render_svg( position )) ) );
 
-        bytes memory json  =  abi.encodePacked(
-            '{"name":"', SAFESWAP_POSITIONS_NAME, ' #', Strings.toString( token_id ), ' ', position.tokens.symbol0, '/', position.tokens.symbol1, '",',
+        string memory json  =  string.concat(
+            '{"name":"', SAFESWAP_POSITIONS_NAME, ' #', LibString.toString( token_id ), ' ', position.tokens.symbol0, '/', position.tokens.symbol1, '",',
             '"description":"', SAFESWAP_POSITIONS_DESCRIPTION, '",',
             '"image":"', image, '",',
             '"attributes":', _render_attributes( position ),
             '}'
         );
 
-        return string.concat( "data:application/json;base64,", Base64.encode( json ) );
+        return string.concat( "data:application/json;base64,", Base64.encode( bytes(json) ) );
     }
 
     function build_contract_uri( )
     external  pure returns ( string memory )
     {
-        bytes memory json  =  abi.encodePacked(
+        string memory json  =  string.concat(
             '{"name":"', SAFESWAP_POSITIONS_NAME, '",',
             '"description":"', SAFESWAP_POSITIONS_DESCRIPTION, '"}'
         );
 
-        return string.concat( "data:application/json;base64,", Base64.encode( json ) );
+        return string.concat( "data:application/json;base64,", Base64.encode( bytes(json) ) );
     }
 
 
@@ -341,8 +341,8 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
     {
         string memory marker_color  =  position.config.in_range  ?  "#37d6a3"  :  "#ff8a8a";
         string memory marker_class  =  position.config.in_range  ?  "g"  :  "r";
-        string memory price_fill    =  Strings.toString( position.prices.fill );
-        string memory price_marker  =  Strings.toString( 201 + position.prices.fill );
+        string memory price_fill    =  LibString.toString( position.prices.fill );
+        string memory price_marker  =  LibString.toString( 201 + position.prices.fill );
 
         return string.concat(
             _render_market_labels( position, marker_color, marker_class ),
@@ -386,7 +386,7 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
             "<text x='58' y='279' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>FEE</tspan><tspan class='m w9 val' dx='5'>",
             position.config.base_fee_percent, "%</tspan></text>",
             "<text x='175' y='279' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>REBATE</tspan><tspan class='m w9 val' dx='5'>",
-            Strings.toString( position.config.rebate_percent ), "%</tspan></text>",
+            LibString.toString( uint256(position.config.rebate_percent) ), "%</tspan></text>",
             "<text x='292' y='279' text-anchor='middle' class='t' font-size='12'><tspan class='w4 lbl' font-size='10'>AGE</tspan><tspan class='m w9 val' dx='5'>",
             StringHelperLib.format_age( position.config.opened_at ), "</tspan></text>"
         );
@@ -443,7 +443,7 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
     ) internal pure returns ( string memory )
     {
         return string.concat(
-            "<text x='", Strings.toString( x ), "' y='", Strings.toString( y ), "' text-anchor='middle' class='m ",
+            "<text x='", LibString.toString( x ), "' y='", LibString.toString( y ), "' text-anchor='middle' class='m ",
             amount_class, " val' font-size='16'>", amount,
             "<tspan class='t ", symbol_class, "' dx='5' font-size='12'>", symbol, "</tspan></text>"
         );
@@ -479,12 +479,12 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
     {
         return string.concat(
             StringHelperLib.attribute( "Pair", string.concat( position.tokens.symbol0, "/", position.tokens.symbol1 ) ), ",",
-            StringHelperLib.attribute( "Chain Id", Strings.toString( block.chainid ) ), ",",
-            StringHelperLib.attribute( "NFT Contract", Strings.toHexString( position.identity.nft_contract ) ), ",",
-            StringHelperLib.attribute( "Token Id", Strings.toString( position.identity.token_id ) ), ",",
-            StringHelperLib.attribute( "Tick Spacing", Strings.toStringSigned( position.identity.tick_spacing ) ), ",",
-            StringHelperLib.attribute( "Hook", Strings.toHexString( position.identity.hook ) ), ",",
-            StringHelperLib.attribute( "Pool Id", Strings.toHexString( uint256(position.identity.pool_id), 32 ) )
+            StringHelperLib.attribute( "Chain Id", LibString.toString( block.chainid ) ), ",",
+            StringHelperLib.attribute( "NFT Contract", LibString.toHexString( position.identity.nft_contract ) ), ",",
+            StringHelperLib.attribute( "Token Id", LibString.toString( position.identity.token_id ) ), ",",
+            StringHelperLib.attribute( "Tick Spacing", LibString.toString( int256(position.identity.tick_spacing) ) ), ",",
+            StringHelperLib.attribute( "Hook", LibString.toHexString( position.identity.hook ) ), ",",
+            StringHelperLib.attribute( "Pool Id", LibString.toHexString( uint256(position.identity.pool_id), 32 ) )
         );
     }
 
@@ -495,11 +495,11 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
         return string.concat(
             StringHelperLib.attribute( "Base Fee", string.concat( position.config.base_fee_percent, "%" ) ), ",",
-            StringHelperLib.attribute( "LP Rebate", string.concat( Strings.toString( position.config.rebate_percent ), "%" ) ), ",",
-            StringHelperLib.attribute( "Tick Lower", Strings.toStringSigned( position.config.tick_lower ) ), ",",
-            StringHelperLib.attribute( "Tick Upper", Strings.toStringSigned( position.config.tick_upper ) ), ",",
-            StringHelperLib.attribute( "Opened At", Strings.toString( position.config.opened_at ) ), ",",
-            StringHelperLib.attribute( "Liquidity", Strings.toString( position.config.liquidity ) ), ",",
+            StringHelperLib.attribute( "LP Rebate", string.concat( LibString.toString( uint256(position.config.rebate_percent) ), "%" ) ), ",",
+            StringHelperLib.attribute( "Tick Lower", LibString.toString( int256(position.config.tick_lower) ) ), ",",
+            StringHelperLib.attribute( "Tick Upper", LibString.toString( int256(position.config.tick_upper) ) ), ",",
+            StringHelperLib.attribute( "Opened At", LibString.toString( uint256(position.config.opened_at) ) ), ",",
+            StringHelperLib.attribute( "Liquidity", LibString.toString( uint256(position.config.liquidity) ) ), ",",
             StringHelperLib.attribute( "Current Position", string.concat( position0, " / ", position1 ) )
         );
     }
@@ -528,7 +528,7 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
     function _short_token_id_hex( uint256 token_id ) internal pure returns ( string memory )
     {
-        return Strings.toHexString( token_id & ( ( uint256(1) << 64 ) - 1 ), 8 );
+        return LibString.toHexString( token_id & ( ( uint256(1) << 64 ) - 1 ), 8 );
     }
 
     // The card always renders amounts at the cosmetic cap; these wrappers are the single chokepoint so a

@@ -3,7 +3,8 @@ pragma solidity ^0.8.30;
 
 import { IERC20 } from "@BondRouteProtected/BondRouteProtected.sol";
 import { IERC20Metadata } from "@OpenZeppelin/token/ERC20/extensions/IERC20Metadata.sol";
-import { Strings } from "@OpenZeppelin/utils/Strings.sol";
+import { DateTimeLib } from "@Solady/utils/DateTimeLib.sol";
+import { LibString } from "@Solady/utils/LibString.sol";
 
 
 /**
@@ -30,9 +31,9 @@ library StringHelperLib {
         uint256 whole       =  uint256(base_fee_bps) / 100;
         uint256 fractional  =  uint256(base_fee_bps) % 100;
 
-        if(  fractional == 0  )  return Strings.toString( whole );
+        if(  fractional == 0  )  return LibString.toString( whole );
 
-        return string.concat( Strings.toString( whole ), ".", trimmed_fraction( fractional, 2 ) );
+        return string.concat( LibString.toString( whole ), ".", trimmed_fraction( fractional, 2 ) );
     }
 
     function format_bps_as_percent_string( uint256 value_bps ) internal pure returns ( string memory )
@@ -40,51 +41,51 @@ library StringHelperLib {
         uint256 whole       =  value_bps / 100;
         uint256 fractional  =  value_bps % 100;
 
-        if(  fractional == 0  )  return string.concat( Strings.toString( whole ), "%" );
+        if(  fractional == 0  )  return string.concat( LibString.toString( whole ), "%" );
 
-        return string.concat( Strings.toString( whole ), ".", trimmed_fraction( fractional, 2 ), "%" );
+        return string.concat( LibString.toString( whole ), ".", trimmed_fraction( fractional, 2 ), "%" );
     }
 
     function format_age( uint40 opened_at ) internal view returns ( string memory )
     {
         uint256 age_days  =  ( block.timestamp - opened_at ) / 1 days;
-        return string.concat( Strings.toString( age_days ), "d" );
+        return string.concat( LibString.toString( age_days ), "d" );
     }
 
-    function format_symbol_amount( uint256 token_amount, uint8 token_decimals, uint8 max_decimals_to_render, string memory symbol ) internal pure returns ( string memory )
+    function format_symbol_amount( uint256 token_amount, uint8 decimals, uint8 max_decimals_to_render, string memory symbol ) internal pure returns ( string memory )
     {
-        return string.concat( format_token_amount( token_amount, token_decimals, max_decimals_to_render ), " ", symbol );
+        return string.concat( format_token_amount( token_amount, decimals, max_decimals_to_render ), " ", symbol );
     }
 
     /// @param max_decimals_to_render  Maximum fractional digits to render; 0 renders the integer part only. A
     ///                      small cap (e.g. 4) keeps cosmetic displays readable but is LOSSY — distinct amounts can
     ///                      collapse to the same string, so it must never anchor a signed commitment. Pass
     ///                      `FULL_PRECISION` for a lossless rendering.
-    function format_token_amount( uint256 token_amount, uint8 token_decimals, uint8 max_decimals_to_render ) internal pure returns ( string memory )
+    function format_token_amount( uint256 token_amount, uint8 decimals, uint8 max_decimals_to_render ) internal pure returns ( string memory )
     {
         if(  token_amount == 0  )  return "0";
 
-        if(  token_decimals == 0  )  return Strings.toString( token_amount );
+        if(  decimals == 0  )  return LibString.toString( token_amount );
 
         // No real token reports 78+ decimals (10^78 overflows uint256). Invariant, not a real-usage failure, so
         // assert keeps it out of the ABI (see CODING_STYLE.md).
-        assert(  token_decimals <= 77  );
+        assert(  decimals <= 77  );
 
-        uint256 scale       =  pow10( token_decimals );
+        uint256 scale       =  pow10( decimals );
         uint256 whole       =  token_amount / scale;
         uint256 remainder   =  token_amount % scale;
-        uint8 display       =  max_decimals_to_render >= token_decimals  ?  token_decimals  :  max_decimals_to_render;
-        uint256 divisor     =  pow10( token_decimals - display );
+        uint8 display       =  max_decimals_to_render >= decimals  ?  decimals  :  max_decimals_to_render;
+        uint256 divisor     =  pow10( decimals - display );
         uint256 fractional  =  remainder / divisor;
 
         if(  fractional == 0  )
         {
             if(  whole == 0  &&  display == 0  )  return "<1";
             if(  whole == 0  )  return string.concat( "<0.", fractional_floor( display ) );
-            return group_thousands( Strings.toString( whole ) );
+            return group_thousands( LibString.toString( whole ) );
         }
 
-        return string.concat( group_thousands( Strings.toString( whole ) ), ".", format_fractional( fractional, display ) );
+        return string.concat( group_thousands( LibString.toString( whole ) ), ".", format_fractional( fractional, display ) );
     }
 
     // Render a token1-per-token0 price scaled by 1e18 (see PriceLib) as a human decimal string:
@@ -98,13 +99,13 @@ library StringHelperLib {
 
         uint256 whole  =  scaled / 1e18;
 
-        if(  whole >= 1000  )  return group_thousands( Strings.toString( whole ) );
+        if(  whole >= 1000  )  return group_thousands( LibString.toString( whole ) );
 
         if(  whole >= 1  )
         {
             uint256 frac_digits  =  ( scaled % 1e18 ) / 1e16;    // first 2 decimals
-            if(  frac_digits == 0  )  return Strings.toString( whole );
-            return string.concat( Strings.toString( whole ), ".", trimmed_fraction( frac_digits, 2 ) );
+            if(  frac_digits == 0  )  return LibString.toString( whole );
+            return string.concat( LibString.toString( whole ), ".", trimmed_fraction( frac_digits, 2 ) );
         }
 
         if(  scaled >= 1e15 )    // >= 0.001
@@ -139,9 +140,9 @@ library StringHelperLib {
         if(  whole == 0  )  return format_price( scaled );
 
         uint256 frac_digits  =  ( scaled % 1e18 ) / 1e14;    // first 4 decimals
-        if(  frac_digits == 0  )  return group_thousands( Strings.toString( whole ) );
+        if(  frac_digits == 0  )  return group_thousands( LibString.toString( whole ) );
 
-        return string.concat( group_thousands( Strings.toString( whole ) ), ".", trimmed_fraction( frac_digits, 4 ) );
+        return string.concat( group_thousands( LibString.toString( whole ) ), ".", trimmed_fraction( frac_digits, 4 ) );
     }
 
     // Zero-pad `value` to `width` digits, then drop trailing zeros (e.g. value=500,width=4 -> "05").
@@ -167,35 +168,20 @@ library StringHelperLib {
     }
 
     // Render a Unix timestamp (seconds, UTC) as "YYYY-MM-DD HH:MM UTC". Used as the snapshot "as of" stamp so a
-    // marketplace-cached card visibly carries the time its live data was rendered. Date math is Howard Hinnant's
-    // civil-from-days algorithm (the same one BokkyPooBah's DateTime library uses); no leap-table, no overflow.
+    // marketplace-cached card visibly carries the time its live data was rendered.
     function format_utc_datetime( uint256 timestamp ) internal pure returns ( string memory )
     {
-        uint256 day_count    =  timestamp / 86400;
-        uint256 day_seconds  =  timestamp % 86400;
-        uint256 hour         =  day_seconds / 3600;
-        uint256 minute       =  ( day_seconds % 3600 ) / 60;
-
-        uint256 z    =  day_count + 719468;
-        uint256 era  =  z / 146097;
-        uint256 doe  =  z - era * 146097;                                                   // [0, 146096]
-        uint256 yoe  =  ( doe - doe / 1460 + doe / 36524 - doe / 146096 ) / 365;             // [0, 399]
-        uint256 year =  yoe + era * 400;
-        uint256 doy  =  doe - ( 365 * yoe + yoe / 4 - yoe / 100 );                           // [0, 365]
-        uint256 mp   =  ( 5 * doy + 2 ) / 153;                                               // [0, 11]
-        uint256 day  =  doy - ( 153 * mp + 2 ) / 5 + 1;                                      // [1, 31]
-        uint256 month =  mp < 10  ?  mp + 3  :  mp - 9;                                      // [1, 12]
-        if(  month <= 2  )  year = year + 1;
+        ( uint256 year, uint256 month, uint256 day, uint256 hour, uint256 minute, )  =  DateTimeLib.timestampToDateTime( timestamp );
 
         return string.concat(
-            Strings.toString( year ), "-", two_digits( month ), "-", two_digits( day ),
+            LibString.toString( year ), "-", two_digits( month ), "-", two_digits( day ),
             " ", two_digits( hour ), ":", two_digits( minute ), " UTC"
         );
     }
 
     function two_digits( uint256 value ) internal pure returns ( string memory )
     {
-        return value < 10  ?  string.concat( "0", Strings.toString( value ) )  :  Strings.toString( value );
+        return value < 10  ?  string.concat( "0", LibString.toString( value ) )  :  LibString.toString( value );
     }
 
     // Insert thousands separators into a non-negative integer string: "1234567" -> "1,234,567".
@@ -284,7 +270,7 @@ library StringHelperLib {
         }
         catch
         {
-            return sanitize( Strings.toHexString( address(token) ) );
+            return sanitize( LibString.toHexString( address(token) ) );
         }
     }
 
@@ -302,8 +288,8 @@ library StringHelperLib {
         }
     }
 
-    // Keep only [0-9A-Za-z], '.', '-' and cap the length. Drops quotes, angle brackets, backslashes, control bytes, so a
-    // hostile token symbol cannot inject markup into the SVG or escape the JSON string.
+    // Keep only [0-9A-Za-z], '.', '-' and cap the length. Drops quotes, angle brackets, backslashes, and control bytes, so a
+    // hostile token symbol cannot inject markup or JSON punctuation.
     function sanitize( string memory input ) internal pure returns ( string memory )
     {
         bytes memory raw    =  bytes(input);

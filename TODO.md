@@ -156,6 +156,14 @@ Decisions already baked into both references (see the docs for the why):
       Solady `EfficientHashLib` for fixed-width word hashes and string hashes, with the warning hash derived from
       `WARNING_VALUE`. Tests are registered in the relevant manifests. Verified full suite: 334 passed.
 
+- [x] Normalize signing / metadata string rendering on Solady: replaced OpenZeppelin `Strings` with `LibString`, replaced
+      the descriptor's hand-rolled UTC conversion with `DateTimeLib`, and use `string.concat` (not `abi.encodePacked`) for
+      JSON text assembly. Binary `abi.encodePacked` uses remain binary-only. Verified full suite: 334 passed.
+
+- [x] Measure the create-position price-bound -> tick derivation tradeoff. Two `TickMath.getTickAtSqrtPrice` calls plus
+      snapping/clamping cost ~4.7k-4.9k gas: ~1% of first-pool execution or ~2% when the pool already exists. Keep the signed
+      human `Range` / `Price` source of truth; the one-time UX cost is small relative to BondRoute + NFT + V4 position setup.
+
 - [ ] Build the companion BondRoute SDK message-values path so wallets can render these on-chain-generated REFERENCE_2 fields
       (see the SDK note in `SIGNING_UX_REFERENCE_2.md`).
 

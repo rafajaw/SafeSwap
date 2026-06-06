@@ -5,8 +5,8 @@ import "@BondRouteProtected/BondRouteProtected.sol";
 import "@SafeSwapCommon/Types.sol";
 import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
 import { PriceLib } from "@SafeSwapNft/libraries/PriceLib.sol";
-import { Strings } from "@OpenZeppelin/utils/Strings.sol";
 import { EfficientHashLib } from "@Solady/utils/EfficientHashLib.sol";
+import { LibString } from "@Solady/utils/LibString.sol";
 import { SqrtPriceMath } from "@UniswapV4Core/libraries/SqrtPriceMath.sol";
 
 
@@ -83,21 +83,21 @@ library SigningLib {
     {
         return string.concat(
             StringHelperLib.format_bps_as_percent( pool_info.base_fee_bps ), "% base fee | ",
-            Strings.toString( pool_info.rebate_percent ), "% rebate | tick spacing ",
-            Strings.toStringSigned( pool_info.tick_spacing )
+            LibString.toString( uint256(pool_info.rebate_percent) ), "% rebate | tick spacing ",
+            LibString.toString( int256(pool_info.tick_spacing) )
         );
     }
 
     // "LP #9166523579416187058"
     function render_position_value( uint256 token_id ) internal pure returns ( string memory )
     {
-        return string.concat( "LP #", Strings.toString( token_id ) );
+        return string.concat( "LP #", LibString.toString( token_id ) );
     }
 
     // "600000000000000000 liquidity"
     function render_burn_value( uint128 liquidity ) internal pure returns ( string memory )
     {
-        return string.concat( Strings.toString( liquidity ), " liquidity" );
+        return string.concat( LibString.toString( uint256(liquidity) ), " liquidity" );
     }
 
     // "2,850 ~ 3,150 USDC/WETH" — the two bound prices as token0-per-token1, rendered low-to-high.

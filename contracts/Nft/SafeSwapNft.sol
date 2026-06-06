@@ -342,6 +342,8 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
 
         // *SOURCE OF TRUTH*  -  The user signs human Range / Price, not raw ticks. Derive the position ticks from the signed
         //                      sqrt-price bounds (snapped to tick spacing); see SIGNING_UX_REFERENCE_2.md / ModifyLiquidityLib.
+        // *NOTE*             -  Benchmarked at ~4.7k-4.9k gas: ~1% of first-pool execution or ~2% when the pool already
+        //                      exists. This one-time mint cost is accepted so wallets can display and sign human bounds.
         ( int24 tick_lower, int24 tick_upper )  =  ModifyLiquidityLib.derive_ticks_from_price_bounds( params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, params.pool_info.tick_spacing );
 
         address hook  =  ISafeSwapRouterHooks(SafeSwapRouter).get_hook( params.pool_info.base_fee_bps, params.pool_info.rebate_percent );
