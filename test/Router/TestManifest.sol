@@ -82,7 +82,7 @@ interface IUserSwapTests {
     function test_swap_exact_input_sets_zero_for_one_from_token_order() external;
     function test_swap_exact_input_uses_full_range_sqrt_price_limit() external;
     function test_swap_exact_input_encodes_unlock_callback_as_exact_input_action() external;
-    function test_swap_exact_input_reverts_when_funding_count_is_not_one() external;
+    function test_swap_exact_input_quote_uses_declared_funding() external;
     function test_swap_exact_input_reverts_when_input_token_equals_output_token() external;
     function test_swap_exact_input_settles_input_and_takes_output() external;
     function test_swap_exact_input_takes_protocol_fee_from_pool_output() external;
@@ -98,7 +98,7 @@ interface IUserSwapTests {
     function test_swap_exact_output_sets_zero_for_one_from_token_order() external;
     function test_swap_exact_output_uses_full_range_sqrt_price_limit() external;
     function test_swap_exact_output_encodes_unlock_callback_as_exact_output_action() external;
-    function test_swap_exact_output_reverts_when_funding_count_is_not_one() external;
+    function test_swap_exact_output_quote_uses_declared_funding() external;
     function test_swap_exact_output_grosses_up_output_for_protocol_fee() external;
     function test_swap_exact_output_sends_exact_net_output_to_user() external;
     function test_swap_exact_output_reverts_when_required_input_exceeds_maximum() external;
@@ -128,10 +128,11 @@ interface IUserSwapTests {
     function test_bondroute_selectors_are_only_swap_functions() external;
     function test_bondroute_quote_reverts_for_unsupported_call() external;
     function test_bondroute_quote_reverts_for_short_call_data() external;
-    function test_bondroute_quote_exact_input_requires_one_funding() external;
-    function test_bondroute_quote_exact_output_requires_one_funding() external;
+    function test_bondroute_quote_exact_input_uses_declared_funding() external;
+    function test_bondroute_quote_exact_output_uses_declared_funding() external;
     function test_bondroute_quote_uses_swap_stake_percentage() external;
     function test_bondroute_signing_info_hashes_pool_info_and_token_amounts_readably() external;
+    function test_signing_descriptor_returns_exact_input_and_output_message_values() external;
     function test_bondroute_signing_info_reverts_for_unsupported_call() external;
     function test_bondroute_signing_info_reverts_for_short_call_data() external;
 }
@@ -163,4 +164,14 @@ interface IPathFairnessTests {
     function test_dynamic_fee_compensates_ranges_proportional_to_volume_served() external;
     function test_dynamic_fee_path_fairness_holds_for_both_swap_directions() external;
     function test_dynamic_fee_path_fairness_contrasts_with_donate_snapshot_behavior() external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SWAP HOOK OVERHEAD BENCHMARK - Real V4 comparison of capture-disabled and simulated swap paths.
+// Implemented in: test/Router/SwapHookOverheadBench.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface ISwapHookOverheadBenchTests {
+    function test_bench_beforeswap_sim_overhead_capture0_vs_capture50() external;
 }

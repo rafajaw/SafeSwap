@@ -30,6 +30,7 @@ import {
     decodeErrorResult,
     encodeFunctionData,
     formatUnits,
+    hashTypedData,
     parseAbi,
     type Address,
     type Hex,
@@ -98,6 +99,46 @@ export type RenderDescriptionOpts = {
 export type PreparedSafeSwapOperation = Bond & {
     kind: SafeSwapOperationKind;
     render_description: ( opts?: RenderDescriptionOpts ) => Promise<string>;
+    get_signing_preview: () => Promise<SafeSwapSigningPreview>;
+    sign_verified_execution: () => Promise<Hex>;
+};
+
+export type SafeSwapSigningField = {
+    name:  string;
+    type:  "string" | "address";
+    value: string;
+};
+
+export type SafeSwapSigningPreview = {
+    kind:          SafeSwapOperationKind;
+    digest:        Hex;
+    type_hash:     Hex;
+    type_string:   string;
+    domain: {
+        name:              string;
+        version:           string;
+        chainId:           bigint;
+        verifyingContract: Address;
+    };
+    primary_type:  "ExecuteBondAs";
+    action_type:   string;
+    action_field:  string;
+    fields:        SafeSwapSigningField[];
+    fundings:      TokenAmount[];
+    stake:         TokenAmount;
+    salt:          bigint;
+    protocol:      Address;
+    typed_data: {
+        domain: {
+            name:              string;
+            version:           string;
+            chainId:           bigint;
+            verifyingContract: Address;
+        };
+        primaryType: "ExecuteBondAs";
+        types: Record<string, { name: string, type: string }[]>;
+        message: Record<string, unknown>;
+    };
 };
 
 /**
@@ -174,11 +215,11 @@ export type SwapExactOutputQuote = {
  *        equal the live price or the contract reverts.
  */
 export type CreatePositionParams = {
-    pool_info:  PoolInfo;
-    tick_lower: number;
-    tick_upper: number;
-    liquidity:  bigint;
-    sqrt_price_x96: bigint;
+    pool_info:              PoolInfo;
+    sqrt_price_lower_x96:   bigint;
+    sqrt_price_upper_x96:   bigint;
+    liquidity:              bigint;
+    sqrt_price_x96:         bigint;
     a: {
         token:  Address;
         amount: bigint;
@@ -293,6 +334,14 @@ export type ParsedSafeSwapRevert =
         amount_b_token:  Address;
     }
     | {
+        kind:            "funding_declaration_mismatch";
+        description:     string;
+        declared_token:  Address;
+        declared_amount: bigint;
+        funded_token:    Address;
+        funded_amount:   bigint;
+    }
+    | {
         kind:            "invalid_liquidity_modification";
         description:     string;
         token_id:        bigint;
@@ -389,8 +438,8 @@ export type SafeSwapOpts = {
 
 /** SafeSwap SwapRouter surface: swaps + quoting + pool-id + hook registry resolution. */
 export const SAFESWAP_ROUTER_ABI  =  parseAbi([
-    "function swap_exact_input((address token_out, uint256 minimum_output_amount, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) params) external",
-    "function swap_exact_output((address token_out, uint256 exact_output_amount, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) params) external",
+    "function swap_exact_input((address token_in, uint256 input_amount, address token_out, uint256 minimum_output_amount, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) params) external",
+    "function swap_exact_output((address token_in, uint256 maximum_input_amount, address token_out, uint256 exact_output_amount, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) params) external",
 
     "function get_hook(uint16 base_fee_bps, uint8 rebate_percent) external view returns (address hook)",
 
@@ -401,8 +450,8 @@ export const SAFESWAP_ROUTER_ABI  =  parseAbi([
 
 /** SafeSwap NFT position-manager surface: LP lifecycle + position getters + the ERC721 mint event. */
 export const SAFESWAP_NFT_ABI  =  parseAbi([
-    "function create_position(((uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info, int24 tick_lower, int24 tick_upper, uint128 liquidity, uint160 sqrt_price_x96, (address token, uint256 amount) minimum_deposited_a, (address token, uint256 amount) minimum_deposited_b) params) external",
-    "function add_liquidity((uint256 token_id, uint128 liquidity, (address token, uint256 amount) minimum_deposited_a, (address token, uint256 amount) minimum_deposited_b) params) external",
+    "function create_position(((uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info, uint160 sqrt_price_lower_x96, uint160 sqrt_price_upper_x96, uint128 liquidity, uint160 sqrt_price_x96, (address token, uint256 amount) maximum_deposit_a, uint256 minimum_deposit_a, (address token, uint256 amount) maximum_deposit_b, uint256 minimum_deposit_b) params) external",
+    "function add_liquidity((uint256 token_id, uint128 liquidity, (address token, uint256 amount) maximum_deposit_a, uint256 minimum_deposit_a, (address token, uint256 amount) maximum_deposit_b, uint256 minimum_deposit_b) params) external",
     "function remove_liquidity((uint256 token_id, uint128 liquidity, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
     "function collect_fees((uint256 token_id, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
 
@@ -412,12 +461,22 @@ export const SAFESWAP_NFT_ABI  =  parseAbi([
     "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 ]);
 
+const SAFESWAP_SIGNING_PROTOCOL_ABI  =  parseAbi([
+    "function SigningDescriptor() external view returns (address)",
+]);
+
+const SAFESWAP_SIGNING_DESCRIPTOR_ABI  =  parseAbi([
+    "function build_router_signing_values(bytes protected_call) external view returns (string[] display_values, address[] token_addresses)",
+    "function build_nft_signing_values(address safe_swap_nft, bytes protected_call) external view returns (string[] display_values, address[] token_addresses)",
+]);
+
 /** Custom errors surfaced by SafeSwap execution and quoting (used to decode `bond.revert_output`). */
 export const SAFESWAP_ERRORS_ABI  =  parseAbi([
     "error SlippageExceeded(uint256 amount_received, uint256 minimum_required)",
     "error MaximumInputExceeded(uint256 required_input, uint256 maximum_required)",
     "error OneSidedDepositMismatch(address expected_token, uint256 minimum_required)",
     "error ModifyLiquidityTokensMismatch(address token0, address token1, address amount_a_token, address amount_b_token)",
+    "error FundingDeclarationMismatch(address declared_token, uint256 declared_amount, address funded_token, uint256 funded_amount)",
     "error InvalidLiquidityModification(uint256 token_id, int128 liquidity_delta, uint256 funding_count)",
     "error PositionInfoMismatch(uint256 token_id)",
     "error PositionUnauthorized(uint256 token_id, address caller, address owner)",
@@ -510,11 +569,26 @@ export function parse_safeswap_revert( output: Hex ): ParsedSafeSwapRevert
             const amount_b_token  =  as_address( decoded.args[3] );
             return {
                 kind:        "modify_liquidity_tokens_mismatch",
-                description: `SafeSwap minimum-amount tokens (${ amount_a_token }, ${ amount_b_token }) do not match the pool tokens (${ token0 }, ${ token1 }).`,
+                description: `SafeSwap liquidity tokens (${ amount_a_token }, ${ amount_b_token }) do not match the pool tokens (${ token0 }, ${ token1 }).`,
                 token0,
                 token1,
                 amount_a_token,
                 amount_b_token,
+            };
+        }
+
+        case "FundingDeclarationMismatch": {
+            const declared_token   =  as_address( decoded.args[0] );
+            const declared_amount  =  as_bigint( decoded.args[1] );
+            const funded_token     =  as_address( decoded.args[2] );
+            const funded_amount    =  as_bigint( decoded.args[3] );
+            return {
+                kind:        "funding_declaration_mismatch",
+                description: `SafeSwap declared funding ${ String(declared_amount) } for ${ declared_token }, but BondRoute supplied ${ String(funded_amount) } for ${ funded_token }.`,
+                declared_token,
+                declared_amount,
+                funded_token,
+                funded_amount,
             };
         }
 
@@ -687,20 +761,145 @@ function assert_pool_info( pool_info: PoolInfo ): void
     if(  pool_info.tick_spacing <= 0  )  throw new Error( "pool_info.tick_spacing must be greater than zero." );
 }
 
-function assert_ticks( tick_lower: number, tick_upper: number, tick_spacing: number ): void
-{
-    if(  tick_lower >= tick_upper  )  throw new Error( "tick_lower must be less than tick_upper." );
-    if(  tick_lower % tick_spacing !== 0  )  throw new Error( "tick_lower must be aligned to pool_info.tick_spacing." );
-    if(  tick_upper % tick_spacing !== 0  )  throw new Error( "tick_upper must be aligned to pool_info.tick_spacing." );
-}
-
 function attach_operation_description(
+    ctx: SafeSwapContext,
     bond: Bond,
     kind: SafeSwapOperationKind,
     render_description: ( opts?: RenderDescriptionOpts ) => Promise<string>
 ): PreparedSafeSwapOperation
 {
-    return Object.assign( bond, { kind, render_description });
+    const get_signing_preview      =  async () => await build_signing_preview( ctx, bond, kind );
+    const sign_verified_execution  =  async (): Promise<Hex> => await sign_signing_preview( ctx, await get_signing_preview() );
+    return Object.assign( bond, {
+        kind,
+        render_description,
+        get_signing_preview,
+        sign_verified_execution,
+        sign_execution: sign_verified_execution,
+    });
+}
+
+function parse_eip712_types( type_string: string ): Record<string, { name: string, type: string }[]>
+{
+    const types: Record<string, { name: string, type: string }[]>  =  {};
+    const definition_pattern  =  /([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)/g;
+
+    for(  const match of type_string.matchAll( definition_pattern )  )
+    {
+        const type_name  =  match[1]!;
+        const body       =  match[2]!;
+        types[ type_name ]  =  body === ""  ?  []  :  body.split( "," ).map(( field ) => {
+            const parts  =  field.trim().split( /\s+/ );
+            if(  parts.length !== 2  )  throw new Error( `Invalid EIP-712 field declaration: ${ field }.` );
+            return { type: parts[0]!, name: parts[1]! };
+        });
+    }
+
+    if(  types.ExecuteBondAs === undefined  )  throw new Error( "SafeSwap signing type string is missing ExecuteBondAs." );
+    return types;
+}
+
+async function build_signing_preview( ctx: SafeSwapContext, bond: Bond, kind: SafeSwapOperationKind ): Promise<SafeSwapSigningPreview>
+{
+    const info   =  await bond.get_signing_info();
+    const types  =  parse_eip712_types( info.type_string );
+    const outer  =  types.ExecuteBondAs!;
+    const custom_fields  =  outer.filter(( field ) => ! [ "fundings", "stake", "salt", "protocol" ].includes( field.name ) );
+    if(  custom_fields.length !== 1  )  throw new Error( "SafeSwap signing envelope must contain exactly one action field." );
+
+    const action_field  =  custom_fields[0]!;
+    const action_fields =  types[ action_field.type ];
+    if(  action_fields === undefined  )  throw new Error( `SafeSwap signing type is missing ${ action_field.type }.` );
+
+    const descriptor  =  await ctx.bond_route.public_client.readContract({
+        address:      bond.execution_data.protocol,
+        abi:          SAFESWAP_SIGNING_PROTOCOL_ABI,
+        functionName: "SigningDescriptor",
+    }) as Address;
+
+    const is_router  =  kind === "swap_exact_input" || kind === "swap_exact_output";
+    const [ display_values, token_addresses ]  =  await ctx.bond_route.public_client.readContract({
+        address:      descriptor,
+        abi:          SAFESWAP_SIGNING_DESCRIPTOR_ABI,
+        functionName: is_router ? "build_router_signing_values" : "build_nft_signing_values",
+        args:         is_router ? [ bond.execution_data.call ] : [ bond.execution_data.protocol, bond.execution_data.call ],
+    }) as [ string[], Address[] ];
+
+    let display_index  =  0;
+    let address_index  =  0;
+    const fields: SafeSwapSigningField[]  =  action_fields.map(( field ) => {
+        if(  field.type === "string"  )
+        {
+            const value  =  display_values[ display_index++ ];
+            if(  value === undefined  )  throw new Error( `Missing SafeSwap signing value for ${ field.name }.` );
+            return { name: field.name, type: "string", value };
+        }
+        if(  field.type === "address"  )
+        {
+            const value  =  token_addresses[ address_index++ ];
+            if(  value === undefined  )  throw new Error( `Missing SafeSwap token anchor for ${ field.name }.` );
+            return { name: field.name, type: "address", value };
+        }
+        throw new Error( `Unsupported SafeSwap signing field type ${ field.type }.` );
+    });
+    if(  display_index !== display_values.length || address_index !== token_addresses.length  )
+    {
+        throw new Error( "SafeSwap signing descriptor returned unexpected extra values." );
+    }
+
+    const action_message  =  Object.fromEntries( fields.map(( field ) => [ field.name, field.value ]) );
+    const message: Record<string, unknown>  =  {
+        fundings: bond.execution_data.fundings,
+        stake:    bond.execution_data.stake,
+        salt:     bond.execution_data.salt,
+        protocol: bond.execution_data.protocol,
+        [ action_field.name ]: action_message,
+    };
+    const domain  =  {
+        name:              info.domain.name,
+        version:           info.domain.version,
+        chainId:           BigInt( info.domain.chainId ),
+        verifyingContract: info.domain.verifyingContract,
+    };
+    const typed_data  =  { domain, primaryType: "ExecuteBondAs" as const, types, message };
+    const digest      =  hashTypedData( typed_data as any );
+    if(  digest.toLowerCase() !== info.digest.toLowerCase()  )
+    {
+        throw new Error( "SafeSwap signing values do not match the BondRoute signing digest." );
+    }
+
+    return {
+        kind,
+        digest,
+        type_hash: info.type_hash,
+        type_string: info.type_string,
+        domain,
+        primary_type: "ExecuteBondAs",
+        action_type: action_field.type,
+        action_field: action_field.name,
+        fields,
+        fundings: bond.execution_data.fundings,
+        stake: bond.execution_data.stake,
+        salt: bond.execution_data.salt,
+        protocol: bond.execution_data.protocol,
+        typed_data,
+    };
+}
+
+async function sign_signing_preview( ctx: SafeSwapContext, preview: SafeSwapSigningPreview ): Promise<Hex>
+{
+    const sign_typed_data  =  (ctx.bond_route.wallet_client as any).signTypedData;
+    if(  typeof sign_typed_data === "function"  )
+    {
+        return await sign_typed_data.call( ctx.bond_route.wallet_client, {
+            account: ctx.bond_route.account,
+            ...preview.typed_data,
+        });
+    }
+
+    const account  =  ctx.bond_route.wallet_client.account as any;
+    if(  typeof account?.signTypedData === "function"  )  return await account.signTypedData( preview.typed_data );
+    throw new Error( "Wallet client cannot sign verified SafeSwap EIP-712 typed data." );
 }
 
 async function get_token_display_metadata( ctx: SafeSwapContext, token: Address, opts?: RenderDescriptionOpts ): Promise<TokenDisplayMetadata>
@@ -819,6 +1018,8 @@ export class SafeSwapSwaps {
             abi:          SAFESWAP_ROUTER_ABI,
             functionName: "swap_exact_input",
             args:         [{
+                token_in:              params.input.token,
+                input_amount:          params.input.exact_amount,
                 token_out:             params.output.token,
                 minimum_output_amount: params.output.minimum_amount,
                 pool_info:             this.#encode_pool_info( params.pool_info ),
@@ -830,7 +1031,7 @@ export class SafeSwapSwaps {
             call,
             preferred_fundings: [{ token: params.input.token, amount: params.input.exact_amount }],
         });
-        return attach_operation_description( operation, "swap_exact_input", async ( opts ) => {
+        return attach_operation_description( this.#ctx, operation, "swap_exact_input", async ( opts ) => {
             const input   =  await render_token_amount( this.#ctx, params.input.token, params.input.exact_amount, opts );
             const output  =  await render_token_amount( this.#ctx, params.output.token, params.output.minimum_amount, opts );
             return `Swap exactly ${ input } for at least ${ output }.`;
@@ -860,6 +1061,8 @@ export class SafeSwapSwaps {
             abi:          SAFESWAP_ROUTER_ABI,
             functionName: "swap_exact_output",
             args:         [{
+                token_in:             params.input.token,
+                maximum_input_amount: params.input.maximum_amount,
                 token_out:           params.output.token,
                 exact_output_amount: params.output.exact_amount,
                 pool_info:           this.#encode_pool_info( params.pool_info ),
@@ -871,7 +1074,7 @@ export class SafeSwapSwaps {
             call,
             preferred_fundings: [{ token: params.input.token, amount: params.input.maximum_amount }],
         });
-        return attach_operation_description( operation, "swap_exact_output", async ( opts ) => {
+        return attach_operation_description( this.#ctx, operation, "swap_exact_output", async ( opts ) => {
             const input   =  await render_token_amount( this.#ctx, params.input.token, params.input.maximum_amount, opts );
             const output  =  await render_token_amount( this.#ctx, params.output.token, params.output.exact_amount, opts );
             return `Swap up to ${ input } for exactly ${ output }.`;
@@ -989,7 +1192,7 @@ export class SafeSwapPositions {
      * @example
      *   const op = await safeswap.positions.prepare_create_position({
      *       pool_info: { base_fee_bps: 30, rebate_percent: 50, tick_spacing: 60 },
-     *       tick_lower: -887220, tick_upper: 887220,
+     *       sqrt_price_lower_x96, sqrt_price_upper_x96,
      *       liquidity: 500_000_000_000_000n,
      *       sqrt_price_x96: 79228162514264337593543950336n,
      *       a: { token: USDC, amount: 1000_000_000n, minimum_deposited: 990_000_000n },
@@ -1005,7 +1208,9 @@ export class SafeSwapPositions {
         assert_positive_amount( "liquidity", params.liquidity );
         assert_positive_amount( "sqrt_price_x96", params.sqrt_price_x96 );
         assert_pool_info( params.pool_info );
-        assert_ticks( params.tick_lower, params.tick_upper, params.pool_info.tick_spacing );
+        assert_positive_amount( "sqrt_price_lower_x96", params.sqrt_price_lower_x96 );
+        assert_positive_amount( "sqrt_price_upper_x96", params.sqrt_price_upper_x96 );
+        if(  params.sqrt_price_lower_x96 >= params.sqrt_price_upper_x96  )  throw new Error( "sqrt_price_lower_x96 must be less than sqrt_price_upper_x96." );
 
         const preferred_stake_token  =  resolve_explicit_preferred_stake_token( params.preferred_stake_token, params.a.token, params.b.token );
 
@@ -1014,12 +1219,14 @@ export class SafeSwapPositions {
             functionName: "create_position",
             args:         [{
                 pool_info:           this.#encode_pool_info( params.pool_info ),
-                tick_lower:          params.tick_lower,
-                tick_upper:          params.tick_upper,
+                sqrt_price_lower_x96: params.sqrt_price_lower_x96,
+                sqrt_price_upper_x96: params.sqrt_price_upper_x96,
                 liquidity:           params.liquidity,
                 sqrt_price_x96:      params.sqrt_price_x96,
-                minimum_deposited_a: { token: params.a.token, amount: params.a.minimum_deposited },
-                minimum_deposited_b: { token: params.b.token, amount: params.b.minimum_deposited },
+                maximum_deposit_a: { token: params.a.token, amount: params.a.amount },
+                minimum_deposit_a: params.a.minimum_deposited,
+                maximum_deposit_b: { token: params.b.token, amount: params.b.amount },
+                minimum_deposit_b: params.b.minimum_deposited,
             }],
         });
 
@@ -1029,10 +1236,10 @@ export class SafeSwapPositions {
         ];
 
         const operation  =  await prepare_with_auto_stake_token( this.#ctx, this.nft_address, call, params.a.token, params.b.token, preferred_fundings, preferred_stake_token );
-        return attach_operation_description( operation, "create_position", async ( opts ) => {
+        return attach_operation_description( this.#ctx, operation, "create_position", async ( opts ) => {
             const amount_a   =  await render_token_amount( this.#ctx, params.a.token, params.a.amount, opts );
             const amount_b   =  await render_token_amount( this.#ctx, params.b.token, params.b.amount, opts );
-            return `Create a position with ${ amount_a } and ${ amount_b } from tick ${ params.tick_lower } to ${ params.tick_upper }.`;
+            return `Create a position with ${ amount_a } and ${ amount_b } across the signed price range.`;
         });
     }
 
@@ -1061,10 +1268,12 @@ export class SafeSwapPositions {
             abi:          SAFESWAP_NFT_ABI,
             functionName: "add_liquidity",
             args:         [{
-                token_id:            params.token_id,
-                liquidity:           params.liquidity,
-                minimum_deposited_a: { token: params.a.token, amount: params.a.minimum_deposited },
-                minimum_deposited_b: { token: params.b.token, amount: params.b.minimum_deposited },
+                token_id:          params.token_id,
+                liquidity:         params.liquidity,
+                maximum_deposit_a: { token: params.a.token, amount: params.a.amount },
+                minimum_deposit_a: params.a.minimum_deposited,
+                maximum_deposit_b: { token: params.b.token, amount: params.b.amount },
+                minimum_deposit_b: params.b.minimum_deposited,
             }],
         });
 
@@ -1074,7 +1283,7 @@ export class SafeSwapPositions {
         ];
 
         const operation  =  await prepare_with_auto_stake_token( this.#ctx, this.nft_address, call, params.a.token, params.b.token, preferred_fundings, preferred_stake_token );
-        return attach_operation_description( operation, "add_liquidity", async ( opts ) => {
+        return attach_operation_description( this.#ctx, operation, "add_liquidity", async ( opts ) => {
             const amount_a  =  await render_token_amount( this.#ctx, params.a.token, params.a.amount, opts );
             const amount_b  =  await render_token_amount( this.#ctx, params.b.token, params.b.amount, opts );
             return `Add up to ${ amount_a } and ${ amount_b } as liquidity to position ${ String(params.token_id) }.`;
@@ -1112,7 +1321,7 @@ export class SafeSwapPositions {
         });
 
         const operation  =  await prepare_with_auto_stake_token( this.#ctx, this.nft_address, call, params.a.token, params.b.token, [], preferred_stake_token );
-        return attach_operation_description( operation, "remove_liquidity", async ( opts ) => {
+        return attach_operation_description( this.#ctx, operation, "remove_liquidity", async ( opts ) => {
             const minimum_a  =  await render_token_amount( this.#ctx, params.a.token, params.a.minimum_received, opts );
             const minimum_b  =  await render_token_amount( this.#ctx, params.b.token, params.b.minimum_received, opts );
             return `Remove ${ String(params.liquidity) } liquidity from position ${ String(params.token_id) }, receiving at least ${ minimum_a } and ${ minimum_b }.`;
@@ -1147,7 +1356,7 @@ export class SafeSwapPositions {
         });
 
         const operation  =  await prepare_with_auto_stake_token( this.#ctx, this.nft_address, call, params.a.token, params.b.token, [], preferred_stake_token );
-        return attach_operation_description( operation, "collect_fees", async () => {
+        return attach_operation_description( this.#ctx, operation, "collect_fees", async () => {
             return `Collect accrued fees from position ${ String(params.token_id) }.`;
         });
     }

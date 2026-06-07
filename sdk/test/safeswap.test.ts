@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, test } from "bun:test";
-import { encodeErrorResult, encodeEventTopics, type Address, type Hex } from "viem";
+import { decodeFunctionData, encodeErrorResult, encodeEventTopics, hashTypedData, keccak256, toBytes, type Address, type Hex } from "viem";
 import { BONDROUTE_ADDRESS, NATIVE_TOKEN } from "@bondroute/sdk";
 import {
     SAFESWAP_ABI,
     SAFESWAP_NFT_ABI,
+    SAFESWAP_ROUTER_ABI,
     SafeSwap,
     SafeSwapSwaps,
     SafeSwapPositions,
@@ -22,11 +23,121 @@ const TOKEN_OUT   =  "0x5555555555555555555555555555555555555555" as const;
 const TOKEN_OTHER =  "0x6666666666666666666666666666666666666666" as const;
 
 const POOL_INFO  =  { base_fee_bps: 30, rebate_percent: 50, tick_spacing: 60 } as const;
+const DESCRIPTOR =  "0x8888888888888888888888888888888888888888" as const;
+
+const SIGNING_DOMAIN = {
+    name: "BondRoute", version: "1", chainId: 1n, verifyingContract: BONDROUTE,
+} as const;
+let tamper_signing_values  =  false;
+
+const SIGNING_VECTORS = {
+    swap_exact_input: {
+        action_type: "ExactInputSwap", action_field: "sS__SWAP__Ss",
+        fields: [
+            [ "Pay", "string", "= 1 USDC" ],
+            [ "Receive", "string", ">= 0.4 WETH" ],
+            [ "Pool", "string", "0.3% base fee | 50% rebate | tick spacing 60" ],
+            [ "Warning", "string", ">>  Check protocol and token addresses  <<" ],
+            [ "WETH", "address", TOKEN_OUT ],
+        ],
+    },
+    swap_exact_output: {
+        action_type: "ExactOutputSwap", action_field: "sS__SWAP__Ss",
+        fields: [
+            [ "Pay", "string", "<= 1.1 USDC" ],
+            [ "Receive", "string", "= 0.4 WETH" ],
+            [ "Pool", "string", "0.3% base fee | 50% rebate | tick spacing 60" ],
+            [ "Warning", "string", ">>  Check protocol and token addresses  <<" ],
+            [ "WETH", "address", TOKEN_OUT ],
+        ],
+    },
+    create_position: {
+        action_type: "CreatePosition", action_field: "sS__CREATE_POSITION__Ss",
+        fields: [
+            [ "Deposit", "string", "<= 1 WETH + 3,000 USDC" ],
+            [ "Minimum", "string", ">= 0.99 WETH + 2,970 USDC" ],
+            [ "Liquidity", "string", "1000000000000000000" ],
+            [ "Range", "string", "2,850 ~ 3,150 USDC/WETH" ],
+            [ "Price", "string", "3,000 USDC/WETH" ],
+            [ "Pool", "string", "0.3% base fee | 50% rebate | tick spacing 60" ],
+            [ "Warning", "string", ">>  Check protocol and token addresses  <<" ],
+            [ "WETH", "address", TOKEN_OUT ],
+            [ "USDC", "address", TOKEN_IN ],
+        ],
+    },
+    add_liquidity: {
+        action_type: "AddLiquidity", action_field: "sS__ADD_LIQUIDITY__Ss",
+        fields: [
+            [ "Position", "string", "LP #8" ],
+            [ "Deposit", "string", "<= 0.5 WETH + 1,500 USDC" ],
+            [ "Minimum", "string", ">= 0.49 WETH + 1,485 USDC" ],
+            [ "Liquidity", "string", "500000000000000000" ],
+            [ "Pool", "string", "0.3% base fee | 50% rebate | tick spacing 60" ],
+            [ "Warning", "string", ">>  Check protocol and token addresses  <<" ],
+            [ "WETH", "address", TOKEN_OUT ],
+            [ "USDC", "address", TOKEN_IN ],
+        ],
+    },
+    remove_liquidity: {
+        action_type: "RemoveLiquidity", action_field: "sS__REMOVE_LIQUIDITY__Ss",
+        fields: [
+            [ "Position", "string", "LP #8" ],
+            [ "Burn", "string", "500000000000000000 liquidity" ],
+            [ "Receive", "string", ">= 0.49 WETH + 1,485 USDC" ],
+            [ "Pool", "string", "0.3% base fee | 50% rebate | tick spacing 60" ],
+            [ "Warning", "string", ">>  Check protocol and token addresses  <<" ],
+            [ "WETH", "address", TOKEN_OUT ],
+            [ "USDC", "address", TOKEN_IN ],
+        ],
+    },
+    collect_fees: {
+        action_type: "CollectFees", action_field: "sS__COLLECT_FEES__Ss",
+        fields: [
+            [ "Position", "string", "LP #8" ],
+            [ "Receive", "string", ">= 0.01 WETH + 30 USDC" ],
+            [ "Pool", "string", "0.3% base fee | 50% rebate | tick spacing 60" ],
+            [ "Warning", "string", ">>  Check protocol and token addresses  <<" ],
+            [ "WETH", "address", TOKEN_OUT ],
+            [ "USDC", "address", TOKEN_IN ],
+        ],
+    },
+} as const;
+
+function signing_vector_for_call( protocol: Address, call: Hex )
+{
+    const decoded  =  decodeFunctionData({ abi: protocol === ROUTER ? SAFESWAP_ROUTER_ABI : SAFESWAP_NFT_ABI, data: call });
+    return SIGNING_VECTORS[ decoded.functionName as keyof typeof SIGNING_VECTORS ];
+}
+
+function signing_response( execution_data: any )
+{
+    const vector  =  signing_vector_for_call( execution_data.protocol, execution_data.call );
+    const action_fields  =  vector.fields.map(( [ name, type ] ) => ({ name, type }));
+    const types  =  {
+        ExecuteBondAs: [
+            { name: "fundings", type: "TokenAmount[]" },
+            { name: "stake", type: "TokenAmount" },
+            { name: "salt", type: "uint256" },
+            { name: "protocol", type: "address" },
+            { name: vector.action_field, type: vector.action_type },
+        ],
+        [ vector.action_type ]: action_fields,
+        TokenAmount: [ { name: "token", type: "address" }, { name: "amount", type: "uint256" } ],
+    };
+    const action  =  Object.fromEntries( vector.fields.map(( [ name, , value ] ) => [ name, value ]) );
+    const message = {
+        fundings: execution_data.fundings, stake: execution_data.stake, salt: execution_data.salt,
+        protocol: execution_data.protocol, [ vector.action_field ]: action,
+    };
+    const type_string  =  `ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,${ vector.action_type } ${ vector.action_field })${ vector.action_type }(${ vector.fields.map(( [ name, type ] ) => `${ type } ${ name }`).join( "," ) })TokenAmount(address token,uint256 amount)`;
+    return [ hashTypedData({ domain: SIGNING_DOMAIN, primaryType: "ExecuteBondAs", types, message } as any), keccak256( toBytes( type_string ) ), type_string, SIGNING_DOMAIN ] as const;
+}
 
 function make_sdk_clients( balances?: Record<string, bigint> )
 {
     const quote_calls: Array<{ address: Address, functionName: string, args: readonly unknown[] }> = [];
     const view_calls: Array<{ address: Address, functionName: string, args: readonly unknown[] }> = [];
+    const signing_requests: any[] = [];
 
     const public_client = {
         getChainId: async () => 1,
@@ -38,6 +149,19 @@ function make_sdk_clients( balances?: Record<string, bigint> )
             if(  fn === "balanceOf"  )  return balances?.[ request.address.toLowerCase() ] ?? 0n;
             if(  fn === "decimals"  )   return request.address === TOKEN_IN  ?  6  :  18;
             if(  fn === "symbol"  )     return request.address === TOKEN_IN  ?  "USDC"  :  "WETH";
+            if(  fn === "SigningDescriptor"  )  return DESCRIPTOR;
+            if(  fn === "__OFF_CHAIN__get_signing_info"  )  return signing_response( args[0] );
+            if(  fn === "build_router_signing_values" || fn === "build_nft_signing_values"  )
+            {
+                const call    =  args[ args.length - 1 ] as Hex;
+                const vector  =  signing_vector_for_call( fn === "build_router_signing_values" ? ROUTER : NFT, call );
+                const display_values: string[]  =  vector.fields.filter(( [ , type ] ) => type === "string" ).map(( [ , , value ] ) => value);
+                if(  tamper_signing_values  )  display_values[0] = "= tampered";
+                return [
+                    display_values,
+                    vector.fields.filter(( [ , type ] ) => type === "address" ).map(( [ , , value ] ) => value),
+                ];
+            }
 
             if(  fn === "BondRoute_quote_call"  )
             {
@@ -75,8 +199,13 @@ function make_sdk_clients( balances?: Record<string, bigint> )
             throw new Error( `unexpected readContract: ${ fn }` );
         },
     };
-    const wallet_client = {};
-    return { public_client, wallet_client, quote_calls, view_calls };
+    const wallet_client = {
+        signTypedData: async ( request: unknown ) => {
+            signing_requests.push( request );
+            return `0x${ "11".repeat( 65 ) }` as Hex;
+        },
+    };
+    return { public_client, wallet_client, quote_calls, view_calls, signing_requests };
 }
 
 async function make_sdk( balances?: Record<string, bigint> )
@@ -278,7 +407,7 @@ describe( "SafeSwapPositions stake-token selection", () => {
 
         await safeswap.positions.prepare_create_position({
             pool_info: POOL_INFO,
-            tick_lower: -60, tick_upper: 60,
+            sqrt_price_lower_x96: 1n, sqrt_price_upper_x96: 79228162514264337593543950336n,
             liquidity: 1n,
             sqrt_price_x96: 79228162514264337593543950336n,
             a: { token: TOKEN_OUT, amount: 200n, minimum_deposited: 0n },
@@ -296,7 +425,7 @@ describe( "SafeSwapPositions stake-token selection", () => {
 
         const op = await safeswap.positions.prepare_create_position({
             pool_info: POOL_INFO,
-            tick_lower: -60, tick_upper: 60,
+            sqrt_price_lower_x96: 1n, sqrt_price_upper_x96: 79228162514264337593543950336n,
             liquidity: 1n,
             sqrt_price_x96: 79228162514264337593543950336n,
             a: { token: TOKEN_IN, amount: 100n, minimum_deposited: 0n },
@@ -373,17 +502,17 @@ describe( "SafeSwapPositions stake-token selection", () => {
         expect( quote_calls.length ).toBe( 0 );
     });
 
-    test( "rejects misaligned ticks for create before quoting", async () => {
+    test( "rejects inverted price bounds for create before quoting", async () => {
         const { safeswap, quote_calls } = await make_sdk();
 
         await expect( safeswap.positions.prepare_create_position({
             pool_info: POOL_INFO,
-            tick_lower: -61, tick_upper: 60,
+            sqrt_price_lower_x96: 2n, sqrt_price_upper_x96: 1n,
             liquidity: 1n,
             sqrt_price_x96: 79228162514264337593543950336n,
             a: { token: TOKEN_IN, amount: 100n, minimum_deposited: 0n },
             b: { token: TOKEN_OUT, amount: 200n, minimum_deposited: 0n },
-        })).rejects.toThrow( "tick_lower must be aligned to pool_info.tick_spacing." );
+        })).rejects.toThrow( "sqrt_price_lower_x96 must be less than sqrt_price_upper_x96." );
 
         expect( quote_calls.length ).toBe( 0 );
     });
@@ -443,6 +572,104 @@ describe( "SafeSwapPositions getters", () => {
         const active_operation = { status: "active", execution_logs: [] } as any;
 
         expect( safeswap.positions.get_minted_token_id( active_operation ) ).toBeNull();
+    });
+});
+
+
+describe( "REFERENCE_2 signing previews", () => {
+
+    async function prepared_vectors()
+    {
+        const { safeswap }  =  await make_sdk({
+            [ TOKEN_IN.toLowerCase() ]:  1_000_000_000_000n,
+            [ TOKEN_OUT.toLowerCase() ]: 10_000_000_000_000_000_000n,
+        });
+
+        return [
+            await safeswap.swaps.prepare_swap_exact_input({
+                input: { token: TOKEN_IN, exact_amount: 1_000_000n },
+                output: { token: TOKEN_OUT, minimum_amount: 400_000_000_000_000_000n },
+                pool_info: POOL_INFO,
+            }),
+            await safeswap.swaps.prepare_swap_exact_output({
+                input: { token: TOKEN_IN, maximum_amount: 1_100_000n },
+                output: { token: TOKEN_OUT, exact_amount: 400_000_000_000_000_000n },
+                pool_info: POOL_INFO,
+            }),
+            await safeswap.positions.prepare_create_position({
+                pool_info: POOL_INFO,
+                sqrt_price_lower_x96: 1n, sqrt_price_upper_x96: 79228162514264337593543950336n,
+                liquidity: 1_000_000_000_000_000_000n,
+                sqrt_price_x96: 79228162514264337593543950336n,
+                a: { token: TOKEN_IN, amount: 3_000_000_000n, minimum_deposited: 2_970_000_000n },
+                b: { token: TOKEN_OUT, amount: 1_000_000_000_000_000_000n, minimum_deposited: 990_000_000_000_000_000n },
+                preferred_stake_token: TOKEN_IN,
+            }),
+            await safeswap.positions.prepare_add_liquidity({
+                token_id: 8n, liquidity: 500_000_000_000_000_000n,
+                a: { token: TOKEN_IN, amount: 1_500_000_000n, minimum_deposited: 1_485_000_000n },
+                b: { token: TOKEN_OUT, amount: 500_000_000_000_000_000n, minimum_deposited: 490_000_000_000_000_000n },
+                preferred_stake_token: TOKEN_IN,
+            }),
+            await safeswap.positions.prepare_remove_liquidity({
+                token_id: 8n, liquidity: 500_000_000_000_000_000n,
+                a: { token: TOKEN_IN, minimum_received: 1_485_000_000n },
+                b: { token: TOKEN_OUT, minimum_received: 490_000_000_000_000_000n },
+                preferred_stake_token: TOKEN_IN,
+            }),
+            await safeswap.positions.prepare_collect_fees({
+                token_id: 8n,
+                a: { token: TOKEN_IN, minimum_received: 30_000_000n },
+                b: { token: TOKEN_OUT, minimum_received: 10_000_000_000_000_000n },
+                preferred_stake_token: TOKEN_IN,
+            }),
+        ] as const;
+    }
+
+    test( "builds digest-verified golden previews for all six actions", async () => {
+        const operations  =  await prepared_vectors();
+
+        for(  const operation of operations  )
+        {
+            const preview  =  await operation.get_signing_preview();
+            const vector   =  SIGNING_VECTORS[ operation.kind ];
+
+            expect( preview.action_type ).toBe( vector.action_type );
+            expect( preview.action_field ).toBe( vector.action_field );
+            expect( preview.fields.map(( field ) => [ field.name, field.type, field.value ]) ).toEqual(
+                vector.fields.map(( field ) => [ ...field ])
+            );
+            expect( preview.digest ).toBe( signing_response( operation.execution_data )[0] );
+            expect( preview.protocol ).toBe( operation.execution_data.protocol );
+        }
+    });
+
+    test( "rejects descriptor values that do not match the BondRoute digest", async () => {
+        const { safeswap }  =  await make_sdk();
+        const operation     =  await safeswap.swaps.prepare_swap_exact_input({
+            input: { token: TOKEN_IN, exact_amount: 1_000_000n },
+            output: { token: TOKEN_OUT, minimum_amount: 1n },
+            pool_info: POOL_INFO,
+        });
+        tamper_signing_values  =  true;
+        await expect( operation.get_signing_preview() ).rejects.toThrow( "do not match the BondRoute signing digest" );
+        tamper_signing_values  =  false;
+    });
+
+    test( "passes the verified typed data to the wallet signer", async () => {
+        const { safeswap, signing_requests }  =  await make_sdk();
+        const operation  =  await safeswap.swaps.prepare_swap_exact_input({
+            input: { token: TOKEN_IN, exact_amount: 1_000_000n },
+            output: { token: TOKEN_OUT, minimum_amount: 400_000_000_000_000_000n },
+            pool_info: POOL_INFO,
+        });
+
+        const signature  =  await operation.sign_execution();
+        const preview    =  await operation.get_signing_preview();
+
+        expect( signature ).toBe( `0x${ "11".repeat( 65 ) }` );
+        expect( signing_requests.length ).toBe( 1 );
+        expect( hashTypedData( signing_requests[0] ) ).toBe( preview.digest );
     });
 });
 

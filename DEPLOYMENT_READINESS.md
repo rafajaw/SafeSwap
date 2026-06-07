@@ -9,13 +9,12 @@ router + NFT + config-hook system is ready for a target-chain deployment.
 
 **Not ready for target-chain deployment yet.**
 
-The core mechanism and active local suite are mature. The NFT signing-size blocker is resolved, but review and setup
-blockers remain:
+The core mechanism and active local suite are mature. The NFT signing-size blocker and signing execution-parity review are
+resolved, but setup blockers remain:
 
-1. The complete router/NFT signing path still needs a final execution-parity review.
-2. Deployment/mining/config tooling does not exist yet.
-3. `CONFIG_SIGNER`, target chains, canonical addresses, and initial pools are not finalized.
-4. Deployed-address fork coverage, SDK message-value integration, documentation refresh, and external audit remain open.
+1. Deployment/mining/config tooling does not exist yet.
+2. `CONFIG_SIGNER`, target chains, canonical addresses, and initial pools are not finalized.
+3. Deployed-address fork coverage, documentation refresh, and external audit remain open.
 
 ## Current Architecture
 
@@ -60,10 +59,10 @@ Measured runtime sizes:
 | --- | ---: | ---: |
 | Pre-signing `fe1d68f`, 25,000 runs | 24,462 bytes | +114 |
 | Pre-fix NFT, 10,000 runs | 33,018 bytes | -8,442 |
-| Fixed NFT, 10,000 runs | 22,942 bytes | +1,634 |
+| Current NFT, 10,000 runs | 24,075 bytes | +501 |
 | Pre-fix router, 25,000 runs | 24,369 bytes | +207 |
-| Fixed router, 25,000 runs | 19,439 bytes | +5,137 |
-| Shared signing descriptor, 10,000 runs | 14,632 bytes | +9,944 |
+| Current router, 25,000 runs | 19,471 bytes | +5,105 |
+| Current signing descriptor, 10,000 runs | 17,141 bytes | +7,435 |
 | Current descriptor, 1,000 runs | 24,284 bytes | +292 |
 
 Existing router and NFT signing tests pass through the forwarding boundary and preserve typed strings, struct hashes,
@@ -144,8 +143,8 @@ Against deployed canonical infrastructure:
 
 ### SDK
 
-- Implement the BondRoute message-values path for REFERENCE_2.
-- Test all six actions against on-chain `BondRoute_get_signing_info`.
+- [x] Implement the BondRoute message-values path for REFERENCE_2.
+- [x] Test all six actions against on-chain `BondRoute_get_signing_info` and descriptor-exported values.
 - Populate canonical router/NFT addresses only after deterministic deployment artifacts are final.
 - Update SDK docs for profile selection, NFT ownership, signing trust anchors, and target-chain support.
 
@@ -179,8 +178,8 @@ Before selecting a launch chain/pool:
 ## Setup/Deploy Entry Criteria
 
 - [x] `SafeSwapNft` and the new signing helper fit deployment size limits.
-- [ ] Signing execution-parity review is complete.
-- [ ] Full contract and SDK suites pass.
+- [x] Signing execution-parity review is complete.
+- [x] Full contract and SDK suites pass.
 - [ ] Deploy/mining/config/artifact tooling is complete and dry-run tested.
 - [ ] `CONFIG_SIGNER` and treasury control are documented.
 - [ ] Target-chain infrastructure and EVM features are verified.
@@ -193,8 +192,8 @@ Before selecting a launch chain/pool:
 
 ## Next Work
 
-1. Review signing commitments against execution for all six actions.
+1. Keep signing golden vectors synchronized with any action-parameter change.
 2. Build deployment, salt-mining, ChainConfig, and artifact tooling.
 3. Choose signer, launch chain, initial pools, and profile set.
-4. Add deployed-address fork coverage and complete SDK message values.
+4. Add deployed-address fork coverage; SDK message values are complete and digest-verified.
 5. Refresh docs, benchmarks, static analysis, and audit materials.

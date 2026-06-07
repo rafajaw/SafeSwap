@@ -208,14 +208,17 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         if(  selector == this.create_position.selector  )
         {
             CreatePositionParams memory params  =  abi.decode( call[ 4: ], (CreatePositionParams) );
-            return ModifyLiquidityLib.get_create_position_constraints( params, preferred_stake_token, preferred_fundings );
+            return ModifyLiquidityLib.get_create_position_constraints( params, preferred_stake_token );
         }
         else if(  selector == this.add_liquidity.selector  )
         {
             AddPositionLiquidityParams memory params    =  abi.decode( call[ 4: ], (AddPositionLiquidityParams) );
             SafeSwapPositionInfo memory position_info   =  get_lp_position( params.token_id );
             ModifyLiquidityParams memory modify_params  =  _add_liquidity_modify_params( params, position_info );
-            return ModifyLiquidityLib.get_constraints( modify_params, preferred_stake_token, preferred_fundings, PoolManager, position_info );
+            TokenAmount[] memory declared_fundings      =  new TokenAmount[](2);
+            declared_fundings[0]                        =  params.maximum_deposit_a;
+            declared_fundings[1]                        =  params.maximum_deposit_b;
+            return ModifyLiquidityLib.get_constraints( modify_params, preferred_stake_token, declared_fundings, PoolManager, position_info );
         }
         else if(  selector == this.remove_liquidity.selector  )
         {
@@ -317,12 +320,13 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
 
     function _prepare_create_position( BondContext memory context, CreatePositionParams memory params ) internal returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
     {
-        if(  params.liquidity == 0  ||  context.fundings.length != 2  )
+        if(  params.liquidity == 0  )
         {
             revert InvalidLiquidityModification({ token_id: 0, liquidity_delta: _bounded_liquidity_for_error( params.liquidity ), funding_count: context.fundings.length });
         }
 
-        ( IERC20 token0, , IERC20 token1, )  =  SafeSwapCommon.sort_token_amount_pair( context.fundings[ 0 ], context.fundings[ 1 ] );
+        ModifyLiquidityLib.validate_create_fundings( params, context.fundings );
+        ( IERC20 token0, , IERC20 token1, )  =  SafeSwapCommon.sort_token_amount_pair( params.maximum_deposit_a, params.maximum_deposit_b );
 
         // *SOURCE OF TRUTH*  -  The user signs human Range / Price, not raw ticks. Derive the position ticks from the signed
         //                      sqrt-price bounds (snapped to tick spacing); see SIGNING_UX_REFERENCE_2.md / ModifyLiquidityLib.
@@ -370,8 +374,8 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
             tick_lower:         tick_lower,
             tick_upper:         tick_upper,
             liquidity_delta:    _positive_liquidity_delta( token_id, params.liquidity ),
-            minimum_amount_a:   params.minimum_deposited_a,
-            minimum_amount_b:   params.minimum_deposited_b
+            minimum_amount_a:   TokenAmount({ token: params.maximum_deposit_a.token, amount: params.minimum_deposit_a }),
+            minimum_amount_b:   TokenAmount({ token: params.maximum_deposit_b.token, amount: params.minimum_deposit_b })
         });
 
         position_info  =  new_position_info;
@@ -380,6 +384,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     function _prepare_add_liquidity( BondContext memory context, AddPositionLiquidityParams memory params ) internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
     {
         _require_lp_position_authority( params.token_id, context.user );
+        ModifyLiquidityLib.validate_add_fundings( params, context.fundings );
         position_info  =  get_lp_position( params.token_id );
 
         executable_params  =  _add_liquidity_modify_params( params, position_info );
@@ -409,8 +414,8 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
             tick_lower:         position_info.tick_lower,
             tick_upper:         position_info.tick_upper,
             liquidity_delta:    _positive_liquidity_delta( params.token_id, params.liquidity ),
-            minimum_amount_a:   params.minimum_deposited_a,
-            minimum_amount_b:   params.minimum_deposited_b
+            minimum_amount_a:   TokenAmount({ token: params.maximum_deposit_a.token, amount: params.minimum_deposit_a }),
+            minimum_amount_b:   TokenAmount({ token: params.maximum_deposit_b.token, amount: params.minimum_deposit_b })
         });
     }
 

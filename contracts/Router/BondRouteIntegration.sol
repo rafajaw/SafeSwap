@@ -48,7 +48,7 @@ abstract contract BondRouteIntegration is User {
      * @dev ERROR CODES:
      *      - `UnsupportedCall()` if `call` does not target a protected swap.
      */
-    function BondRoute_quote_call( bytes calldata call, IERC20, TokenAmount[] memory preferred_fundings )
+    function BondRoute_quote_call( bytes calldata call, IERC20, TokenAmount[] memory )
     public  pure override returns ( BondConstraints memory constraints )
     {
         if(  call.length < 4  )  revert UnsupportedCall( );
@@ -58,12 +58,12 @@ abstract contract BondRouteIntegration is User {
         if(  selector == this.swap_exact_input.selector  )
         {
             ExactInputSwapParams memory params  =  abi.decode( call[ 4: ], (ExactInputSwapParams) );
-            return ExactInputSwapLib.get_constraints( params, preferred_fundings );
+            return ExactInputSwapLib.get_constraints( params );
         }
         else if(  selector == this.swap_exact_output.selector  )
         {
             ExactOutputSwapParams memory params  =  abi.decode( call[ 4: ], (ExactOutputSwapParams) );
-            return ExactOutputSwapLib.get_constraints( params, preferred_fundings );
+            return ExactOutputSwapLib.get_constraints( params );
         }
         else
         {

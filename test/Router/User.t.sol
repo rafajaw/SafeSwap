@@ -310,12 +310,12 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         assertEq( uint8(_mock_pool_manager.last_unlock_data( )[0]), uint8(0), "exact input should encode the ExactInput action." );
     }
 
-    function test_swap_exact_input_reverts_when_funding_count_is_not_one( )
+    function test_swap_exact_input_quote_uses_declared_funding( )
     external
     {
         _set_up_mock_env( );
 
-        _expect_quote_revert_for_funding_count( true );
+        _assert_quote_uses_declared_funding( true );
     }
 
     function test_swap_exact_input_reverts_when_input_token_equals_output_token( )
@@ -473,12 +473,12 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         assertEq( uint8(_mock_pool_manager.last_unlock_data( )[0]), uint8(1), "exact output should encode the ExactOutput action." );
     }
 
-    function test_swap_exact_output_reverts_when_funding_count_is_not_one( )
+    function test_swap_exact_output_quote_uses_declared_funding( )
     external
     {
         _set_up_mock_env( );
 
-        _expect_quote_revert_for_funding_count( false );
+        _assert_quote_uses_declared_funding( false );
     }
 
     function test_swap_exact_output_grosses_up_output_for_protocol_fee( )
@@ -779,20 +779,20 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         _mock_router.BondRoute_quote_call( hex"123456", IERC20(address(_token0)), _one_funding(IERC20(address(_token0)), _AMOUNT_IN) );
     }
 
-    function test_bondroute_quote_exact_input_requires_one_funding( )
+    function test_bondroute_quote_exact_input_uses_declared_funding( )
     external
     {
         _set_up_mock_env( );
 
-        _expect_quote_revert_for_funding_count( true );
+        _assert_quote_uses_declared_funding( true );
     }
 
-    function test_bondroute_quote_exact_output_requires_one_funding( )
+    function test_bondroute_quote_exact_output_uses_declared_funding( )
     external
     {
         _set_up_mock_env( );
 
-        _expect_quote_revert_for_funding_count( false );
+        _assert_quote_uses_declared_funding( false );
     }
 
     function test_bondroute_quote_uses_swap_stake_percentage( )
@@ -821,6 +821,31 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         assertGt( bytes(typed_string).length, 0, "signing info should expose a readable typed string." );
         assertNotEq( struct_hash, bytes32(0), "signing info should hash the exact input params." );
         assertGt( token_amount_offset, 0, "signing info should include the TokenAmount offset." );
+    }
+
+    function test_signing_descriptor_returns_exact_input_and_output_message_values( )
+    external
+    {
+        _set_up_mock_env( );
+        SafeSwapSigningDescriptor descriptor  =  SafeSwapSigningDescriptor(_mock_router.SigningDescriptor());
+
+        ( string[] memory exact_input_values, address[] memory exact_input_addresses )  =  descriptor.build_router_signing_values(
+            abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 123)) )
+        );
+        ( string[] memory exact_output_values, address[] memory exact_output_addresses )  =  descriptor.build_router_signing_values(
+            abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(IERC20(address(_token1)), 456)) )
+        );
+        string memory input_symbol   =  TestERC20(address(_default_token_in(IERC20(address(_token1))))).symbol();
+        string memory output_symbol  =  _token1.symbol();
+
+        assertEq( exact_input_values[0], string.concat( "= 1,000 ", input_symbol ), "exact-input Pay value mismatch." );
+        assertEq( exact_input_values[1], string.concat( ">= 0.000000000000000123 ", output_symbol ), "exact-input Receive value mismatch." );
+        assertEq( exact_output_values[0], string.concat( "<= 1,000 ", input_symbol ), "exact-output Pay value mismatch." );
+        assertEq( exact_output_values[1], string.concat( "= 0.000000000000000456 ", output_symbol ), "exact-output Receive value mismatch." );
+        assertEq( exact_input_values[2], "0.3% base fee | 50% rebate | tick spacing 60", "exact-input Pool value mismatch." );
+        assertEq( exact_input_values[3], ">>  Check protocol and token addresses  <<", "exact-input Warning value mismatch." );
+        assertEq( exact_input_addresses[0], address(_token1), "exact-input token anchor mismatch." );
+        assertEq( exact_output_addresses[0], address(_token1), "exact-output token anchor mismatch." );
     }
 
     function test_bondroute_signing_info_reverts_for_unsupported_call( )
@@ -1003,22 +1028,25 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         context.creation_timestamp  =  block.timestamp - MIN_BOND_EXECUTION_DELAY_IN_SECONDS - 1;
     }
 
-    function _expect_quote_revert_for_funding_count( bool exact_input ) internal
+    function _assert_quote_uses_declared_funding( bool exact_input ) internal
     {
         TokenAmount[] memory fundings  =  new TokenAmount[](0);
         bytes memory call              =  exact_input
             ? abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 0)) )
             : abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(IERC20(address(_token1)), 100 ether)) );
 
-        vm.expectRevert( bytes(SWAPS_REQUIRE_EXACTLY_ONE_FUNDING) );
-        _mock_router.BondRoute_quote_call( call, IERC20(address(_token0)), fundings );
+        BondConstraints memory constraints  =  _mock_router.BondRoute_quote_call( call, IERC20(address(_token0)), fundings );
+
+        assertEq( constraints.min_fundings.length, 1, "swap quote should require one declared funding." );
+        assertEq( address(constraints.min_fundings[0].token), address(_token0), "swap funding token should come from calldata." );
+        assertEq( constraints.min_fundings[0].amount, _AMOUNT_IN, "swap funding amount should come from calldata." );
     }
 
     function _expect_quote_revert_same_token( bool exact_input ) internal
     {
         bytes memory call  =  exact_input
-            ? abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(IERC20(address(_token0)), 0)) )
-            : abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(IERC20(address(_token0)), 100 ether)) );
+            ? abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(IERC20(address(_token0)), _AMOUNT_IN, IERC20(address(_token0)), _pool_info(), 0)) )
+            : abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(IERC20(address(_token0)), _AMOUNT_IN, IERC20(address(_token0)), _pool_info(), 100 ether)) );
 
         vm.expectRevert( bytes(TOKENS_MUST_BE_DIFFERENT) );
         _mock_router.BondRoute_quote_call( call, IERC20(address(_token0)), _one_funding(IERC20(address(_token0)), _AMOUNT_IN) );
@@ -1060,8 +1088,10 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
             sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( 6000 ),
             liquidity: 100_000 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
-            minimum_deposited_a: TokenAmount({ token: IERC20(address(_real_token_a)), amount: 0 }),
-            minimum_deposited_b: TokenAmount({ token: IERC20(address(_real_token_b)), amount: 0 })
+            maximum_deposit_a: TokenAmount({ token: IERC20(address(_real_token_a)), amount: 1_000_000 ether }),
+            minimum_deposit_a: 0,
+            maximum_deposit_b: TokenAmount({ token: IERC20(address(_real_token_b)), amount: 1_000_000 ether }),
+            minimum_deposit_b: 0
         });
 
         TokenAmount[] memory fundings  =  new TokenAmount[](2);

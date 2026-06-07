@@ -74,7 +74,7 @@ contract SafeSwapSigningDescriptor is ISafeSwapSigningDescriptor, PoolManagerInt
         {
             AddPositionLiquidityParams memory params  =  abi.decode( protected_call[ 4: ], (AddPositionLiquidityParams) );
             SafeSwapPositionInfo memory position_info  =  safe_swap_nft.get_lp_position( params.token_id );
-            return ModifyLiquidityLib.get_add_liquidity_signing_info( params, position_info, PoolManager );
+            return ModifyLiquidityLib.get_add_liquidity_signing_info( params, position_info );
         }
         else if(  call_selector == ISafeSwapNftActions.remove_liquidity.selector  )
         {
@@ -85,6 +85,59 @@ contract SafeSwapSigningDescriptor is ISafeSwapSigningDescriptor, PoolManagerInt
         {
             CollectFeesParams memory params  =  abi.decode( protected_call[ 4: ], (CollectFeesParams) );
             return ModifyLiquidityLib.get_collect_fees_signing_info( params, safe_swap_nft.get_lp_position( params.token_id ) );
+        }
+        else
+        {
+            revert UnsupportedCall( );
+        }
+    }
+
+    function build_router_signing_values( bytes calldata protected_call )
+    external  view returns ( string[] memory display_values, address[] memory token_addresses )
+    {
+        if(  protected_call.length < 4  )  revert UnsupportedCall( );
+
+        bytes4 call_selector  =  bytes4(protected_call);
+
+        if(  call_selector == ISafeSwapRouterActions.swap_exact_input.selector  )
+        {
+            return ExactInputSwapLib.get_signing_values( abi.decode( protected_call[ 4: ], (ExactInputSwapParams) ) );
+        }
+        else if(  call_selector == ISafeSwapRouterActions.swap_exact_output.selector  )
+        {
+            return ExactOutputSwapLib.get_signing_values( abi.decode( protected_call[ 4: ], (ExactOutputSwapParams) ) );
+        }
+        else
+        {
+            revert UnsupportedCall( );
+        }
+    }
+
+    function build_nft_signing_values( ISafeSwapNft safe_swap_nft, bytes calldata protected_call )
+    external  view returns ( string[] memory display_values, address[] memory token_addresses )
+    {
+        if(  protected_call.length < 4  )  revert UnsupportedCall( );
+
+        bytes4 call_selector  =  bytes4(protected_call);
+
+        if(  call_selector == ISafeSwapNftActions.create_position.selector  )
+        {
+            return ModifyLiquidityLib.get_create_position_signing_values( abi.decode( protected_call[ 4: ], (CreatePositionParams) ) );
+        }
+        else if(  call_selector == ISafeSwapNftActions.add_liquidity.selector  )
+        {
+            AddPositionLiquidityParams memory params  =  abi.decode( protected_call[ 4: ], (AddPositionLiquidityParams) );
+            return ModifyLiquidityLib.get_add_liquidity_signing_values( params, safe_swap_nft.get_lp_position( params.token_id ) );
+        }
+        else if(  call_selector == ISafeSwapNftActions.remove_liquidity.selector  )
+        {
+            RemovePositionLiquidityParams memory params  =  abi.decode( protected_call[ 4: ], (RemovePositionLiquidityParams) );
+            return ModifyLiquidityLib.get_remove_liquidity_signing_values( params, safe_swap_nft.get_lp_position( params.token_id ) );
+        }
+        else if(  call_selector == ISafeSwapNftActions.collect_fees.selector  )
+        {
+            CollectFeesParams memory params  =  abi.decode( protected_call[ 4: ], (CollectFeesParams) );
+            return ModifyLiquidityLib.get_collect_fees_signing_values( params, safe_swap_nft.get_lp_position( params.token_id ) );
         }
         else
         {

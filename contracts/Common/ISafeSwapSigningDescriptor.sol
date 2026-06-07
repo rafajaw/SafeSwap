@@ -52,4 +52,10 @@ interface ISafeSwapSigningDescriptor {
 
     function build_nft_signing_info( ISafeSwapNft safe_swap_nft, bytes calldata protected_call )
     external  view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset );
+
+    function build_router_signing_values( bytes calldata protected_call )
+    external  view returns ( string[] memory display_values, address[] memory token_addresses );
+
+    function build_nft_signing_values( ISafeSwapNft safe_swap_nft, bytes calldata protected_call )
+    external  view returns ( string[] memory display_values, address[] memory token_addresses );
 }

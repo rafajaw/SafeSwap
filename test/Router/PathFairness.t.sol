@@ -197,8 +197,10 @@ contract PathFairnessTest is IPathFairnessTests, SafeSwapRealEnv {
             sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( tick_upper ),
             liquidity: _RANGE_LIQUIDITY,
             sqrt_price_x96: sqrt_price_x96,
-            minimum_deposited_a: TokenAmount({ token: _token0(), amount: 0 }),
-            minimum_deposited_b: TokenAmount({ token: _token1(), amount: 0 })
+            maximum_deposit_a: TokenAmount({ token: _token0(), amount: 1_000_000 ether }),
+            minimum_deposit_a: 0,
+            maximum_deposit_b: TokenAmount({ token: _token1(), amount: 1_000_000 ether }),
+            minimum_deposit_b: 0
         });
 
         TokenAmount[] memory fundings  =  new TokenAmount[](2);

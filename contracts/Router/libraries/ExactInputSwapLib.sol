@@ -82,17 +82,34 @@ library ExactInputSwapLib {
         );
     }
 
+    function get_signing_values( ExactInputSwapParams memory params )
+    internal view returns ( string[] memory display_values, address[] memory token_addresses )
+    {
+        string memory symbol_in   =  SigningLib.read_sanitized_symbol( params.token_in );
+        string memory symbol_out  =  SigningLib.read_sanitized_symbol( params.token_out );
+
+        display_values     =  new string[]( 4 );
+        display_values[0]  =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_EXACT, params.input_amount, SigningLib.read_token_decimals( params.token_in ), symbol_in );
+        display_values[1]  =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_AT_LEAST, params.minimum_output_amount, SigningLib.read_token_decimals( params.token_out ), symbol_out );
+        display_values[2]  =  SigningLib.render_pool_value( params.pool_info );
+        display_values[3]  =  SigningLib.WARNING_VALUE;
+
+        token_addresses     =  new address[]( 1 );
+        token_addresses[0]  =  address(params.token_out);
+    }
+
 
     // ━━━━  GET CONSTRAINTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function get_constraints( ExactInputSwapParams memory params, TokenAmount[] memory preferred_fundings )
+    function get_constraints( ExactInputSwapParams memory params )
     internal pure returns ( BondConstraints memory constraints )
     {
-        if(  preferred_fundings.length != 1  )                                       revert( SWAPS_REQUIRE_EXACTLY_ONE_FUNDING );
-        if(  address(preferred_fundings[0].token) == address(params.token_out)  )    revert( TOKENS_MUST_BE_DIFFERENT );
+        if(  address(params.token_in) == address(params.token_out)  )  revert( TOKENS_MUST_BE_DIFFERENT );
 
-        constraints.min_stake                       =  SafeSwapCommon.calculate_swap_stake( preferred_fundings[ 0 ] );
-        constraints.min_fundings                    =  preferred_fundings;
+        TokenAmount memory declared_funding         =  TokenAmount({ token: params.token_in, amount: params.input_amount });
+        constraints.min_stake                       =  SafeSwapCommon.calculate_swap_stake( declared_funding );
+        constraints.min_fundings                    =  new TokenAmount[](1);
+        constraints.min_fundings[0]                 =  declared_funding;
         constraints.min_execution_delay_in_blocks   =  MIN_BOND_EXECUTION_DELAY_IN_BLOCKS;
         constraints.min_execution_delay_in_seconds  =  MIN_BOND_EXECUTION_DELAY_IN_SECONDS;
         constraints.max_execution_delay_in_seconds  =  MAX_BOND_EXECUTION_DELAY_IN_SECONDS;

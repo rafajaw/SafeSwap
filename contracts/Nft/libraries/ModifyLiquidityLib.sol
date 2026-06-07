@@ -24,6 +24,7 @@ import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
 error InvalidLiquidityModification( uint256 token_id, int128 liquidity_delta, uint256 funding_count );
 error PositionInfoMismatch( uint256 token_id );
 error ModifyLiquidityTokensMismatch( address token0, address token1, address amount_a_token, address amount_b_token );
+error FundingDeclarationMismatch( address declared_token, uint256 declared_amount, address funded_token, uint256 funded_amount );
 
 
 // ━━━━  PARAMETERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -67,12 +68,14 @@ struct ModifyLiquidityParams {
  * @param liquidity Liquidity amount to create.
  * @param sqrt_price_x96 Initial pool price (the signed `Price`). Used to initialize the pool if it does not exist yet, and
  *        as the price the deposit is computed at.
- * @param minimum_deposited_a Minimum actual deposited amount for one pool token. Token field identifies which token.
- * @param minimum_deposited_b Minimum actual deposited amount for the other pool token. Token field identifies which token.
+ * @param maximum_deposit_a Maximum authorized deposit for token A. Must exactly match one BondRoute funding.
+ * @param minimum_deposit_a Minimum actual amount of token A that must be deposited.
+ * @param maximum_deposit_b Maximum authorized deposit for token B. Must exactly match the other BondRoute funding.
+ * @param minimum_deposit_b Minimum actual amount of token B that must be deposited.
  *
  * @dev *SOURCE OF TRUTH*  -  The signed price is authoritative; ticks are derived from `sqrt_price_lower_x96` /
  *      `sqrt_price_upper_x96` by snapping to tick spacing (`derive_ticks_from_price_bounds`). The snapped ticks therefore
- *      drift sub-display-precision from the exact signed bounds; that drift is bounded by the committed `minimum_deposited_*`
+ *      drift sub-display-precision from the exact signed bounds; that drift is bounded by the committed `minimum_deposit_*`
  *      floors (a manipulated range that moved real deposits would breach them and revert).
  */
 struct CreatePositionParams {
@@ -81,22 +84,28 @@ struct CreatePositionParams {
     uint160 sqrt_price_upper_x96;
     uint128 liquidity;
     uint160 sqrt_price_x96;
-    TokenAmount minimum_deposited_a;
-    TokenAmount minimum_deposited_b;
+    TokenAmount maximum_deposit_a;
+    uint256 minimum_deposit_a;
+    TokenAmount maximum_deposit_b;
+    uint256 minimum_deposit_b;
 }
 
 /**
  * @notice Add-liquidity parameters signed by the user.
  * @param token_id SafeSwap LP NFT id receiving more liquidity.
  * @param liquidity Liquidity amount to add.
- * @param minimum_deposited_a Minimum actual deposited amount for one pool token. Token field identifies which token.
- * @param minimum_deposited_b Minimum actual deposited amount for the other pool token. Token field identifies which token.
+ * @param maximum_deposit_a Maximum authorized deposit for token A. Must exactly match one BondRoute funding.
+ * @param minimum_deposit_a Minimum actual amount of token A that must be deposited.
+ * @param maximum_deposit_b Maximum authorized deposit for token B. Must exactly match the other BondRoute funding.
+ * @param minimum_deposit_b Minimum actual amount of token B that must be deposited.
  */
 struct AddPositionLiquidityParams {
     uint256 token_id;
     uint128 liquidity;
-    TokenAmount minimum_deposited_a;
-    TokenAmount minimum_deposited_b;
+    TokenAmount maximum_deposit_a;
+    uint256 minimum_deposit_a;
+    TokenAmount maximum_deposit_b;
+    uint256 minimum_deposit_b;
 }
 
 /**
@@ -142,7 +151,8 @@ library ModifyLiquidityLib {
     // Each LP action signs the locked symbolic receipt: role-named single-word fields, each token symbol once per role,
     // amounts at FULL_PRECISION, the two pool tokens kept as raw address anchors named by their (sanitized) symbol — token1
     // first, token0 second. Create signs the human Range / Price (token0-per-token1); raw ticks / sqrtPrice never appear.
-    // Deposit is computed from the committed liquidity + range + price (V4 math), so no separate funding field is signed.
+    // Create derives Deposit from committed liquidity + range + price. Add signs its explicit maximum deposits, which must
+    // exactly match the BondRoute funding envelope, so its digest never depends on mutable pool state.
 
     string constant CREATE_FIELD_DECLARATION   =  "CreatePosition sS__CREATE_POSITION__Ss";
     string constant ADD_FIELD_DECLARATION      =  "AddLiquidity sS__ADD_LIQUIDITY__Ss";
@@ -162,7 +172,7 @@ library ModifyLiquidityLib {
     function get_create_position_signing_info( CreatePositionParams memory params )
     internal view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
-        ( IERC20 token0, uint256 minimum0, IERC20 token1, uint256 minimum1 )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_deposited_a, params.minimum_deposited_b );
+        ( IERC20 token0, uint256 minimum0, IERC20 token1, uint256 minimum1 )  =  _resolve_create_amounts( params );
         _PoolTokens memory tokens  =  _resolve_pool_tokens( token0, token1 );
 
         string memory inner_definition  =  string.concat(
@@ -174,11 +184,32 @@ library ModifyLiquidityLib {
         struct_hash  =  _create_struct_hash( params, tokens, minimum0, minimum1, inner_definition );
     }
 
-    function get_add_liquidity_signing_info( AddPositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info, IPoolManager pool_manager )
+    function get_create_position_signing_values( CreatePositionParams memory params )
+    internal view returns ( string[] memory display_values, address[] memory token_addresses )
+    {
+        ( IERC20 token0, uint256 minimum0, IERC20 token1, uint256 minimum1 )  =  _resolve_create_amounts( params );
+        _PoolTokens memory tokens  =  _resolve_pool_tokens( token0, token1 );
+        ( uint256 deposit0, uint256 deposit1 )  =  SigningLib.calculate_amounts_for_liquidity( params.sqrt_price_x96, params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, params.liquidity );
+
+        display_values     =  new string[]( 7 );
+        display_values[0]  =  SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, deposit1, tokens.decimals1, tokens.symbol1, deposit0, tokens.decimals0, tokens.symbol0 );
+        display_values[1]  =  SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 );
+        display_values[2]  =  LibString.toString( uint256(params.liquidity) );
+        display_values[3]  =  SigningLib.render_range_value( params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, tokens.decimals0, tokens.decimals1, tokens.symbol0, tokens.symbol1 );
+        display_values[4]  =  SigningLib.render_price_value( params.sqrt_price_x96, tokens.decimals0, tokens.decimals1, tokens.symbol0, tokens.symbol1 );
+        display_values[5]  =  SigningLib.render_pool_value( params.pool_info );
+        display_values[6]  =  SigningLib.WARNING_VALUE;
+
+        token_addresses     =  new address[]( 2 );
+        token_addresses[0]  =  tokens.token1;
+        token_addresses[1]  =  tokens.token0;
+    }
+
+    function get_add_liquidity_signing_info( AddPositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info )
     internal view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
         _PoolTokens memory tokens  =  _resolve_pool_tokens( position_info.token0, position_info.token1 );
-        ( , uint256 minimum0, , uint256 minimum1 )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_deposited_a, params.minimum_deposited_b );
+        ( uint256 maximum0, uint256 minimum0, uint256 maximum1, uint256 minimum1 )  =  _resolve_add_amounts( params, position_info );
 
         string memory inner_definition  =  string.concat(
             "AddLiquidity(string Position,string Deposit,string Minimum,string Liquidity,string Pool,string Warning,address ",
@@ -186,7 +217,26 @@ library ModifyLiquidityLib {
         );
 
         ( typed_string, token_amount_offset )  =  SigningLib.build_typed_string( ADD_FIELD_DECLARATION, inner_definition );
-        struct_hash  =  _add_struct_hash( params, position_info, pool_manager, tokens, minimum0, minimum1, inner_definition );
+        struct_hash  =  _add_struct_hash( params, position_info, tokens, maximum0, minimum0, maximum1, minimum1, inner_definition );
+    }
+
+    function get_add_liquidity_signing_values( AddPositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info )
+    internal view returns ( string[] memory display_values, address[] memory token_addresses )
+    {
+        _PoolTokens memory tokens  =  _resolve_pool_tokens( position_info.token0, position_info.token1 );
+        ( uint256 maximum0, uint256 minimum0, uint256 maximum1, uint256 minimum1 )  =  _resolve_add_amounts( params, position_info );
+
+        display_values     =  new string[]( 6 );
+        display_values[0]  =  SigningLib.render_position_value( params.token_id );
+        display_values[1]  =  SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, maximum1, tokens.decimals1, tokens.symbol1, maximum0, tokens.decimals0, tokens.symbol0 );
+        display_values[2]  =  SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 );
+        display_values[3]  =  LibString.toString( uint256(params.liquidity) );
+        display_values[4]  =  SigningLib.render_pool_value( _pool_info_of( position_info ) );
+        display_values[5]  =  SigningLib.WARNING_VALUE;
+
+        token_addresses     =  new address[]( 2 );
+        token_addresses[0]  =  tokens.token1;
+        token_addresses[1]  =  tokens.token0;
     }
 
     function get_remove_liquidity_signing_info( RemovePositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info )
@@ -214,6 +264,24 @@ library ModifyLiquidityLib {
         );
     }
 
+    function get_remove_liquidity_signing_values( RemovePositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info )
+    internal view returns ( string[] memory display_values, address[] memory token_addresses )
+    {
+        _PoolTokens memory tokens  =  _resolve_pool_tokens( position_info.token0, position_info.token1 );
+        ( , uint256 received0, , uint256 received1 )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_received_a, params.minimum_received_b );
+
+        display_values     =  new string[]( 5 );
+        display_values[0]  =  SigningLib.render_position_value( params.token_id );
+        display_values[1]  =  SigningLib.render_burn_value( params.liquidity );
+        display_values[2]  =  SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, received1, tokens.decimals1, tokens.symbol1, received0, tokens.decimals0, tokens.symbol0 );
+        display_values[3]  =  SigningLib.render_pool_value( _pool_info_of( position_info ) );
+        display_values[4]  =  SigningLib.WARNING_VALUE;
+
+        token_addresses     =  new address[]( 2 );
+        token_addresses[0]  =  tokens.token1;
+        token_addresses[1]  =  tokens.token0;
+    }
+
     function get_collect_fees_signing_info( CollectFeesParams memory params, SafeSwapPositionInfo memory position_info )
     internal view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
@@ -236,6 +304,23 @@ library ModifyLiquidityLib {
             SigningLib.encode_address_word( tokens.token1 ),
             SigningLib.encode_address_word( tokens.token0 )
         );
+    }
+
+    function get_collect_fees_signing_values( CollectFeesParams memory params, SafeSwapPositionInfo memory position_info )
+    internal view returns ( string[] memory display_values, address[] memory token_addresses )
+    {
+        _PoolTokens memory tokens  =  _resolve_pool_tokens( position_info.token0, position_info.token1 );
+        ( , uint256 received0, , uint256 received1 )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_received_a, params.minimum_received_b );
+
+        display_values     =  new string[]( 4 );
+        display_values[0]  =  SigningLib.render_position_value( params.token_id );
+        display_values[1]  =  SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, received1, tokens.decimals1, tokens.symbol1, received0, tokens.decimals0, tokens.symbol0 );
+        display_values[2]  =  SigningLib.render_pool_value( _pool_info_of( position_info ) );
+        display_values[3]  =  SigningLib.WARNING_VALUE;
+
+        token_addresses     =  new address[]( 2 );
+        token_addresses[0]  =  tokens.token1;
+        token_addresses[1]  =  tokens.token0;
     }
 
 
@@ -273,22 +358,18 @@ library ModifyLiquidityLib {
     function _add_struct_hash(
         AddPositionLiquidityParams memory params,
         SafeSwapPositionInfo memory position_info,
-        IPoolManager pool_manager,
         _PoolTokens memory tokens,
+        uint256 maximum0,
         uint256 minimum0,
+        uint256 maximum1,
         uint256 minimum1,
         string memory inner_definition
-    ) private view returns ( bytes32 )
+    ) private pure returns ( bytes32 )
     {
-        ( uint160 current_sqrt_price_x96, , , )  =  pool_manager.getSlot0( _pool_key_from_position( position_info ).toId( ) );
-        uint160 sqrt_price_lower_x96  =  TickMath.getSqrtPriceAtTick( position_info.tick_lower );
-        uint160 sqrt_price_upper_x96  =  TickMath.getSqrtPriceAtTick( position_info.tick_upper );
-        ( uint256 deposit0, uint256 deposit1 )  =  SigningLib.calculate_amounts_for_liquidity( current_sqrt_price_x96, sqrt_price_lower_x96, sqrt_price_upper_x96, params.liquidity );
-
         return SigningLib.hash_words(
             SigningLib.hash_string( inner_definition ),
             SigningLib.hash_string( SigningLib.render_position_value( params.token_id ) ),
-            SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, deposit1, tokens.decimals1, tokens.symbol1, deposit0, tokens.decimals0, tokens.symbol0 ) ),
+            SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_MOST, maximum1, tokens.decimals1, tokens.symbol1, maximum0, tokens.decimals0, tokens.symbol0 ) ),
             SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, minimum1, tokens.decimals1, tokens.symbol1, minimum0, tokens.decimals0, tokens.symbol0 ) ),
             SigningLib.hash_string( LibString.toString( uint256(params.liquidity) ) ),
             SigningLib.hash_string( SigningLib.render_pool_value( _pool_info_of( position_info ) ) ),
@@ -296,6 +377,90 @@ library ModifyLiquidityLib {
             SigningLib.encode_address_word( tokens.token1 ),
             SigningLib.encode_address_word( tokens.token0 )
         );
+    }
+
+    function validate_create_fundings( CreatePositionParams memory params, TokenAmount[] memory fundings )
+    internal pure
+    {
+        _validate_declared_fundings( 0, params.liquidity, params.maximum_deposit_a, params.maximum_deposit_b, fundings );
+    }
+
+    function validate_add_fundings( AddPositionLiquidityParams memory params, TokenAmount[] memory fundings )
+    internal pure
+    {
+        _validate_declared_fundings( params.token_id, params.liquidity, params.maximum_deposit_a, params.maximum_deposit_b, fundings );
+    }
+
+    function _validate_declared_fundings(
+        uint256 token_id,
+        uint128 liquidity,
+        TokenAmount memory maximum_deposit_a,
+        TokenAmount memory maximum_deposit_b,
+        TokenAmount[] memory fundings
+    ) private pure
+    {
+        if(  fundings.length != 2  )
+        {
+            int128 bounded_liquidity  =  liquidity > uint128(type(int128).max)  ?  type(int128).max  :  int128(liquidity);
+            revert InvalidLiquidityModification({ token_id: token_id, liquidity_delta: bounded_liquidity, funding_count: fundings.length });
+        }
+
+        _validate_declared_funding( maximum_deposit_a, fundings );
+        _validate_declared_funding( maximum_deposit_b, fundings );
+    }
+
+    function _validate_declared_funding( TokenAmount memory declared, TokenAmount[] memory fundings ) private pure
+    {
+        for(  uint256 i = 0  ;  i < 2  ;  i = i + 1  )
+        {
+            if(  address(fundings[i].token) != address(declared.token)  )  continue;
+            if(  fundings[i].amount == declared.amount  )  return;
+
+            revert FundingDeclarationMismatch({
+                declared_token:  address(declared.token),
+                declared_amount: declared.amount,
+                funded_token:    address(fundings[i].token),
+                funded_amount:   fundings[i].amount
+            });
+        }
+
+        revert FundingDeclarationMismatch({
+            declared_token:  address(declared.token),
+            declared_amount: declared.amount,
+            funded_token:    address(0),
+            funded_amount:   0
+        });
+    }
+
+    function _resolve_create_amounts( CreatePositionParams memory params )
+    private pure returns ( IERC20 token0, uint256 minimum0, IERC20 token1, uint256 minimum1 )
+    {
+        TokenAmount memory minimum_deposit_a  =  TokenAmount({ token: params.maximum_deposit_a.token, amount: params.minimum_deposit_a });
+        TokenAmount memory minimum_deposit_b  =  TokenAmount({ token: params.maximum_deposit_b.token, amount: params.minimum_deposit_b });
+        return SafeSwapCommon.sort_token_amount_pair( minimum_deposit_a, minimum_deposit_b );
+    }
+
+    function _resolve_add_amounts( AddPositionLiquidityParams memory params, SafeSwapPositionInfo memory position_info )
+    private pure returns ( uint256 maximum0, uint256 minimum0, uint256 maximum1, uint256 minimum1 )
+    {
+        bool ordered_ab  =  address(params.maximum_deposit_a.token) == address(position_info.token0)
+                            &&  address(params.maximum_deposit_b.token) == address(position_info.token1);
+        bool ordered_ba  =  address(params.maximum_deposit_a.token) == address(position_info.token1)
+                            &&  address(params.maximum_deposit_b.token) == address(position_info.token0);
+
+        if(  ordered_ab == false  &&  ordered_ba == false  )
+        {
+            revert ModifyLiquidityTokensMismatch({
+                token0:          address(position_info.token0),
+                token1:          address(position_info.token1),
+                amount_a_token:  address(params.maximum_deposit_a.token),
+                amount_b_token:  address(params.maximum_deposit_b.token)
+            });
+        }
+
+        return ordered_ab
+            ? ( params.maximum_deposit_a.amount, params.minimum_deposit_a, params.maximum_deposit_b.amount, params.minimum_deposit_b )
+            : ( params.maximum_deposit_b.amount, params.minimum_deposit_b, params.maximum_deposit_a.amount, params.minimum_deposit_a );
     }
 
     function _pool_info_of( SafeSwapPositionInfo memory position_info ) private pure returns ( PoolInfo memory )
@@ -373,19 +538,20 @@ library ModifyLiquidityLib {
 
     function get_create_position_constraints(
         CreatePositionParams memory params,
-        IERC20 preferred_stake_token,
-        TokenAmount[] memory preferred_fundings
+        IERC20 preferred_stake_token
     ) internal pure returns ( BondConstraints memory constraints )
     {
-        if(  params.liquidity == 0  ||  preferred_fundings.length != 2  )
+        if(  params.liquidity == 0  )
         {
             int128 bounded_liquidity  =  params.liquidity > uint128(type(int128).max)  ?  type(int128).max  :  int128(params.liquidity);
-            revert InvalidLiquidityModification({ token_id: 0, liquidity_delta: bounded_liquidity, funding_count: preferred_fundings.length });
+            revert InvalidLiquidityModification({ token_id: 0, liquidity_delta: bounded_liquidity, funding_count: 2 });
         }
 
-        ( IERC20 token0, uint256 amount0, IERC20 token1, uint256 amount1 )  =  SafeSwapCommon.sort_token_amount_pair( preferred_fundings[ 0 ], preferred_fundings[ 1 ] );
-        _validate_minimum_tokens( token0, token1, params.minimum_deposited_a, params.minimum_deposited_b );
+        TokenAmount[] memory declared_fundings  =  new TokenAmount[](2);
+        declared_fundings[0]                    =  params.maximum_deposit_a;
+        declared_fundings[1]                    =  params.maximum_deposit_b;
 
+        ( IERC20 token0, uint256 amount0, IERC20 token1, uint256 amount1 )  =  SafeSwapCommon.sort_token_amount_pair( declared_fundings[ 0 ], declared_fundings[ 1 ] );
         constraints.min_stake                       =  SafeSwapCommon.calculate_normalized_liquidity_stake(
             params.sqrt_price_x96,
             token0,
@@ -394,7 +560,7 @@ library ModifyLiquidityLib {
             amount1,
             preferred_stake_token
         );
-        constraints.min_fundings                    =  preferred_fundings;
+        constraints.min_fundings                    =  declared_fundings;
         constraints.min_execution_delay_in_blocks   =  MIN_BOND_EXECUTION_DELAY_IN_BLOCKS;
         constraints.min_execution_delay_in_seconds  =  MIN_BOND_EXECUTION_DELAY_IN_SECONDS;
         constraints.max_execution_delay_in_seconds  =  MAX_BOND_EXECUTION_DELAY_IN_SECONDS;

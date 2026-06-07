@@ -458,7 +458,8 @@ button:disabled {
     font-weight: 740;
 }
 
-.text_field input {
+.text_field input,
+.text_field select {
     width: 100%;
     min-height: 46px;
     border: 1px solid rgba( 166, 255, 210, 0.16 );
@@ -470,7 +471,8 @@ button:disabled {
     transition: border-color 170ms ease, box-shadow 170ms ease, transform 170ms ease;
 }
 
-.text_field input:focus {
+.text_field input:focus,
+.text_field select:focus {
     border-color: rgba( 75, 255, 156, 0.72 );
     box-shadow: 0 0 0 3px rgba( 75, 255, 156, 0.14 ), 0 0 22px rgba( 75, 255, 156, 0.12 );
     transform: translateY( -1px );

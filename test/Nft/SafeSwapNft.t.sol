@@ -18,6 +18,7 @@ import { SafeSwapNft, PoolInitializationPriceMismatch, PositionUnauthorized } fr
 import { SafeSwapPositionDescriptor } from "@SafeSwapNft/SafeSwapPositionDescriptor.sol";
 import { SafeSwapSigningDescriptor } from "@SafeSwapCommon/SafeSwapSigningDescriptor.sol";
 import {
+    FundingDeclarationMismatch,
     AddPositionLiquidityParams,
     CollectFeesParams,
     CreatePositionParams,
@@ -210,14 +211,21 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _nft.BondRoute_quote_call( hex"010203", IERC20(address(_token_a)), fundings );
     }
 
-    function test_bondroute_quote_create_requires_two_fundings( )
+    function test_bondroute_quote_create_uses_declared_deposits_instead_of_preferred_fundings( )
     external
     {
         TokenAmount[] memory fundings  =  new TokenAmount[](1);
-        fundings[0]  =  TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether });
+        fundings[0]  =  TokenAmount({ token: IERC20(address(_token_b)), amount: 1 });
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, 0, int128(1 ether), 1 ) );
-        _nft.BondRoute_quote_call( abi.encodeCall( _nft.create_position, (_create_params()) ), IERC20(address(_token_a)), fundings );
+        BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
+            abi.encodeCall( _nft.create_position, (_create_params()) ),
+            IERC20(address(_token_a)),
+            fundings
+        );
+
+        assertEq( constraints.min_fundings.length, 2, "create quote should require both declared maximum deposits." );
+        assertEq( constraints.min_fundings[0].amount, 100 ether, "token A funding should come from calldata." );
+        assertEq( constraints.min_fundings[1].amount, 100 ether, "token B funding should come from calldata." );
     }
 
     function test_bondroute_quote_create_computes_normalized_liquidity_stake( )
@@ -236,7 +244,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         assertEq( constraints.min_fundings.length, 2, "create quote should preserve the two required fundings." );
     }
 
-    function test_bondroute_quote_add_requires_two_fundings( )
+    function test_bondroute_quote_add_uses_declared_deposits_instead_of_preferred_fundings( )
     external
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
@@ -244,8 +252,15 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         TokenAmount[] memory fundings  =  new TokenAmount[](1);
         fundings[0]  =  TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether });
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(1 ether), 1 ) );
-        _nft.BondRoute_quote_call( abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) ), IERC20(address(_token_a)), fundings );
+        BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
+            abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) ),
+            IERC20(address(_token_a)),
+            fundings
+        );
+
+        assertEq( constraints.min_fundings.length, 2, "add quote should require both declared maximum deposits." );
+        assertEq( constraints.min_fundings[0].amount, 100 ether, "token A funding should come from calldata." );
+        assertEq( constraints.min_fundings[1].amount, 100 ether, "token B funding should come from calldata." );
     }
 
     function test_bondroute_quote_add_computes_normalized_liquidity_stake_from_current_pool_price( )
@@ -357,11 +372,16 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        ( string memory typed_string, , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
-            abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) )
+        bytes memory call  =  abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) );
+        ( string memory typed_string, bytes32 struct_hash_before, uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
+            call
         );
 
+        _seed_slot0( _pool_key(), _SQRT_PRICE_1_1 * 2 );
+        ( , bytes32 struct_hash_after, )  =  _nft.BondRoute_get_signing_info( call );
+
         assertEq( token_amount_offset, 249, "add-liquidity signing info should return the TokenAmount type offset." );
+        assertEq( struct_hash_after, struct_hash_before, "add-liquidity signing hash must not depend on live pool price." );
         _assert_token_amount_offset( typed_string, token_amount_offset );
     }
 
@@ -389,6 +409,40 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
 
         assertEq( token_amount_offset, 214, "collect-fees signing info should return the TokenAmount type offset." );
         _assert_token_amount_offset( typed_string, token_amount_offset );
+    }
+
+    function test_signing_descriptor_returns_all_nft_message_values( )
+    external
+    {
+        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+        SafeSwapSigningDescriptor descriptor  =  SafeSwapSigningDescriptor(_nft.SigningDescriptor());
+
+        ( string[] memory create_values, address[] memory create_addresses )  =  descriptor.build_nft_signing_values(
+            _nft, abi.encodeCall( _nft.create_position, (_create_params()) )
+        );
+        ( string[] memory add_values, address[] memory add_addresses )  =  descriptor.build_nft_signing_values(
+            _nft, abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) )
+        );
+        ( string[] memory remove_values, address[] memory remove_addresses )  =  descriptor.build_nft_signing_values(
+            _nft, abi.encodeCall( _nft.remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) )
+        );
+        ( string[] memory collect_values, address[] memory collect_addresses )  =  descriptor.build_nft_signing_values(
+            _nft, abi.encodeCall( _nft.collect_fees, (_collect_params(_minted_token_id)) )
+        );
+
+        assertEq( create_values.length, 7, "create display-value count mismatch." );
+        assertEq( add_values.length, 6, "add display-value count mismatch." );
+        assertEq( remove_values.length, 5, "remove display-value count mismatch." );
+        assertEq( collect_values.length, 4, "collect display-value count mismatch." );
+        assertTrue( _contains( add_values[0], "LP #" ), "add Position value mismatch." );
+        assertEq( remove_values[1], "1000000000000000000 liquidity", "remove Burn value mismatch." );
+        assertEq( collect_values[1], ">= 0 TKNB + 0 TKNA", "collect Receive value mismatch." );
+        assertEq( create_values[5], "0.3% base fee | 50% rebate | tick spacing 60", "create Pool value mismatch." );
+        assertEq( create_values[6], ">>  Check protocol and token addresses  <<", "create Warning value mismatch." );
+        assertEq( create_addresses.length, 2, "create token-anchor count mismatch." );
+        assertEq( add_addresses.length, 2, "add token-anchor count mismatch." );
+        assertEq( remove_addresses.length, 2, "remove token-anchor count mismatch." );
+        assertEq( collect_addresses.length, 2, "collect token-anchor count mismatch." );
     }
 
     function test_bondroute_signing_info_reverts_for_unsupported_call( )
@@ -486,6 +540,22 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         assertEq( position_info.tick_upper, 120, "metadata should store upper tick." );
     }
 
+    function test_create_position_reverts_when_fundings_do_not_exactly_match_declared_deposits( )
+    external
+    {
+        vm.expectRevert( abi.encodeWithSelector(
+            FundingDeclarationMismatch.selector,
+            address(_token_a),
+            100 ether,
+            address(_token_a),
+            101 ether
+        ));
+        _execute_entry_point(
+            abi.encodeCall( _nft.create_position, (_create_params()) ),
+            _context( _two_fundings( 101 ether, 100 ether ) )
+        );
+    }
+
     function test_add_liquidity_requires_owner_or_approved_operator( )
     external
     {
@@ -558,7 +628,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_add_liquidity_as( _USER, _add_params( _minted_token_id,uint128(type(int128).max) + 1 ), _two_fundings( 100 ether, 100 ether ) );
     }
 
-    function test_add_liquidity_reverts_when_funding_count_is_not_two( )
+    function test_add_liquidity_reverts_when_fundings_do_not_exactly_match_declared_deposits( )
     external
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
@@ -566,17 +636,26 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         TokenAmount[] memory fundings  =  new TokenAmount[](1);
         fundings[0]  =  TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether });
 
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(1 ether), 1 ) );
+        vm.expectRevert();
         _execute_add_liquidity_as( _USER, _add_params( _minted_token_id,1 ether ), fundings );
+
+        vm.expectRevert( abi.encodeWithSelector(
+            FundingDeclarationMismatch.selector,
+            address(_token_a),
+            100 ether,
+            address(_token_a),
+            101 ether
+        ));
+        _execute_add_liquidity_as( _USER, _add_params( _minted_token_id,1 ether ), _two_fundings( 101 ether, 100 ether ) );
     }
 
-    function test_add_liquidity_reverts_when_minimum_token_addresses_do_not_match_position_tokens( )
+    function test_add_liquidity_reverts_when_deposit_token_addresses_do_not_match_position_tokens( )
     external
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         AddPositionLiquidityParams memory params  =  _add_params( _minted_token_id,1 ether );
-        params.minimum_deposited_a.token  =  NATIVE_TOKEN;
+        params.maximum_deposit_a.token  =  NATIVE_TOKEN;
 
         vm.expectRevert();
         _execute_add_liquidity_as( _USER, params, _two_fundings( 100 ether, 100 ether ) );
@@ -589,8 +668,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _pool_manager.set_next_modify_liquidity_delta( -10 ether, 0 );
 
         AddPositionLiquidityParams memory params  =  _add_params( _minted_token_id,1 ether );
-        params.minimum_deposited_a.amount  =  10 ether;
-        params.minimum_deposited_b.amount  =  0;
+        params.minimum_deposit_a  =  10 ether;
+        params.minimum_deposit_b  =  0;
 
         _execute_add_liquidity_as( _USER, params, _two_fundings( 100 ether, 100 ether ) );
 
@@ -606,8 +685,8 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _pool_manager.set_next_modify_liquidity_delta( -10 ether, 0 );
 
         AddPositionLiquidityParams memory params  =  _add_params( _minted_token_id,1 ether );
-        params.minimum_deposited_a.amount  =  10 ether;
-        params.minimum_deposited_b.amount  =  1;
+        params.minimum_deposit_a  =  10 ether;
+        params.minimum_deposit_b  =  1;
 
         vm.expectRevert( abi.encodeWithSelector( OneSidedDepositMismatch.selector, address(_token_b), uint256(1) ) );
         _execute_add_liquidity_as( _USER, params, _two_fundings( 100 ether, 100 ether ) );
@@ -898,10 +977,12 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     function _add_params( uint256 token_id, uint128 liquidity ) internal view returns ( AddPositionLiquidityParams memory )
     {
         return AddPositionLiquidityParams({
-            token_id: token_id,
-            liquidity: liquidity,
-            minimum_deposited_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),
-            minimum_deposited_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 0 })
+            token_id:          token_id,
+            liquidity:         liquidity,
+            maximum_deposit_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether }),
+            minimum_deposit_a: 0,
+            maximum_deposit_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 100 ether }),
+            minimum_deposit_b: 0
         });
     }
 
@@ -932,8 +1013,10 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
             sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( 120 ),
             liquidity: 1 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
-            minimum_deposited_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),
-            minimum_deposited_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 0 })
+            maximum_deposit_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether }),
+            minimum_deposit_a: 0,
+            maximum_deposit_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 100 ether }),
+            minimum_deposit_b: 0
         });
     }
 

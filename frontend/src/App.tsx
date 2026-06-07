@@ -1,1175 +1,415 @@
-import { useEffect, useMemo, useState } from "react";
-import { SafeSwap, parse_safeswap_revert, type PoolInfo, type PreparedSafeSwapOperation } from "@safeswap/sdk/source";
-import type { Address } from "viem";
+import { useState } from "react";
 import {
-    BONDROUTE_ADDRESS,
-    DEFAULT_POOL_FEE,
-    DEFAULT_SLIPPAGE_PERCENT,
-    DEFAULT_TICK_LOWER,
-    DEFAULT_TICK_SPACING,
-    DEFAULT_TICK_UPPER,
-    SAFESWAP_ADDRESS,
-} from "./constants";
-import { empty_position_row, load_tracked_positions, remove_tracked_position, save_tracked_position } from "./positions";
-import { get_token_metadata, parse_token_amount, render_token_amount, require_address } from "./token_metadata";
-import type { AppView, LiquidityMode, PositionRow, PreparedOperationState, SafeSwapRuntime, SwapMode, TrackedPosition, WalletState } from "./types";
+    SafeSwap,
+    parse_safeswap_revert,
+    type PoolInfo,
+    type PreparedSafeSwapOperation,
+    type SafeSwapOperationKind,
+    type SafeSwapSigningPreview,
+} from "@safeswap/sdk/source";
+import type { Address, PublicClient } from "viem";
+import { BONDROUTE_ADDRESS, SAFESWAP_NFT_ADDRESS, SAFESWAP_ROUTER_ADDRESS } from "./constants";
+import { parse_token_amount, require_address } from "./token_metadata";
 import { connect_wallet, has_wallet_provider, short_address } from "./wallet";
+import type { WalletState } from "./types";
+import { signing_preview_rows } from "./signing_preview";
 
-type SwapFormState = {
-    mode:                  SwapMode;
-    input_token:           string;
-    output_token:          string;
-    input_amount:          string;
-    output_amount:         string;
-    output_minimum_amount: string;
-    input_maximum_amount:  string;
-    fee:                   string;
-    tick_spacing:          string;
-};
-
-type LiquidityFormState = {
-    mode:                      LiquidityMode;
-    token_a:                   string;
-    token_b:                   string;
-    amount_a:                  string;
-    amount_b:                  string;
-    minimum_added_a:           string;
-    minimum_added_b:           string;
-    minimum_received_a:        string;
-    minimum_received_b:        string;
-    liquidity:                 string;
-    fee:                       string;
-    tick_spacing:              string;
-    tick_lower:                string;
-    tick_upper:                string;
-    preferred_stake_token:     string;
-};
-
-type DonateFormState = {
-    token_a:               string;
-    token_b:               string;
-    amount_a:              string;
-    amount_b:              string;
-    fee:                   string;
-    tick_spacing:          string;
+type FormState = {
+    action: SafeSwapOperationKind;
+    token_a: string;
+    token_b: string;
+    amount_a: string;
+    amount_b: string;
+    minimum_a: string;
+    minimum_b: string;
+    token_id: string;
+    liquidity: string;
+    sqrt_price_lower_x96: string;
+    sqrt_price_upper_x96: string;
+    sqrt_price_x96: string;
+    base_fee_bps: string;
+    rebate_percent: string;
+    tick_spacing: string;
     preferred_stake_token: string;
 };
 
-type ImpactStory = {
-    headline:          string;
-    primary_label:     string;
-    primary_value:     string;
-    secondary_label:   string;
-    secondary_value:   string;
-    proof_label:       string;
-    proof_value:       string;
+type ReviewState = {
+    operation: PreparedSafeSwapOperation;
+    preview:   SafeSwapSigningPreview;
 };
 
-type MomentumEvent = {
-    label: string;
-    value: string;
+const EMPTY_WALLET: WalletState  =  {
+    address: null, chain_id: null, public_client: null, wallet_client: null,
 };
 
-const default_swap_form: SwapFormState = {
-    mode:                  "exact_input",
-    input_token:           "",
-    output_token:          "",
-    input_amount:          "",
-    output_amount:         "",
-    output_minimum_amount: "",
-    input_maximum_amount:  "",
-    fee:                   DEFAULT_POOL_FEE,
-    tick_spacing:          DEFAULT_TICK_SPACING,
-};
-
-const default_liquidity_form: LiquidityFormState = {
-    mode:                  "add",
-    token_a:               "",
-    token_b:               "",
-    amount_a:              "",
-    amount_b:              "",
-    minimum_added_a:       "",
-    minimum_added_b:       "",
-    minimum_received_a:    "",
-    minimum_received_b:    "",
-    liquidity:             "",
-    fee:                   DEFAULT_POOL_FEE,
-    tick_spacing:          DEFAULT_TICK_SPACING,
-    tick_lower:            DEFAULT_TICK_LOWER,
-    tick_upper:            DEFAULT_TICK_UPPER,
+const DEFAULT_FORM: FormState  =  {
+    action: "swap_exact_input",
+    token_a: "",
+    token_b: "",
+    amount_a: "",
+    amount_b: "",
+    minimum_a: "0",
+    minimum_b: "0",
+    token_id: "",
+    liquidity: "",
+    sqrt_price_lower_x96: "",
+    sqrt_price_upper_x96: "",
+    sqrt_price_x96: "",
+    base_fee_bps: "30",
+    rebate_percent: "50",
+    tick_spacing: "60",
     preferred_stake_token: "",
 };
 
-const default_donate_form: DonateFormState = {
-    token_a:               "",
-    token_b:               "",
-    amount_a:              "",
-    amount_b:              "",
-    fee:                   DEFAULT_POOL_FEE,
-    tick_spacing:          DEFAULT_TICK_SPACING,
-    preferred_stake_token: "",
+const ACTION_LABELS: Record<SafeSwapOperationKind, string>  =  {
+    swap_exact_input:  "Swap exact input",
+    swap_exact_output: "Swap exact output",
+    create_position:   "Create position",
+    add_liquidity:     "Add liquidity",
+    remove_liquidity:  "Remove liquidity",
+    collect_fees:      "Collect fees",
 };
 
 export function App()
 {
-    const empty_wallet_state: WalletState                     =  { address: null, chain_id: null, public_client: null, wallet_client: null };
-    const [ wallet, set_wallet ]                              =  useState<WalletState>( empty_wallet_state );
-    const [ safeswap, set_safeswap ]                          =  useState<SafeSwap | null>( null );
-    const [ active_view, set_active_view ]                    =  useState<AppView>( "swap" );
-    const [ swap_form, set_swap_form ]                        =  useState<SwapFormState>( default_swap_form );
-    const [ liquidity_form, set_liquidity_form ]              =  useState<LiquidityFormState>( default_liquidity_form );
-    const [ donate_form, set_donate_form ]                    =  useState<DonateFormState>( default_donate_form );
-    const [ prepared_operation, set_prepared_operation ]      =  useState<PreparedOperationState | null>( null );
-    const [ tracked_positions, set_tracked_positions ]        =  useState<TrackedPosition[]>( [] );
-    const [ position_rows, set_position_rows ]                =  useState<PositionRow[]>( [] );
-    const [ is_preparing, set_is_preparing ]                  =  useState( false );
-    const [ is_dispatching, set_is_dispatching ]              =  useState( false );
-    const [ app_error, set_app_error ]                        =  useState<string | null>( null );
-    const [ status_message, set_status_message ]              =  useState<string | null>( null );
-    const [ celebration_key, set_celebration_key ]            =  useState( 0 );
-
-    const runtime  =  useMemo<SafeSwapRuntime | null>(() => {
-        if(  safeswap === null  )  return null;
-        return { safeswap, wallet };
-    }, [ safeswap, wallet ]);
-
-    const impact_story  =  useMemo(() => {
-        return build_impact_story({
-            active_view,
-            swap_form,
-            liquidity_form,
-            donate_form,
-            tracked_positions_count: tracked_positions.length,
-        });
-    }, [ active_view, swap_form, liquidity_form, donate_form, tracked_positions.length ]);
-
-    useEffect(() => {
-        set_tracked_positions( load_tracked_positions( wallet.address ) );
-    }, [ wallet.address ]);
-
-    useEffect(() => {
-        void refresh_position_rows();
-    }, [ tracked_positions, safeswap, wallet.address ]);
+    const [ wallet, set_wallet ]              =  useState<WalletState>( EMPTY_WALLET );
+    const [ safeswap, set_safeswap ]          =  useState<SafeSwap | null>( null );
+    const [ form, set_form ]                   =  useState<FormState>( DEFAULT_FORM );
+    const [ review, set_review ]               =  useState<ReviewState | null>( null );
+    const [ is_working, set_is_working ]       =  useState( false );
+    const [ error, set_error ]                 =  useState<string | null>( null );
+    const [ status, set_status ]               =  useState<string | null>( null );
 
     async function connect()
     {
-        clear_feedback();
-
+        set_error( null );
         try
         {
-            if(  SAFESWAP_ADDRESS === ""  )  throw_ui_error( "Set VITE_SAFESWAP_ADDRESS before using the app." );
-            if(  has_wallet_provider() == false  )  throw_ui_error( "Install or unlock an injected wallet." );
-
-            const connected_wallet  =  await connect_wallet();
-            if(  connected_wallet.address === null  )       throw new Error( "Wallet connection is incomplete." );
-            if(  connected_wallet.public_client === null  ) throw new Error( "Wallet connection is incomplete." );
-            if(  connected_wallet.wallet_client === null  ) throw new Error( "Wallet connection is incomplete." );
-
-            const initialized       =  await SafeSwap.init({
-                public_client:     connected_wallet.public_client,
-                wallet_client:     connected_wallet.wallet_client,
-                account:           connected_wallet.address,
-                safeswap_address:  SAFESWAP_ADDRESS,
-                bondroute_address: BONDROUTE_ADDRESS === ""  ?  undefined  :  BONDROUTE_ADDRESS,
-                on_pending_bond:   ( operation ) => set_status_message( `Recovered pending operation ${ operation.commitment_hash }.` ),
-            });
-
-            set_wallet( connected_wallet );
-            set_safeswap( initialized );
-        }
-        catch( error )
-        {
-            set_app_error( error_message( error ) );
-        }
-    }
-
-    async function prepare_active_operation()
-    {
-        if(  runtime === null  )  return set_app_error( "Connect a wallet first." );
-
-        clear_feedback();
-        set_is_preparing( true );
-
-        try
-        {
-            const operation  =  await prepare_operation( runtime );
-            const reviewed   =  await review_operation( operation );
-
-            set_prepared_operation( reviewed );
-            set_status_message( "Operation prepared. Review details before dispatching." );
-
-            if(  active_view === "liquidity"  )  await remember_liquidity_range( runtime );
-        }
-        catch( error )
-        {
-            set_app_error( error_message( error ) );
-        }
-        finally
-        {
-            set_is_preparing( false );
-        }
-    }
-
-    async function dispatch_prepared_operation()
-    {
-        if(  prepared_operation === null  )  return;
-
-        clear_feedback();
-        set_is_dispatching( true );
-
-        try
-        {
-            await prepared_operation.operation.dispatch();
-            await refresh_prepared_operation( prepared_operation.operation );
-
-            if(  prepared_operation.operation.status === "executed"  )
+            if(  SAFESWAP_ROUTER_ADDRESS === "" || SAFESWAP_NFT_ADDRESS === ""  )
             {
-                set_status_message( "Operation executed. Protected value stayed with the user." );
-                set_celebration_key( celebration_key + 1 );
+                throw new Error( "Set VITE_SAFESWAP_ROUTER_ADDRESS and VITE_SAFESWAP_NFT_ADDRESS." );
             }
-            if(  prepared_operation.operation.status === "protocol_reverted"  )
+            if(  ! has_wallet_provider()  )  throw new Error( "Install or unlock an injected wallet." );
+
+            const connected  =  await connect_wallet();
+            if(  connected.address === null || connected.public_client === null || connected.wallet_client === null  )
             {
-                const parsed  =  parse_safeswap_revert( prepared_operation.operation.revert_output );
-                set_app_error( parsed.description );
+                throw new Error( "Wallet connection is incomplete." );
             }
-            if(  prepared_operation.operation.status === "invalid_bond"  )  set_app_error( prepared_operation.operation.invalid_reason );
-        }
-        catch( error )
-        {
-            set_app_error( error_message( error ) );
-        }
-        finally
-        {
-            set_is_dispatching( false );
-            await refresh_position_rows();
-        }
-    }
 
-    async function prepare_operation( current_runtime: SafeSwapRuntime ): Promise<PreparedSafeSwapOperation>
-    {
-        if(  active_view === "swap"  )      return await prepare_swap_operation( current_runtime );
-        if(  active_view === "liquidity"  ) return await prepare_liquidity_operation( current_runtime );
-        if(  active_view === "donate"  )    return await prepare_donate_operation( current_runtime );
-        throw new Error( "Select an operation first." );
-    }
-
-    async function prepare_swap_operation( current_runtime: SafeSwapRuntime ): Promise<PreparedSafeSwapOperation>
-    {
-        const public_client  =  require_public_client( current_runtime.wallet );
-        const input_token    =  require_address( "Input token", swap_form.input_token );
-        const output_token   =  require_address( "Output token", swap_form.output_token );
-        const pool_info      =  pool_info_from_form( swap_form.fee, swap_form.tick_spacing );
-
-        if(  swap_form.mode === "exact_input"  )
-        {
-            return await current_runtime.safeswap.prepare_swap_exact_input({
-                input:     { token: input_token, exact_amount: await parse_token_amount( public_client, input_token, swap_form.input_amount ) },
-                output:    { token: output_token, minimum_amount: await parse_token_amount( public_client, output_token, swap_form.output_minimum_amount ) },
-                pool_info,
+            const sdk  =  await SafeSwap.init({
+                public_client: connected.public_client,
+                wallet_client: connected.wallet_client,
+                account: connected.address,
+                router_address: SAFESWAP_ROUTER_ADDRESS,
+                nft_address: SAFESWAP_NFT_ADDRESS,
+                bondroute_address: BONDROUTE_ADDRESS === "" ? undefined : BONDROUTE_ADDRESS,
+                on_pending_bond: ( bond ) => set_status( `Recovered pending operation ${ bond.commitment_hash }.` ),
             });
+
+            set_wallet( connected );
+            set_safeswap( sdk );
         }
-
-        return await current_runtime.safeswap.prepare_swap_exact_output({
-            input:     { token: input_token, maximum_amount: await parse_token_amount( public_client, input_token, swap_form.input_maximum_amount ) },
-            output:    { token: output_token, exact_amount: await parse_token_amount( public_client, output_token, swap_form.output_amount ) },
-            pool_info,
-        });
-    }
-
-    async function prepare_liquidity_operation( current_runtime: SafeSwapRuntime ): Promise<PreparedSafeSwapOperation>
-    {
-        const public_client          =  require_public_client( current_runtime.wallet );
-        const token_a                =  require_address( "Token A", liquidity_form.token_a );
-        const token_b                =  require_address( "Token B", liquidity_form.token_b );
-        const pool_info              =  pool_info_from_form( liquidity_form.fee, liquidity_form.tick_spacing );
-        const preferred_stake_token  =  optional_address( "Preferred stake token", liquidity_form.preferred_stake_token );
-
-        if(  liquidity_form.mode === "add"  )
+        catch( cause )
         {
-            const amount_a         =  await parse_token_amount( public_client, token_a, liquidity_form.amount_a );
-            const amount_b         =  await parse_token_amount( public_client, token_b, liquidity_form.amount_b );
-            const minimum_added_a  =  await parse_token_amount( public_client, token_a, fallback_to_zero( liquidity_form.minimum_added_a ) );
-            const minimum_added_b  =  await parse_token_amount( public_client, token_b, fallback_to_zero( liquidity_form.minimum_added_b ) );
-
-            return await current_runtime.safeswap.prepare_add_liquidity({
-                a:                     { token: token_a, amount: amount_a, minimum_added: minimum_added_a },
-                b:                     { token: token_b, amount: amount_b, minimum_added: minimum_added_b },
-                pool_info,
-                tick_lower:            number_from_form( "Tick lower", liquidity_form.tick_lower ),
-                tick_upper:            number_from_form( "Tick upper", liquidity_form.tick_upper ),
-                preferred_stake_token,
-            });
+            set_error( error_message( cause ) );
         }
-
-        const minimum_received_a  =  await parse_token_amount( public_client, token_a, fallback_to_zero( liquidity_form.minimum_received_a ) );
-        const minimum_received_b  =  await parse_token_amount( public_client, token_b, fallback_to_zero( liquidity_form.minimum_received_b ) );
-
-        return await current_runtime.safeswap.prepare_remove_liquidity({
-            a:                     { token: token_a, minimum_received: minimum_received_a },
-            b:                     { token: token_b, minimum_received: minimum_received_b },
-            pool_info,
-            tick_lower:            number_from_form( "Tick lower", liquidity_form.tick_lower ),
-            tick_upper:            number_from_form( "Tick upper", liquidity_form.tick_upper ),
-            liquidity:             bigint_from_form( "Liquidity", liquidity_form.liquidity ),
-            preferred_stake_token,
-        });
     }
 
-    async function prepare_donate_operation( current_runtime: SafeSwapRuntime ): Promise<PreparedSafeSwapOperation>
+    async function prepare()
     {
-        const public_client          =  require_public_client( current_runtime.wallet );
-        const token_a                =  require_address( "Token A", donate_form.token_a );
-        const token_b                =  require_address( "Token B", donate_form.token_b );
-        const preferred_stake_token  =  optional_address( "Preferred stake token", donate_form.preferred_stake_token );
-
-        return await current_runtime.safeswap.prepare_donate({
-            a:                     { token: token_a, amount: await parse_token_amount( public_client, token_a, donate_form.amount_a ) },
-            b:                     { token: token_b, amount: await parse_token_amount( public_client, token_b, donate_form.amount_b ) },
-            pool_info:             pool_info_from_form( donate_form.fee, donate_form.tick_spacing ),
-            preferred_stake_token,
-        });
-    }
-
-    async function review_operation( operation: PreparedSafeSwapOperation ): Promise<PreparedOperationState>
-    {
-        const description        =  await operation.render_description();
-        const missing_balances   =  await operation.get_missing_balances();
-        const missing_approvals  =  await operation.get_missing_approvals();
-
-        return { operation, description, missing_balances, missing_approvals };
-    }
-
-    async function refresh_prepared_operation( operation: PreparedSafeSwapOperation )
-    {
-        set_prepared_operation( await review_operation( operation ) );
-    }
-
-    async function remember_liquidity_range( current_runtime: SafeSwapRuntime )
-    {
-        if(  current_runtime.wallet.address === null  )  return;
-
-        const public_client     =  require_public_client( current_runtime.wallet );
-        const token_a           =  require_address( "Token A", liquidity_form.token_a );
-        const token_b           =  require_address( "Token B", liquidity_form.token_b );
-        const token_a_metadata  =  await get_token_metadata( public_client, token_a );
-        const token_b_metadata  =  await get_token_metadata( public_client, token_b );
-        const next_positions    =  save_tracked_position( current_runtime.wallet.address, {
-            token_a,
-            token_b,
-            token_a_symbol: token_a_metadata.symbol,
-            token_b_symbol: token_b_metadata.symbol,
-            fee:            number_from_form( "Fee", liquidity_form.fee ),
-            tick_spacing:   number_from_form( "Tick spacing", liquidity_form.tick_spacing ),
-            tick_lower:     number_from_form( "Tick lower", liquidity_form.tick_lower ),
-            tick_upper:     number_from_form( "Tick upper", liquidity_form.tick_upper ),
-        });
-
-        set_tracked_positions( next_positions );
-    }
-
-    async function refresh_position_rows()
-    {
-        if(  safeswap === null  ||  wallet.address === null  )
+        if(  safeswap === null || wallet.public_client === null  )
         {
-            set_position_rows( tracked_positions.map( empty_position_row ) );
+            set_error( "Connect a wallet first." );
             return;
         }
 
-        const rows  =  await Promise.all( tracked_positions.map( async ( position ) => {
-            try
-            {
-                const pool_info      =  { fee: position.fee, tick_spacing: position.tick_spacing };
-                const pool_id        =  await safeswap.get_pool_id( position.token_a, position.token_b, pool_info );
-                const position_info  =  await safeswap.get_position_info( pool_id, wallet.address as Address, position.tick_lower, position.tick_upper );
-                return { ...position, liquidity: position_info.liquidity, error: null };
-            }
-            catch( error )
-            {
-                return { ...position, liquidity: null, error: error_message( error ) };
-            }
-        }));
-
-        set_position_rows( rows );
+        set_is_working( true );
+        set_error( null );
+        set_status( null );
+        try
+        {
+            const operation  =  await prepare_operation( safeswap, wallet.public_client, form );
+            const preview    =  await operation.get_signing_preview();
+            set_review({ operation, preview });
+            set_status( "Verified against the on-chain BondRoute signing digest." );
+        }
+        catch( cause )
+        {
+            set_error( error_message( cause ) );
+        }
+        finally
+        {
+            set_is_working( false );
+        }
     }
 
-    function forget_position( id: string )
+    async function dispatch()
     {
-        if(  wallet.address === null  )  return;
-        set_tracked_positions( remove_tracked_position( wallet.address, id ) );
-    }
-
-    function clear_feedback()
-    {
-        set_app_error( null );
-        set_status_message( null );
+        if(  review === null  )  return;
+        set_is_working( true );
+        set_error( null );
+        try
+        {
+            await review.operation.dispatch();
+            if(  review.operation.status === "protocol_reverted"  )
+            {
+                set_error( parse_safeswap_revert( review.operation.revert_output ).description );
+            }
+            else
+            {
+                set_status( `Operation settled as ${ review.operation.status }.` );
+            }
+        }
+        catch( cause )
+        {
+            set_error( error_message( cause ) );
+        }
+        finally
+        {
+            set_is_working( false );
+        }
     }
 
     return (
         <main className="app_shell">
-            <LiveBackground />
-
             <header className="top_bar">
                 <div>
                     <p className="eyebrow">SafeSwap</p>
-                    <h1>Trade through the dark. Keep the spread.</h1>
+                    <h1>MEV protection for traders. Repricing revenue for LPs.</h1>
                 </div>
-
                 <div className="wallet_box">
-                    { wallet.address === null ? (
-                        <button className="primary_button" onClick={ connect }>Connect wallet</button>
-                    ) : (
-                        <>
-                            <span>{ short_address( wallet.address ) }</span>
-                            <span>Chain { wallet.chain_id }</span>
-                        </>
-                    )}
+                    { wallet.address === null
+                        ? <button className="primary_button" onClick={ connect }>Connect wallet</button>
+                        : <><span>{ short_address( wallet.address ) }</span><span>Chain { wallet.chain_id }</span></> }
                 </div>
             </header>
 
-            <section className="story_stage">
-                <div className="story_copy">
-                    <div className="live_badge">
-                        <span></span>
-                        Commit-reveal shield live
-                    </div>
-                    <h2>{ impact_story.headline }</h2>
-                    <p>
-                        SafeSwap hides the intent first, then reveals only when execution is ready. The user sees the stake,
-                        fundings, approvals, and estimated value retained before signing.
-                    </p>
-                </div>
-
-                <ImpactConsole story={ impact_story } celebration_key={ celebration_key } />
-            </section>
-
             <section className="workspace">
                 <div className="operation_panel">
-                    <ValueRail active_view={ active_view } />
+                    <label className="text_field">
+                        <span>Protected action</span>
+                        <select value={ form.action } onChange={ ( event ) => set_form({ ...form, action: event.target.value as SafeSwapOperationKind }) }>
+                            { Object.entries( ACTION_LABELS ).map(( [ value, label ] ) => <option value={ value } key={ value }>{ label }</option> ) }
+                        </select>
+                    </label>
 
-                    <nav className="tabs" aria-label="Operation type">
-                        <TabButton active_view={ active_view } view="swap" set_active_view={ set_active_view }>Swap</TabButton>
-                        <TabButton active_view={ active_view } view="liquidity" set_active_view={ set_active_view }>Liquidity</TabButton>
-                        <TabButton active_view={ active_view } view="donate" set_active_view={ set_active_view }>Donate</TabButton>
-                        <TabButton active_view={ active_view } view="positions" set_active_view={ set_active_view }>Positions</TabButton>
-                    </nav>
+                    <div className="field_grid">
+                        <Field label="Token A / input" value={ form.token_a } set_value={ ( value ) => set_form({ ...form, token_a: value }) } />
+                        <Field label="Token B / output" value={ form.token_b } set_value={ ( value ) => set_form({ ...form, token_b: value }) } />
+                    </div>
+                    <div className="field_grid">
+                        <Field label={ amount_a_label( form.action ) } value={ form.amount_a } set_value={ ( value ) => set_form({ ...form, amount_a: value }) } />
+                        <Field label={ amount_b_label( form.action ) } value={ form.amount_b } set_value={ ( value ) => set_form({ ...form, amount_b: value }) } />
+                    </div>
 
-                    { active_view === "swap"      &&  <SwapForm form={ swap_form } set_form={ set_swap_form } /> }
-                    { active_view === "liquidity" &&  <LiquidityForm form={ liquidity_form } set_form={ set_liquidity_form } /> }
-                    { active_view === "donate"    &&  <DonateForm form={ donate_form } set_form={ set_donate_form } /> }
-                    { active_view === "positions" && (
-                        <PositionsTable rows={ position_rows } forget_position={ forget_position } refresh={ refresh_position_rows } />
-                    )}
+                    { is_position_action( form.action ) && form.action !== "create_position" && (
+                        <Field label="Position token ID" value={ form.token_id } set_value={ ( value ) => set_form({ ...form, token_id: value }) } />
+                    ) }
+                    { is_liquidity_amount_action( form.action ) && (
+                        <Field label="Liquidity" value={ form.liquidity } set_value={ ( value ) => set_form({ ...form, liquidity: value }) } />
+                    ) }
+                    { form.action === "create_position" && (
+                        <>
+                            <Field label="Lower sqrt price X96" value={ form.sqrt_price_lower_x96 } set_value={ ( value ) => set_form({ ...form, sqrt_price_lower_x96: value }) } />
+                            <Field label="Upper sqrt price X96" value={ form.sqrt_price_upper_x96 } set_value={ ( value ) => set_form({ ...form, sqrt_price_upper_x96: value }) } />
+                            <Field label="Initial sqrt price X96" value={ form.sqrt_price_x96 } set_value={ ( value ) => set_form({ ...form, sqrt_price_x96: value }) } />
+                        </>
+                    ) }
+                    { is_position_action( form.action ) && (
+                        <div className="field_grid">
+                            <Field label="Minimum token A" value={ form.minimum_a } set_value={ ( value ) => set_form({ ...form, minimum_a: value }) } />
+                            <Field label="Minimum token B" value={ form.minimum_b } set_value={ ( value ) => set_form({ ...form, minimum_b: value }) } />
+                        </div>
+                    ) }
 
-                    { active_view !== "positions" && (
-                        <button className="primary_button full_width" disabled={ is_preparing } onClick={ prepare_active_operation }>
-                            { is_preparing ? "Preparing..." : "Prepare operation" }
-                        </button>
-                    )}
+                    <div className="field_grid">
+                        <Field label="Base fee (bps)" value={ form.base_fee_bps } set_value={ ( value ) => set_form({ ...form, base_fee_bps: value }) } />
+                        <Field label="Repricing capture (%)" value={ form.rebate_percent } set_value={ ( value ) => set_form({ ...form, rebate_percent: value }) } />
+                    </div>
+                    <Field label="Tick spacing" value={ form.tick_spacing } set_value={ ( value ) => set_form({ ...form, tick_spacing: value }) } />
+                    { is_position_action( form.action ) && (
+                        <Field label="Preferred stake token (optional)" value={ form.preferred_stake_token } set_value={ ( value ) => set_form({ ...form, preferred_stake_token: value }) } />
+                    ) }
+
+                    <button className="primary_button full_width" disabled={ is_working } onClick={ prepare }>
+                        { is_working ? "Preparing..." : "Prepare and verify" }
+                    </button>
                 </div>
 
-                <OperationReview
-                    prepared_operation={ prepared_operation }
-                    is_dispatching={ is_dispatching }
-                    dispatch_prepared_operation={ dispatch_prepared_operation }
-                    wallet={ wallet }
-                    impact_story={ impact_story }
-                />
+                <Review review={ review } is_working={ is_working } dispatch={ dispatch } />
             </section>
 
-            { app_error !== null && <div className="notice error_notice">{ app_error }</div> }
-            { status_message !== null && <div className="notice status_notice">{ status_message }</div> }
+            { error !== null && <div className="notice error_notice">{ error }</div> }
+            { status !== null && <div className="notice status_notice">{ status }</div> }
         </main>
     );
 }
 
-function SwapForm( props: { form: SwapFormState, set_form: ( form: SwapFormState ) => void } )
+function Review( props: { review: ReviewState | null, is_working: boolean, dispatch: () => Promise<void> } )
 {
-    const { form, set_form }  =  props;
-
-    return (
-        <div className="form_stack">
-            <SegmentedControl
-                value={ form.mode }
-                options={[ [ "exact_input", "Exact input" ], [ "exact_output", "Exact output" ] ]}
-                set_value={ ( value ) => set_form({ ...form, mode: value as SwapMode }) }
-            />
-
-            <TokenAmountField
-                label="Sell"
-                token={ form.input_token }
-                amount={ form.mode === "exact_input" ? form.input_amount : form.input_maximum_amount }
-                amount_label={ form.mode === "exact_input" ? "Exact amount" : "Maximum amount" }
-                set_token={ ( value ) => set_form({ ...form, input_token: value }) }
-                set_amount={ ( value ) => set_form( form.mode === "exact_input" ? { ...form, input_amount: value } : { ...form, input_maximum_amount: value }) }
-            />
-            <TokenAmountField
-                label="Buy"
-                token={ form.output_token }
-                amount={ form.mode === "exact_input" ? form.output_minimum_amount : form.output_amount }
-                amount_label={ form.mode === "exact_input" ? "Minimum amount" : "Exact amount" }
-                set_token={ ( value ) => set_form({ ...form, output_token: value }) }
-                set_amount={ ( value ) => set_form(
-                    form.mode === "exact_input"  ?  { ...form, output_minimum_amount: value }  :  { ...form, output_amount: value }
-                ) }
-            />
-
-            <PoolFields
-                fee={ form.fee }
-                tick_spacing={ form.tick_spacing }
-                set_fee={ ( value ) => set_form({ ...form, fee: value }) }
-                set_tick_spacing={ ( value ) => set_form({ ...form, tick_spacing: value }) }
-            />
-        </div>
-    );
-}
-
-function LiquidityForm( props: { form: LiquidityFormState, set_form: ( form: LiquidityFormState ) => void } )
-{
-    const { form, set_form }  =  props;
-
-    return (
-        <div className="form_stack">
-            <SegmentedControl
-                value={ form.mode }
-                options={[ [ "add", "Add" ], [ "remove", "Remove" ] ]}
-                set_value={ ( value ) => set_form({ ...form, mode: value as LiquidityMode }) }
-            />
-
-            <PoolPairFields
-                token_a={ form.token_a }
-                token_b={ form.token_b }
-                set_token_a={ ( value ) => set_form({ ...form, token_a: value }) }
-                set_token_b={ ( value ) => set_form({ ...form, token_b: value }) }
-            />
-
-            { form.mode === "add" ? (
-                <>
-                    <div className="field_grid">
-                        <TextField label="Token A amount" value={ form.amount_a } set_value={ ( value ) => set_form({ ...form, amount_a: value }) } />
-                        <TextField label="Token B amount" value={ form.amount_b } set_value={ ( value ) => set_form({ ...form, amount_b: value }) } />
-                    </div>
-                    <div className="field_grid">
-                        <TextField
-                            label="Minimum A added"
-                            value={ form.minimum_added_a }
-                            placeholder={ slippage_placeholder() }
-                            set_value={ ( value ) => set_form({ ...form, minimum_added_a: value }) }
-                        />
-                        <TextField
-                            label="Minimum B added"
-                            value={ form.minimum_added_b }
-                            placeholder={ slippage_placeholder() }
-                            set_value={ ( value ) => set_form({ ...form, minimum_added_b: value }) }
-                        />
-                    </div>
-                </>
-            ) : (
-                <>
-                    <TextField label="Liquidity amount" value={ form.liquidity } set_value={ ( value ) => set_form({ ...form, liquidity: value }) } />
-                    <div className="field_grid">
-                        <TextField
-                            label="Minimum A received"
-                            value={ form.minimum_received_a }
-                            placeholder={ slippage_placeholder() }
-                            set_value={ ( value ) => set_form({ ...form, minimum_received_a: value }) }
-                        />
-                        <TextField
-                            label="Minimum B received"
-                            value={ form.minimum_received_b }
-                            placeholder={ slippage_placeholder() }
-                            set_value={ ( value ) => set_form({ ...form, minimum_received_b: value }) }
-                        />
-                    </div>
-                </>
-            )}
-
-            <TickFields form={ form } set_form={ set_form } />
-            <PoolFields
-                fee={ form.fee }
-                tick_spacing={ form.tick_spacing }
-                set_fee={ ( value ) => set_form({ ...form, fee: value }) }
-                set_tick_spacing={ ( value ) => set_form({ ...form, tick_spacing: value }) }
-            />
-            <TextField
-                label="Preferred stake token"
-                value={ form.preferred_stake_token }
-                placeholder="Optional pool token address"
-                set_value={ ( value ) => set_form({ ...form, preferred_stake_token: value }) }
-            />
-        </div>
-    );
-}
-
-function DonateForm( props: { form: DonateFormState, set_form: ( form: DonateFormState ) => void } )
-{
-    const { form, set_form }  =  props;
-
-    return (
-        <div className="form_stack">
-            <PoolPairFields
-                token_a={ form.token_a }
-                token_b={ form.token_b }
-                set_token_a={ ( value ) => set_form({ ...form, token_a: value }) }
-                set_token_b={ ( value ) => set_form({ ...form, token_b: value }) }
-            />
-            <div className="field_grid">
-                <TextField label="Token A amount" value={ form.amount_a } set_value={ ( value ) => set_form({ ...form, amount_a: value }) } />
-                <TextField label="Token B amount" value={ form.amount_b } set_value={ ( value ) => set_form({ ...form, amount_b: value }) } />
-            </div>
-            <PoolFields
-                fee={ form.fee }
-                tick_spacing={ form.tick_spacing }
-                set_fee={ ( value ) => set_form({ ...form, fee: value }) }
-                set_tick_spacing={ ( value ) => set_form({ ...form, tick_spacing: value }) }
-            />
-            <TextField
-                label="Preferred stake token"
-                value={ form.preferred_stake_token }
-                placeholder="Optional pool token address"
-                set_value={ ( value ) => set_form({ ...form, preferred_stake_token: value }) }
-            />
-        </div>
-    );
-}
-
-function LiveBackground()
-{
-    return (
-        <div className="live_background" aria-hidden="true">
-            <div className="field_line line_a"></div>
-            <div className="field_line line_b"></div>
-            <div className="field_line line_c"></div>
-            <div className="value_orb orb_a"></div>
-            <div className="value_orb orb_b"></div>
-            <div className="ticker_stream">
-                <span>sealed intent</span>
-                <span>stake posted</span>
-                <span>execution window</span>
-                <span>spread retained</span>
-                <span>LP fees protected</span>
-            </div>
-        </div>
-    );
-}
-
-function ImpactConsole( props: { story: ImpactStory, celebration_key: number } )
-{
-    return (
-        <div className="impact_console" key={ props.celebration_key }>
-            <div className="impact_ring">
-                <div className="impact_core">
-                    <span>{ props.story.primary_label }</span>
-                    <strong>{ props.story.primary_value }</strong>
-                </div>
-            </div>
-
-            <div className="impact_metrics">
-                <MetricTile label={ props.story.secondary_label } value={ props.story.secondary_value } />
-                <MetricTile label={ props.story.proof_label } value={ props.story.proof_value } />
-            </div>
-        </div>
-    );
-}
-
-function MetricTile( props: { label: string, value: string } )
-{
-    return (
-        <div className="metric_tile">
-            <span>{ props.label }</span>
-            <strong>{ props.value }</strong>
-        </div>
-    );
-}
-
-function ValueRail( props: { active_view: AppView } )
-{
-    const events  =  value_events_for_view( props.active_view );
-
-    return (
-        <div className="value_rail">
-            { events.map(( event, index ) => (
-                <div className="value_step" style={{ animationDelay: `${ index * 180 }ms` }} key={ event.label }>
-                    <span>{ event.label }</span>
-                    <strong>{ event.value }</strong>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-type OperationReviewProps = {
-    prepared_operation:        PreparedOperationState | null;
-    is_dispatching:            boolean;
-    dispatch_prepared_operation: () => Promise<void>;
-    wallet:                    WalletState;
-    impact_story:              ImpactStory;
-};
-
-function OperationReview( props: OperationReviewProps )
-{
-    const { prepared_operation, is_dispatching, dispatch_prepared_operation, wallet, impact_story }  =  props;
-
-    if(  prepared_operation === null  )
+    if(  props.review === null  )
     {
-        return (
-            <aside className="review_panel empty_review">
-                <h2>Review</h2>
-                <p>
-                    Prepare an operation to see the exact SafeSwap action, BondRoute stake, funded tokens, wallet requirements,
-                    and execution window before signing.
-                </p>
-                <div className="empty_review_animation">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            </aside>
-        );
+        return <aside className="review_panel empty_review"><h2>Verified signing preview</h2><p>Prepare an action to load the exact REFERENCE_2 values committed by BondRoute.</p></aside>;
     }
 
-    const operation  =  prepared_operation.operation;
-
+    const { operation, preview }  =  props.review;
     return (
         <aside className="review_panel">
             <div className="review_header">
-                <div>
-                    <p className="eyebrow">Prepared operation</p>
-                    <h2>{ title_for_kind( operation.kind ) }</h2>
-                </div>
-                <span className="status_pill">{ operation.status }</span>
+                <div><p className="eyebrow">Digest verified</p><h2>{ ACTION_LABELS[ operation.kind ] }</h2></div>
+                <span className="status_pill">REFERENCE_2</span>
             </div>
-
-            <p className="description_text">{ prepared_operation.description }</p>
-
-            <div className="retained_value_card">
-                <span>{ impact_story.primary_label }</span>
-                <strong>{ impact_story.primary_value }</strong>
-                <small>{ impact_story.secondary_label }: { impact_story.secondary_value }</small>
-            </div>
-
-            <DetailRows
-                rows={[
-                    [ "Commitment", operation.commitment_hash ],
-                    [ "Create value", `${ operation.get_native_value_for_create().toString() } wei` ],
-                    [ "Execute value", `${ operation.get_native_value_for_execute().toString() } wei` ],
-                    [
-                        "Execution delay",
-                        operation.constraints === undefined ? "Quoted by BondRoute" : `${ operation.constraints.min_execution_delay_in_blocks } blocks`,
-                    ],
-                ]}
-            />
-
-            <TokenAmountList title="Fundings" items={ operation.execution_data.fundings } wallet={ wallet } />
-            <TokenAmountList title="Stake" items={[ operation.execution_data.stake ]} wallet={ wallet } />
-
-            <RequirementList
-                title="Missing balances"
-                empty_text="Wallet has the required balances."
-                items={ prepared_operation.missing_balances.map(( item ) => `${ item.required - item.current } short ${ item.token }` ) }
-            />
-            <RequirementList
-                title="Missing approvals"
-                empty_text="No ERC20 approvals needed before dispatch."
-                items={ prepared_operation.missing_approvals.map(( item ) => `${ item.token } approval for ${ item.spender }` ) }
-            />
-
-            <button className="primary_button full_width" disabled={ is_dispatching } onClick={ dispatch_prepared_operation }>
-                { is_dispatching ? "Dispatching..." : "Dispatch operation" }
+            <dl className="detail_rows">
+                <Row label="Protocol" value={ preview.protocol } />
+                <Row label="Action type" value={ preview.action_type } />
+                <Row label="Digest" value={ preview.digest } />
+            </dl>
+            <section className="detail_section">
+                <h3>Wallet message</h3>
+                <dl className="signing_fields">
+                    { signing_preview_rows( preview ).map(( field ) => <Row label={ field.label } value={ field.value } key={ field.label } />) }
+                </dl>
+            </section>
+            <section className="detail_section">
+                <h3>Raw commitments</h3>
+                <p className="muted_text">Fundings: { preview.fundings.map(( item ) => `${ item.amount } @ ${ item.token }`).join( ", " ) || "none" }</p>
+                <p className="muted_text">Stake: { preview.stake.amount } @ { preview.stake.token }</p>
+                <p className="muted_text">Salt: { preview.salt.toString() }</p>
+            </section>
+            <button className="primary_button full_width" disabled={ props.is_working } onClick={ props.dispatch }>
+                { props.is_working ? "Dispatching..." : "Dispatch verified operation" }
             </button>
         </aside>
     );
 }
 
-function PositionsTable( props: { rows: PositionRow[], forget_position: ( id: string ) => void, refresh: () => Promise<void> } )
+function Row( props: { label: string, value: string } )
 {
-    const { rows, forget_position, refresh }  =  props;
-
-    return (
-        <div className="positions_block">
-            <div className="section_header">
-                <div>
-                    <h2>Your tracked positions</h2>
-                    <p>SafeSwap reads position balances for ranges this browser has tracked.</p>
-                </div>
-                <button className="secondary_button" onClick={ () => void refresh() }>Refresh</button>
-            </div>
-
-            { rows.length === 0 ? (
-                <div className="empty_table">Prepare an add or remove liquidity operation to track its pool range here.</div>
-            ) : (
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Pool</th>
-                            <th>Fee</th>
-                            <th>Range</th>
-                            <th>Liquidity</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        { rows.map(( row ) => (
-                            <tr key={ row.id }>
-                                <td>{ row.token_a_symbol } / { row.token_b_symbol }</td>
-                                <td>{ row.fee }</td>
-                                <td>{ row.tick_lower } → { row.tick_upper }</td>
-                                <td>{ row.error ?? ( row.liquidity === null ? "Not loaded" : row.liquidity.toString() ) }</td>
-                                <td><button className="text_button" onClick={ () => forget_position( row.id ) }>Forget</button></td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            )}
-        </div>
-    );
+    return <div><dt>{ props.label }</dt><dd>{ props.value }</dd></div>;
 }
 
-function TokenAmountList( props: { title: string, items: Array<{ token: Address, amount: bigint }>, wallet: WalletState } )
+function Field( props: { label: string, value: string, set_value: ( value: string ) => void } )
 {
-    const [ rendered_items, set_rendered_items ]  =  useState<string[]>( [] );
-
-    useEffect(() => {
-        let is_cancelled  =  false;
-
-        async function render_items()
-        {
-            if(  props.wallet.public_client === null  )
-            {
-                set_rendered_items( props.items.map(( item ) => `${ item.amount.toString() } ${ item.token }` ) );
-                return;
-            }
-
-            const next_items  =  await Promise.all( props.items.map(( item ) => render_token_amount( props.wallet.public_client!, item.token, item.amount ) ) );
-            if(  is_cancelled == false  )  set_rendered_items( next_items );
-        }
-
-        void render_items();
-        return () => { is_cancelled = true; };
-    }, [ props.items, props.wallet.public_client ]);
-
-    return <RequirementList title={ props.title } empty_text="None" items={ rendered_items } />;
+    return <label className="text_field"><span>{ props.label }</span><input value={ props.value } onChange={ ( event ) => props.set_value( event.target.value ) } /></label>;
 }
 
-function RequirementList( props: { title: string, empty_text: string, items: string[] } )
+async function prepare_operation( sdk: SafeSwap, public_client: PublicClient, form: FormState ): Promise<PreparedSafeSwapOperation>
 {
-    return (
-        <section className="detail_section">
-            <h3>{ props.title }</h3>
-            { props.items.length === 0 ? <p className="muted_text">{ props.empty_text }</p> : (
-                <ul>
-                    { props.items.map(( item ) => <li key={ item }>{ item }</li> ) }
-                </ul>
-            )}
-        </section>
-    );
+    const token_a  =  require_address( "Token A", form.token_a );
+    const token_b  =  require_address( "Token B", form.token_b );
+    const pool_info  =  parse_pool_info( form );
+    const preferred_stake_token  =  form.preferred_stake_token.trim() === "" ? undefined : require_address( "Preferred stake token", form.preferred_stake_token );
+
+    if(  form.action === "swap_exact_input"  )
+    {
+        return await sdk.swaps.prepare_swap_exact_input({
+            input: { token: token_a, exact_amount: await parse_token_amount( public_client, token_a, form.amount_a ) },
+            output: { token: token_b, minimum_amount: await parse_token_amount( public_client, token_b, form.amount_b ) },
+            pool_info,
+        });
+    }
+    if(  form.action === "swap_exact_output"  )
+    {
+        return await sdk.swaps.prepare_swap_exact_output({
+            input: { token: token_a, maximum_amount: await parse_token_amount( public_client, token_a, form.amount_a ) },
+            output: { token: token_b, exact_amount: await parse_token_amount( public_client, token_b, form.amount_b ) },
+            pool_info,
+        });
+    }
+
+    const minimum_a  =  await parse_token_amount( public_client, token_a, form.minimum_a );
+    const minimum_b  =  await parse_token_amount( public_client, token_b, form.minimum_b );
+    if(  form.action === "create_position"  )
+    {
+        return await sdk.positions.prepare_create_position({
+            pool_info,
+            sqrt_price_lower_x96: parse_bigint( "Lower sqrt price", form.sqrt_price_lower_x96 ),
+            sqrt_price_upper_x96: parse_bigint( "Upper sqrt price", form.sqrt_price_upper_x96 ),
+            sqrt_price_x96: parse_bigint( "Initial sqrt price", form.sqrt_price_x96 ),
+            liquidity: parse_bigint( "Liquidity", form.liquidity ),
+            a: { token: token_a, amount: await parse_token_amount( public_client, token_a, form.amount_a ), minimum_deposited: minimum_a },
+            b: { token: token_b, amount: await parse_token_amount( public_client, token_b, form.amount_b ), minimum_deposited: minimum_b },
+            preferred_stake_token,
+        });
+    }
+
+    const token_id  =  parse_bigint( "Token ID", form.token_id );
+    if(  form.action === "add_liquidity"  )
+    {
+        return await sdk.positions.prepare_add_liquidity({
+            token_id, liquidity: parse_bigint( "Liquidity", form.liquidity ),
+            a: { token: token_a, amount: await parse_token_amount( public_client, token_a, form.amount_a ), minimum_deposited: minimum_a },
+            b: { token: token_b, amount: await parse_token_amount( public_client, token_b, form.amount_b ), minimum_deposited: minimum_b },
+            preferred_stake_token,
+        });
+    }
+    if(  form.action === "remove_liquidity"  )
+    {
+        return await sdk.positions.prepare_remove_liquidity({
+            token_id, liquidity: parse_bigint( "Liquidity", form.liquidity ),
+            a: { token: token_a, minimum_received: minimum_a },
+            b: { token: token_b, minimum_received: minimum_b },
+            preferred_stake_token,
+        });
+    }
+    return await sdk.positions.prepare_collect_fees({
+        token_id,
+        a: { token: token_a, minimum_received: minimum_a },
+        b: { token: token_b, minimum_received: minimum_b },
+        preferred_stake_token,
+    });
 }
 
-function DetailRows( props: { rows: Array<[ string, string ]> } )
+function parse_pool_info( form: FormState ): PoolInfo
 {
-    return (
-        <dl className="detail_rows">
-            { props.rows.map(( [ label, value ] ) => (
-                <div key={ label }>
-                    <dt>{ label }</dt>
-                    <dd>{ value }</dd>
-                </div>
-            ))}
-        </dl>
-    );
+    return {
+        base_fee_bps: parse_number( "Base fee", form.base_fee_bps ),
+        rebate_percent: parse_number( "Repricing capture", form.rebate_percent ),
+        tick_spacing: parse_number( "Tick spacing", form.tick_spacing ),
+    };
 }
 
-function TabButton( props: { active_view: AppView, view: AppView, set_active_view: ( view: AppView ) => void, children: string } )
-{
-    return (
-        <button className={ props.active_view === props.view ? "active" : "" } onClick={ () => props.set_active_view( props.view ) }>
-            { props.children }
-        </button>
-    );
-}
-
-function SegmentedControl( props: { value: string, options: Array<[ string, string ]>, set_value: ( value: string ) => void } )
-{
-    return (
-        <div className="segmented_control">
-            { props.options.map(( [ value, label ] ) => (
-                <button key={ value } className={ props.value === value ? "active" : "" } onClick={ () => props.set_value( value ) }>{ label }</button>
-            ))}
-        </div>
-    );
-}
-
-type TokenAmountFieldProps = {
-    label:        string;
-    token:        string;
-    amount:       string;
-    amount_label: string;
-    set_token:    ( value: string ) => void;
-    set_amount:   ( value: string ) => void;
-};
-
-function TokenAmountField( props: TokenAmountFieldProps )
-{
-    return (
-        <div className="token_amount_field">
-            <TextField label={ `${ props.label } token` } value={ props.token } placeholder="0x..." set_value={ props.set_token } />
-            <TextField label={ props.amount_label } value={ props.amount } placeholder="0.0" set_value={ props.set_amount } />
-        </div>
-    );
-}
-
-function PoolPairFields( props: { token_a: string, token_b: string, set_token_a: ( value: string ) => void, set_token_b: ( value: string ) => void } )
-{
-    return (
-        <div className="field_grid">
-            <TextField label="Token A" value={ props.token_a } placeholder="0x..." set_value={ props.set_token_a } />
-            <TextField label="Token B" value={ props.token_b } placeholder="0x..." set_value={ props.set_token_b } />
-        </div>
-    );
-}
-
-function PoolFields( props: { fee: string, tick_spacing: string, set_fee: ( value: string ) => void, set_tick_spacing: ( value: string ) => void } )
-{
-    return (
-        <div className="field_grid">
-            <TextField label="Pool fee" value={ props.fee } set_value={ props.set_fee } />
-            <TextField label="Tick spacing" value={ props.tick_spacing } set_value={ props.set_tick_spacing } />
-        </div>
-    );
-}
-
-function TickFields( props: { form: LiquidityFormState, set_form: ( form: LiquidityFormState ) => void } )
-{
-    return (
-        <div className="field_grid">
-            <TextField label="Tick lower" value={ props.form.tick_lower } set_value={ ( value ) => props.set_form({ ...props.form, tick_lower: value }) } />
-            <TextField label="Tick upper" value={ props.form.tick_upper } set_value={ ( value ) => props.set_form({ ...props.form, tick_upper: value }) } />
-        </div>
-    );
-}
-
-function TextField( props: { label: string, value: string, placeholder?: string, set_value: ( value: string ) => void } )
-{
-    return (
-        <label className="text_field">
-            <span>{ props.label }</span>
-            <input value={ props.value } placeholder={ props.placeholder } onChange={ ( event ) => props.set_value( event.target.value ) } />
-        </label>
-    );
-}
-
-function pool_info_from_form( fee: string, tick_spacing: string ): PoolInfo
-{
-    return { fee: number_from_form( "Fee", fee ), tick_spacing: number_from_form( "Tick spacing", tick_spacing ) };
-}
-
-function number_from_form( label: string, value: string ): number
+function parse_number( label: string, value: string ): number
 {
     const parsed  =  Number( value );
-    if(  Number.isFinite( parsed ) == false  )  throw new Error( `${ label } must be a number.` );
-    if(  Number.isInteger( parsed ) == false  ) throw new Error( `${ label } must be an integer.` );
+    if(  ! Number.isInteger( parsed )  )  throw new Error( `${ label } must be an integer.` );
     return parsed;
 }
 
-function bigint_from_form( label: string, value: string ): bigint
+function parse_bigint( label: string, value: string ): bigint
 {
-    const trimmed_value  =  value.trim();
-    if(  trimmed_value === ""  )  throw new Error( `${ label } is required.` );
-    return BigInt( trimmed_value );
+    if(  value.trim() === ""  )  throw new Error( `${ label } is required.` );
+    return BigInt( value );
 }
 
-function optional_address( label: string, value: string ): Address | undefined
+function is_position_action( action: SafeSwapOperationKind ): boolean
 {
-    if(  value.trim() === ""  )  return undefined;
-    return require_address( label, value );
+    return action !== "swap_exact_input" && action !== "swap_exact_output";
 }
 
-function fallback_to_zero( value: string ): string
+function is_liquidity_amount_action( action: SafeSwapOperationKind ): boolean
 {
-    return value.trim() === ""  ?  "0"  :  value;
+    return action === "create_position" || action === "add_liquidity" || action === "remove_liquidity";
 }
 
-function require_public_client( wallet: WalletState )
+function amount_a_label( action: SafeSwapOperationKind ): string
 {
-    if(  wallet.public_client === null  )  throw new Error( "Connect a wallet first." );
-    return wallet.public_client;
+    if(  action === "swap_exact_input"  )  return "Exact input";
+    if(  action === "swap_exact_output"  ) return "Maximum input";
+    if(  action === "create_position" || action === "add_liquidity"  )  return "Token A funding cap";
+    return "Token A amount (unused)";
 }
 
-function title_for_kind( kind: string ): string
+function amount_b_label( action: SafeSwapOperationKind ): string
 {
-    if(  kind === "swap_exact_input"  )  return "Swap exact input";
-    if(  kind === "swap_exact_output"  )  return "Swap exact output";
-    if(  kind === "add_liquidity"  )     return "Add liquidity";
-    if(  kind === "remove_liquidity"  )  return "Remove liquidity";
-    if(  kind === "donate"  )            return "Donate";
-    return "Operation";
+    if(  action === "swap_exact_input"  )  return "Minimum output";
+    if(  action === "swap_exact_output"  ) return "Exact output";
+    if(  action === "create_position" || action === "add_liquidity"  )  return "Token B funding cap";
+    return "Token B amount (unused)";
 }
 
-function build_impact_story( params: {
-    active_view: AppView;
-    swap_form: SwapFormState;
-    liquidity_form: LiquidityFormState;
-    donate_form: DonateFormState;
-    tracked_positions_count: number;
-}): ImpactStory
+function error_message( cause: unknown ): string
 {
-    if(  params.active_view === "liquidity"  )  return liquidity_impact_story( params.liquidity_form, params.tracked_positions_count );
-    if(  params.active_view === "donate"  )     return donate_impact_story( params.donate_form );
-    if(  params.active_view === "positions"  )  return positions_impact_story( params.tracked_positions_count );
-    return swap_impact_story( params.swap_form );
-}
-
-function swap_impact_story( form: SwapFormState ): ImpactStory
-{
-    const reference_amount  =  form.mode === "exact_input"  ?  form.output_minimum_amount  :  form.output_amount;
-    const estimated_saved   =  estimate_percent_amount( reference_amount, estimated_mev_rate_for_fee( form.fee ) );
-
-    return {
-        headline:        "The quote becomes a defended outcome.",
-        primary_label:   "Estimated extra kept",
-        primary_value:   estimated_saved,
-        secondary_label: "Unprotected MEV estimate",
-        secondary_value: `${ format_percent( estimated_mev_rate_for_fee( form.fee ) ) } of output`,
-        proof_label:     "User asks",
-        proof_value:     reference_amount.trim() === ""  ?  "Enter output target"  :  reference_amount,
-    };
-}
-
-function liquidity_impact_story( form: LiquidityFormState, tracked_positions_count: number ): ImpactStory
-{
-    const amount_a       =  form.mode === "add"  ?  form.amount_a  :  form.minimum_received_a;
-    const amount_b       =  form.mode === "add"  ?  form.amount_b  :  form.minimum_received_b;
-    const estimated_fee  =  estimate_percent_amount( first_non_empty( amount_a, amount_b ), fee_rate_to_percent( form.fee ) );
-
-    return {
-        headline:        form.mode === "add"  ?  "Turn idle tokens into a fee stream."  :  "Exit the range without leaking value.",
-        primary_label:   form.mode === "add"  ?  "Fee engine armed"  :  "Withdrawal shielded",
-        primary_value:   estimated_fee,
-        secondary_label: "Tracked LP ranges",
-        secondary_value: String( tracked_positions_count ),
-        proof_label:     "Range",
-        proof_value:     `${ form.tick_lower } to ${ form.tick_upper }`,
-    };
-}
-
-function donate_impact_story( form: DonateFormState ): ImpactStory
-{
-    const donated_value  =  first_non_empty( form.amount_a, form.amount_b );
-
-    return {
-        headline:        "Push yield directly to active LPs.",
-        primary_label:   "Donation routed",
-        primary_value:   donated_value === ""  ?  "Enter amount"  :  donated_value,
-        secondary_label: "LP side effect",
-        secondary_value: "More fees in range",
-        proof_label:     "Pool fee",
-        proof_value:     `${ form.fee }`,
-    };
-}
-
-function positions_impact_story( tracked_positions_count: number ): ImpactStory
-{
-    return {
-        headline:        "Your earning ranges stay visible.",
-        primary_label:   "Tracked positions",
-        primary_value:   String( tracked_positions_count ),
-        secondary_label: "On-chain reads",
-        secondary_value: "Live liquidity",
-        proof_label:     "Action",
-        proof_value:     "Refresh table",
-    };
-}
-
-function value_events_for_view( active_view: AppView ): MomentumEvent[]
-{
-    if(  active_view === "liquidity"  )
-    {
-        return [
-            { label: "Capital", value: "Deposited" },
-            { label: "Range", value: "Tracked" },
-            { label: "Fees", value: "Accruing" },
-        ];
-    }
-
-    if(  active_view === "donate"  )
-    {
-        return [
-            { label: "Tokens", value: "Donated" },
-            { label: "LPs", value: "Rewarded" },
-            { label: "Pool", value: "Strengthened" },
-        ];
-    }
-
-    if(  active_view === "positions"  )
-    {
-        return [
-            { label: "Ranges", value: "Stored" },
-            { label: "Liquidity", value: "Read" },
-            { label: "Fees", value: "Visible" },
-        ];
-    }
-
-    return [
-        { label: "Intent", value: "Hidden" },
-        { label: "Stake", value: "Posted" },
-        { label: "Spread", value: "Kept" },
-    ];
-}
-
-function estimated_mev_rate_for_fee( fee: string ): number
-{
-    const fee_number  =  Number( fee );
-    if(  Number.isFinite( fee_number ) == false  )  return 0.005;
-    if(  fee_number <= 100  )   return 0.0025;
-    if(  fee_number <= 500  )   return 0.0060;
-    if(  fee_number <= 3000  )  return 0.0120;
-    return 0.0250;
-}
-
-function fee_rate_to_percent( fee: string ): number
-{
-    const fee_number  =  Number( fee );
-    if(  Number.isFinite( fee_number ) == false  )  return 0;
-    return fee_number / 1_000_000;
-}
-
-function estimate_percent_amount( amount: string, percent: number ): string
-{
-    const amount_number  =  Number( amount );
-    if(  amount.trim() === ""  ||  Number.isFinite( amount_number ) == false  )  return "Waiting for amount";
-
-    const estimated  =  amount_number * percent;
-    if(  estimated === 0  )  return "0";
-    if(  estimated < 0.000001  )  return "<0.000001";
-    return trim_decimal( estimated.toFixed( 6 ) );
-}
-
-function format_percent( percent: number ): string
-{
-    return `${ trim_decimal( ( percent * 100 ).toFixed( 2 ) ) }%`;
-}
-
-function first_non_empty( first: string, second: string ): string
-{
-    if(  first.trim() !== ""  )  return first;
-    return second;
-}
-
-function trim_decimal( value: string ): string
-{
-    return value.replace( /0+$/, "" ).replace( /\.$/, "" );
-}
-
-function slippage_placeholder(): string
-{
-    return `Optional, default 0 (${ DEFAULT_SLIPPAGE_PERCENT }% UI hint)`;
-}
-
-function throw_ui_error( message: string ): never
-{
-    throw new Error( message );
-}
-
-function error_message( error: unknown ): string
-{
-    return error instanceof Error  ?  error.message  :  String( error );
+    return cause instanceof Error ? cause.message : String( cause );
 }

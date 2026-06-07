@@ -71,7 +71,6 @@ string constant SAFESWAP_POSITIONS_NAME                             =  "SafeSwap
 string constant SAFESWAP_POSITIONS_SYMBOL                           =  "SSLP";
 string constant SAFESWAP_POSITIONS_DESCRIPTION                      =  "LP positions earning repricing revenue in MEV-protected Uniswap V4 pools";
 
-string constant SWAPS_REQUIRE_EXACTLY_ONE_FUNDING                   =  "Swaps require exactly 1 funding";
 string constant ADD_LIQUIDITY_REQUIRES_TWO_FUNDINGS                 =  "Add liquidity requires exactly 2 fundings";
 string constant REMOVE_LIQUIDITY_REQUIRES_NO_FUNDINGS               =  "Remove liquidity requires 0 fundings";
 string constant MODIFY_LIQUIDITY_CREATE_REQUIRES_TWO_FUNDINGS       =  "Modify liquidity create or increase requires exactly 2 fundings";

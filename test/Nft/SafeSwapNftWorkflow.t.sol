@@ -202,10 +202,12 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
     function _add( address user, uint256 token_id, uint128 liquidity ) internal returns ( BondStatus status )
     {
         AddPositionLiquidityParams memory params  =  AddPositionLiquidityParams({
-            token_id: token_id,
-            liquidity: liquidity,
-            minimum_deposited_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),
-            minimum_deposited_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 0 })
+            token_id:          token_id,
+            liquidity:         liquidity,
+            maximum_deposit_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether }),
+            minimum_deposit_a: 0,
+            maximum_deposit_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 100 ether }),
+            minimum_deposit_b: 0
         });
 
         ( status, )  =  _create_and_execute_bond(
@@ -260,8 +262,10 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
             sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( 120 ),
             liquidity: 1 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
-            minimum_deposited_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),
-            minimum_deposited_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 0 })
+            maximum_deposit_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether }),
+            minimum_deposit_a: 0,
+            maximum_deposit_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 100 ether }),
+            minimum_deposit_b: 0
         });
     }
 

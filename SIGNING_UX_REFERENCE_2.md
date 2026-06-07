@@ -160,6 +160,11 @@ Message
 
 ## Create LP Position
 
+The two token funding caps are explicit `maximum_deposit_a` / `maximum_deposit_b` action parameters paired with
+`minimum_deposit_a` / `minimum_deposit_b`. SafeSwap derives BondRoute's required fundings from those maxima and requires the
+executed funding envelope to match them exactly. The displayed `Deposit` remains the deterministic liquidity requirement
+calculated from the signed liquidity, range, and initial price; the explicit maxima are the separately signed funding caps.
+
 Proposed SafeSwap type string:
 
 ```text
@@ -203,6 +208,11 @@ Message
 ```
 
 ## Add Liquidity
+
+`Deposit` is built from the explicit `maximum_deposit_a` / `maximum_deposit_b` action parameters, not from live pool price.
+SafeSwap requires those token+amount pairs to exactly match the two BondRoute fundings at execution. This deliberate
+two-level commitment gives the generic BondRoute transfer authorization protocol-specific meaning while keeping the digest
+stable if pool price moves after signing. Each paired `minimum_deposit_*` applies to the same token as its maximum.
 
 Proposed SafeSwap type string:
 

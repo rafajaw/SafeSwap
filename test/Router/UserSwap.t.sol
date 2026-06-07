@@ -162,8 +162,10 @@ contract UserSwapTest is IUserSwapWorkflowTests, SafeSwapRealEnv {
             sqrt_price_upper_x96: TickMath.getSqrtPriceAtTick( 6000 ),
             liquidity: 100_000 ether,
             sqrt_price_x96: _SQRT_PRICE_1_1,
-            minimum_deposited_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 0 }),
-            minimum_deposited_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 0 })
+            maximum_deposit_a: TokenAmount({ token: IERC20(address(_token_a)), amount: 1_000_000 ether }),
+            minimum_deposit_a: 0,
+            maximum_deposit_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 1_000_000 ether }),
+            minimum_deposit_b: 0
         });
 
         TokenAmount[] memory fundings  =  new TokenAmount[](2);

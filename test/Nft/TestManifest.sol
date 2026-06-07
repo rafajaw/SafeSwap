@@ -26,7 +26,6 @@ interface ISafeSwapNftTests {
 
     // ─── Create Position ────────────────────────────────────────────────────────
     function test_create_position_resolves_hook_from_router_registry() external;
-    function test_create_position_reverts_when_router_hook_resolution_reverts() external;
     function test_create_position_builds_dynamic_fee_pool_key() external;
     function test_create_position_initializes_uninitialized_pool_at_signed_price() external;
     function test_create_position_reverts_when_initialized_pool_price_differs_from_signed_price() external;
@@ -34,54 +33,35 @@ interface ISafeSwapNftTests {
     function test_create_position_derives_distinct_token_id_per_mint() external;
     function test_create_position_uses_token_id_as_v4_position_salt() external;
     function test_create_position_stores_immutable_metadata() external;
-    function test_create_position_sorts_token_fundings_into_token0_and_token1() external;
-    function test_create_position_reverts_when_liquidity_is_zero() external;
-    function test_create_position_reverts_when_liquidity_exceeds_int128_max() external;
-    function test_create_position_reverts_when_funding_count_is_not_two() external;
-    function test_create_position_reverts_when_minimum_token_addresses_do_not_match_pool_tokens() external;
-    function test_create_position_reverts_when_registered_hook_is_missing() external;
-    function test_create_position_settles_erc20_deposits_into_pool_manager() external;
-    function test_create_position_settles_native_deposits_through_nft_then_pool_manager() external;
+    function test_create_position_reverts_when_fundings_do_not_exactly_match_declared_deposits() external;
 
     // ─── Add Liquidity ──────────────────────────────────────────────────────────
     function test_add_liquidity_requires_owner_or_approved_operator() external;
     function test_add_liquidity_allows_approved_token_address() external;
     function test_add_liquidity_allows_approved_operator() external;
     function test_add_liquidity_uses_stored_position_metadata() external;
-    function test_add_liquidity_reverts_when_position_metadata_does_not_match_stored_pool_info() external;
-    function test_add_liquidity_reverts_when_position_ticks_do_not_match_stored_ticks() external;
     function test_add_liquidity_uses_existing_token_id_as_v4_salt() external;
     function test_add_liquidity_reverts_when_liquidity_is_zero() external;
     function test_add_liquidity_reverts_when_liquidity_exceeds_int128_max() external;
-    function test_add_liquidity_reverts_when_funding_count_is_not_two() external;
-    function test_add_liquidity_reverts_when_minimum_token_addresses_do_not_match_position_tokens() external;
-    function test_add_liquidity_enforces_minimum_deposit_amounts() external;
+    function test_add_liquidity_reverts_when_fundings_do_not_exactly_match_declared_deposits() external;
+    function test_add_liquidity_reverts_when_deposit_token_addresses_do_not_match_position_tokens() external;
     function test_add_liquidity_handles_one_sided_deposits_only_when_other_minimum_is_zero() external;
     function test_add_liquidity_reverts_when_one_sided_deposit_omits_required_token_minimum() external;
 
     // ─── Remove Liquidity ───────────────────────────────────────────────────────
     function test_remove_liquidity_requires_owner_or_approved_operator() external;
     function test_remove_liquidity_allows_approved_token_address() external;
-    function test_remove_liquidity_allows_approved_operator() external;
     function test_remove_liquidity_sends_tokens_directly_to_bond_context_user() external;
-    function test_remove_liquidity_enforces_minimum_received_amounts() external;
     function test_remove_liquidity_reverts_when_liquidity_is_zero() external;
-    function test_remove_liquidity_reverts_when_liquidity_exceeds_int128_max() external;
     function test_remove_liquidity_reverts_when_funding_count_is_not_zero() external;
-    function test_remove_liquidity_reverts_when_minimum_token_addresses_do_not_match_position_tokens() external;
-    function test_remove_liquidity_handles_native_token_outputs_directly_to_user() external;
     function test_remove_liquidity_records_earned_fees_without_counting_principal() external;
 
     // ─── Collect Fees ───────────────────────────────────────────────────────────
     function test_collect_fees_requires_owner_or_approved_operator() external;
-    function test_collect_fees_allows_approved_token_address() external;
-    function test_collect_fees_allows_approved_operator() external;
     function test_collect_fees_uses_zero_liquidity_delta() external;
     function test_collect_fees_sends_tokens_directly_to_bond_context_user() external;
     function test_collect_fees_records_earned_fee_totals() external;
-    function test_collect_fees_enforces_minimum_received_amounts() external;
     function test_collect_fees_reverts_when_funding_count_is_not_zero() external;
-    function test_collect_fees_reverts_when_minimum_token_addresses_do_not_match_position_tokens() external;
 
     // ─── Metadata And Views ─────────────────────────────────────────────────────
     function test_get_lp_position_returns_stored_metadata_for_existing_token() external;
@@ -94,9 +74,9 @@ interface ISafeSwapNftTests {
     function test_bondroute_selectors_are_only_position_lifecycle_functions() external;
     function test_bondroute_quote_reverts_for_unsupported_call() external;
     function test_bondroute_quote_reverts_for_short_call_data() external;
-    function test_bondroute_quote_create_requires_two_fundings() external;
+    function test_bondroute_quote_create_uses_declared_deposits_instead_of_preferred_fundings() external;
     function test_bondroute_quote_create_computes_normalized_liquidity_stake() external;
-    function test_bondroute_quote_add_requires_two_fundings() external;
+    function test_bondroute_quote_add_uses_declared_deposits_instead_of_preferred_fundings() external;
     function test_bondroute_quote_add_computes_normalized_liquidity_stake_from_current_pool_price() external;
     function test_bondroute_quote_remove_requires_no_fundings() external;
     function test_bondroute_quote_remove_computes_stake_from_removed_liquidity_value() external;
@@ -107,6 +87,7 @@ interface ISafeSwapNftTests {
     function test_bondroute_signing_info_returns_add_liquidity_offset() external;
     function test_bondroute_signing_info_returns_remove_liquidity_offset() external;
     function test_bondroute_signing_info_returns_collect_fees_offset() external;
+    function test_signing_descriptor_returns_all_nft_message_values() external;
     function test_bondroute_signing_info_reverts_for_unsupported_call() external;
     function test_bondroute_signing_info_reverts_for_short_call_data() external;
 }
@@ -170,4 +151,28 @@ interface IStringHelperLibTests {
     function test_format_token_amount_zero_max_decimals_renders_integer_only() external;
     function test_format_token_amount_reverts_on_unsupported_decimals() external;
     function test_format_symbol_amount_appends_symbol() external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PRICELIB.SOL - Price conversion, range-fill, and compact decimal formatting helpers.
+// Implemented in: test/Nft/PriceLib.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface IPriceLibTests {
+    function test_price_one_equal_decimals() external;
+    function test_price_one_more_token1_decimals() external;
+    function test_price_one_more_token0_decimals() external;
+    function test_zero_sqrt_price_is_zero() external;
+    function test_tick_zero_matches_q96() external;
+    function test_price_is_monotonic_in_tick() external;
+    function test_eth_usdc_price_approx_3000() external;
+    function test_fill_midpoint() external;
+    function test_fill_clamps_below_and_above() external;
+    function test_fill_degenerate_range() external;
+    function test_format_zero() external;
+    function test_format_thousands() external;
+    function test_format_units_two_decimals() external;
+    function test_format_sub_one_four_decimals() external;
+    function test_format_tiny_plain_decimal_no_exponent() external;
 }

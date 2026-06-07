@@ -49,7 +49,7 @@
 - [x] Run each suite subset independently. Common (incl. SwapSimulator), Hook, Nft (both tiers), and Router
       HookRegistry / SafeSwapRouter / User Tier 2 / workflow suites (UserSwap + PathFairness) are green.
       NOTE: `forge test --match-path` cold-compiles sparsely and skips the string-referenced `ForceCompileV4.sol` (deployCode); run a full `forge test` or `forge build` first for suites that deploy real V4.
-- [x] Run the full active test suite. Latest checkpoint: 18 suites, 336 tests passed, 0 failed.
+- [x] Run the full active test suite. Latest checkpoint: 18 suites, 339 tests passed, 0 failed.
 - [x] Use archived legacy tests as a final coverage checklist. Cross-checked all 25 legacy files vs the four manifests:
       pre-rewrite suite is mostly obsolete (donate, transient protected-context, old memory-layout structs); remaining
       behaviors already covered. Found and filled one real gap - router `unlockCallback` caller guard
@@ -71,12 +71,25 @@
       runtimes. FIXED: added one immutable `contracts/Common/SafeSwapSigningDescriptor.sol` via
       `SAFESWAP_SIGNING_DESCRIPTOR_KEY`; both router and NFT forward one high-level call while the shared descriptor owns
       all six action decoders and signing-info builders. Existing signing tests pass unchanged through both forwarding
-      boundaries. Deploy sizes: NFT 22,942 bytes at 10,000 runs
-      (1,634-byte margin), router 19,439 bytes at 25,000 runs (5,137-byte margin), shared signing descriptor 14,632 bytes at
-      10,000 runs (9,944-byte margin).
-- [ ] **P0 - Review the complete bonded signing path** after the extraction: verify every
+      boundaries. Current deploy sizes: NFT 24,075 bytes at 10,000 runs
+      (501-byte margin), router 19,471 bytes at 25,000 runs (5,105-byte margin), shared signing descriptor 17,141 bytes at
+      10,000 runs (7,435-byte margin).
+- [x] **P0 - Review the complete bonded signing path** after the extraction: verify every
       `BondRoute_get_signing_info` typed string, struct hash, display value, and token-address anchor against the parameters
-      that actually execute for both router swaps and all four NFT lifecycle calls.
+      that actually execute for both router swaps and all four NFT lifecycle calls. The shared descriptor now exports
+      ordered canonical message values for SDK/wallet use; Solidity tests cover all six value sets, and SDK golden vectors
+      rebuild and compare the complete EIP-712 digest before display or signing.
+- [x] **P0 - Remove mutable PoolManager state from the add-liquidity signature.** `AddPositionLiquidityParams` now carries
+      paired `maximum_deposit_a` / `minimum_deposit_a` and `maximum_deposit_b` / `minimum_deposit_b` fields. The signing
+      descriptor renders those explicit values without reading `getSlot0()`, and execution requires exactly two BondRoute
+      fundings whose token+amount pairs exactly match the declared maxima. A/B calldata order remains user-defined and is
+      mapped to token0/token1 only for pool interaction and display. Existing signing coverage now changes live pool price
+      between two digest reads and proves the add-liquidity hash remains stable; execution tests cover missing and mismatched
+      fundings. Contract ABI, SDK encoding/error decoding, frontend signing preview, reference docs, and manifests are aligned.
+- [x] **Make action calldata canonical for every funding request.** Exact-input and exact-output swaps derive their single
+      BondRoute funding from the signed input token+amount instead of echoing `preferred_fundings`. Create-position now uses
+      the same paired maximum/minimum deposit shape as add-liquidity, derives both required fundings from those maxima, and
+      validates exact token+amount equality at execution. Remove-liquidity and collect-fees continue to require no fundings.
 - [x] **Config-hook deployment** - solved by the self-replicating `SafeSwapHookImpl.deploy_hook(base_fee_bps,
       rebate_percent, salt)`: deploys the canonical EIP-1167 clone (OZ `Clones`, this impl baked in) at a mined salt,
       pre-flights BCD config + V4 permission bits (`HookSpawnRejected`), then `initialize_once` registers it. Callable on
@@ -96,6 +109,10 @@
       publish/archive `POOL_MANAGER_KEY`, `INITIAL_TREASURY_KEY`, `SAFESWAP_ROUTER_KEY`, `SAFESWAP_NFT_KEY`,
       `SAFESWAP_HOOK_CODEHASH_KEY`, `SAFESWAP_POSITION_DESCRIPTOR_KEY`, and
       `SAFESWAP_SIGNING_DESCRIPTOR_KEY`.
+- [ ] **Move native-token display metadata into ChainConfig for multichain support.** Native `address(0)` currently renders
+      with hardcoded symbol `"ETH"` and 18 decimals in `StringHelperLib`. Add chain-scoped native-symbol and native-decimals
+      keys, resolve and validate them in the shared signing and position descriptors, mirror the same source of truth in the
+      SDK/frontend, and add launch-chain tests covering a non-ETH native symbol and non-18 native decimals.
 - [x] Remove `legacy_tests/` - deleted after the coverage cross-check.
 - [x] Decide quoter precision + fee ceilings: keep two-pass quote simulation for exact-input and exact-output so quotes match
       execution, remove the low SafeSwap-specific repricing/total fee caps, and explicitly revert when configured surplus
@@ -188,9 +205,11 @@ Decisions already baked into both references (see the docs for the why):
       snapping/clamping cost ~4.7k-4.9k gas: ~1% of first-pool execution or ~2% when the pool already exists. Keep the signed
       human `Range` / `Price` source of truth; the one-time UX cost is small relative to BondRoute + NFT + V4 position setup.
 
-- [ ] Build the companion BondRoute SDK message-values path so wallets can render these on-chain-generated REFERENCE_2 fields
-      (see the SDK note in `SIGNING_UX_REFERENCE_2.md`). Publish the canonical router/NFT addresses in the SDK only after
-      deterministic deployment artifacts are finalized.
+- [x] Build the companion BondRoute SDK message-values path so wallets can render these on-chain-generated REFERENCE_2 fields.
+      `PreparedSafeSwapOperation.get_signing_preview()` reads the immutable descriptor, maps values to the validated dynamic
+      type string, and rejects any digest mismatch; `sign_verified_execution()` signs that exact typed data. Six SDK golden
+      vectors, tamper rejection, wallet-signing handoff, and the frontend review panel cover the complete path. Canonical
+      router/NFT address publication remains deferred until deterministic deployment artifacts are finalized.
 
 - [x] Trim insignificant zeroes in the bps percent formatters. `StringHelperLib.format_bps_as_percent` and
       `format_bps_as_percent_string` now drop a zero fraction entirely and trim trailing zeroes via `trimmed_fraction`:

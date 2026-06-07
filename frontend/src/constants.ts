@@ -8,8 +8,9 @@ export const DEFAULT_TICK_LOWER        =  "-887220";
 export const DEFAULT_TICK_UPPER        =  "887220";
 export const DEFAULT_SLIPPAGE_PERCENT  =  "0.50";
 
-export const SAFESWAP_ADDRESS  =  ( import.meta.env.VITE_SAFESWAP_ADDRESS ?? "" ) as Address | "";
-export const BONDROUTE_ADDRESS =  ( import.meta.env.VITE_BONDROUTE_ADDRESS ?? "" ) as Address | "";
+export const SAFESWAP_ROUTER_ADDRESS  =  ( import.meta.env.VITE_SAFESWAP_ROUTER_ADDRESS ?? "" ) as Address | "";
+export const SAFESWAP_NFT_ADDRESS     =  ( import.meta.env.VITE_SAFESWAP_NFT_ADDRESS ?? "" ) as Address | "";
+export const BONDROUTE_ADDRESS        =  ( import.meta.env.VITE_BONDROUTE_ADDRESS ?? "" ) as Address | "";
 
 export const NATIVE_TOKEN_METADATA = {
     symbol:   "ETH",

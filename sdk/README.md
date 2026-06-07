@@ -17,6 +17,22 @@ position manager** (LP lifecycle). The SDK mirrors that split with two objects o
 A single `SafeSwap.init()` embeds one BondRoute instance, so storage is scanned once and `on_pending_bond` recovers
 unfinished bonds from **both** surfaces in one pass.
 
+## Verified Signing Preview
+
+Every prepared operation exposes the canonical on-chain REFERENCE_2 wallet message:
+
+```typescript
+const operation  =  await safeswap.swaps.prepare_swap_exact_input( params );
+const preview    =  await operation.get_signing_preview();
+
+console.log( preview.fields );
+const signature  =  await operation.sign_verified_execution();
+```
+
+The SDK reads ordered display values from the immutable shared `SafeSwapSigningDescriptor`, combines them with BondRoute's
+validated type string and raw envelope, and recomputes the complete EIP-712 digest. It rejects the preview or signature if
+that digest differs from BondRoute's on-chain signing digest.
+
 ## Install
 
 ```bash
@@ -126,7 +142,8 @@ The NFT position manager owns the V4 positions (salt = token id). The user holds
 // Create a new position — mints one NFT to the user
 const op = await safeswap.positions.prepare_create_position({
     pool_info: { base_fee_bps: 30, rebate_percent: 50, tick_spacing: 60 },
-    tick_lower: -887220, tick_upper: 887220,
+    sqrt_price_lower_x96,
+    sqrt_price_upper_x96,
     liquidity: 500_000_000_000_000n,
     sqrt_price_x96: 79228162514264337593543950336n,   // initial price if the pool is new
     a: { token: USDC, amount: 1000_000_000n, minimum_deposited: 990_000_000n },
@@ -135,7 +152,8 @@ const op = await safeswap.positions.prepare_create_position({
 await op.dispatch();
 const token_id = safeswap.positions.get_minted_token_id( op );   // bigint | null
 
-// Add liquidity — amount is the committed funding cap, minimum_deposited is the slippage floor
+// Add liquidity — each amount is both the explicit SafeSwap maximum deposit and the matching BondRoute funding cap;
+// minimum_deposited is the paired execution floor for that same token.
 await safeswap.positions.prepare_add_liquidity({
     token_id,
     liquidity: 250_000_000_000_000n,
