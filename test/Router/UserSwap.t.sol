@@ -129,7 +129,7 @@ contract UserSwapTest is IUserSwapWorkflowTests, SafeSwapRealEnv {
         ( status, )  =  _create_and_execute_bond(
             user,
             IBondRouteProtected( address(router) ),
-            abi.encodeCall( router.swap_exact_input, ( params ) ),
+            abi.encodeCall( router.bonded_swap_exact_input, ( params ) ),
             _swap_stake( amount_in ),
             _one_funding( amount_in )
         );
@@ -148,7 +148,7 @@ contract UserSwapTest is IUserSwapWorkflowTests, SafeSwapRealEnv {
         ( status, )  =  _create_and_execute_bond(
             user,
             IBondRouteProtected( address(router) ),
-            abi.encodeCall( router.swap_exact_output, ( params ) ),
+            abi.encodeCall( router.bonded_swap_exact_output, ( params ) ),
             _swap_stake( maximum_input ),
             _one_funding( maximum_input )
         );
@@ -177,7 +177,7 @@ contract UserSwapTest is IUserSwapWorkflowTests, SafeSwapRealEnv {
         _create_and_execute_bond(
             _USER,
             IBondRouteProtected( address(nft) ),
-            abi.encodeCall( nft.create_position, ( params ) ),
+            abi.encodeCall( nft.bonded_create_position, ( params ) ),
             TokenAmount({ token: token0, amount: 50_000 ether }),
             fundings
         );

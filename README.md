@@ -68,12 +68,12 @@ range `0%..90%`.
 
 | Function | Description |
 |---|---|
-| `swap_exact_input` | Swap a known input amount for at least `minimum_output_amount` (net of protocol fee + rebate) |
-| `swap_exact_output` | Swap up to the funded amount to receive exactly `exact_output_amount` |
-| `create_position` | Open a new NFT-backed liquidity position (initializing the pool if needed) |
-| `add_liquidity` | Add liquidity to an existing position (by token id) |
-| `remove_liquidity` | Withdraw liquidity from a position (by token id) |
-| `collect_fees` | Collect accrued fees for a position (by token id) |
+| `bonded_swap_exact_input` | Swap a known input amount for at least `minimum_output_amount` (net of protocol fee + rebate) |
+| `bonded_swap_exact_output` | Swap up to the funded amount to receive exactly `exact_output_amount` |
+| `bonded_create_position` | Open a new NFT-backed liquidity position (initializing the pool if needed) |
+| `bonded_add_liquidity` | Add liquidity to an existing position (by token id) |
+| `bonded_remove_liquidity` | Withdraw liquidity from a position (by token id) |
+| `bonded_collect_fees` | Collect accrued fees for a position (by token id) |
 | `donate` | Donate tokens to a pool's in-range liquidity providers |
 | `register_hook` / `get_hook` | Register a deployed config hook / resolve the hook for a rebate profile |
 | `withdraw_protocol_fees` | Treasury withdraws accumulated protocol fees |

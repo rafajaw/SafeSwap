@@ -106,7 +106,8 @@ const SIGNING_VECTORS = {
 function signing_vector_for_call( protocol: Address, call: Hex )
 {
     const decoded  =  decodeFunctionData({ abi: protocol === ROUTER ? SAFESWAP_ROUTER_ABI : SAFESWAP_NFT_ABI, data: call });
-    return SIGNING_VECTORS[ decoded.functionName as keyof typeof SIGNING_VECTORS ];
+    const kind     =  decoded.functionName.replace( /^bonded_/, "" );
+    return SIGNING_VECTORS[ kind as keyof typeof SIGNING_VECTORS ];
 }
 
 function signing_response( execution_data: any )
@@ -194,7 +195,7 @@ function make_sdk_clients( balances?: Record<string, bigint> )
                     tick_upper:     60,
                 };
             }
-            if(  fn === "__OFF_CHAIN__get_position_info"  )  return [ 100n, 7n, 9n ];
+            if(  fn === "get_position_info"  )  return [ 100n, 7n, 9n ];
 
             throw new Error( `unexpected readContract: ${ fn }` );
         },

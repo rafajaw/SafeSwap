@@ -187,7 +187,7 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
         ( status, )  =  _create_and_execute_bond(
             _USER,
             IBondRouteProtected( address(nft) ),
-            abi.encodeCall( nft.create_position, ( params ) ),
+            abi.encodeCall( nft.bonded_create_position, ( params ) ),
             TokenAmount({ token: currency0, amount: 10 ether }),
             fundings
         );

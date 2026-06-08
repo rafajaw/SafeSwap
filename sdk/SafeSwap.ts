@@ -452,8 +452,8 @@ export type SafeSwapOpts = {
 
 /** SafeSwap SwapRouter surface: swaps + quoting + pool-id + hook registry resolution. */
 export const SAFESWAP_ROUTER_ABI  =  parseAbi([
-    "function swap_exact_input((address token_in, uint256 input_amount, address token_out, uint256 minimum_output_amount, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) params) external",
-    "function swap_exact_output((address token_in, uint256 maximum_input_amount, address token_out, uint256 exact_output_amount, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) params) external",
+    "function bonded_swap_exact_input((address token_in, uint256 input_amount, address token_out, uint256 minimum_output_amount, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) params) external",
+    "function bonded_swap_exact_output((address token_in, uint256 maximum_input_amount, address token_out, uint256 exact_output_amount, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) params) external",
 
     "function get_hook_address(uint16 base_fee_bps, uint8 rebate_percent) external view returns (address hook)",
 
@@ -464,13 +464,13 @@ export const SAFESWAP_ROUTER_ABI  =  parseAbi([
 
 /** SafeSwap NFT position-manager surface: LP lifecycle + position getters + the ERC721 mint event. */
 export const SAFESWAP_NFT_ABI  =  parseAbi([
-    "function create_position(((uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info, uint160 sqrt_price_lower_x96, uint160 sqrt_price_upper_x96, uint128 liquidity, uint160 sqrt_price_x96, (address token, uint256 amount) maximum_deposit_a, uint256 minimum_deposit_a, (address token, uint256 amount) maximum_deposit_b, uint256 minimum_deposit_b) params) external",
-    "function add_liquidity((uint256 token_id, uint128 liquidity, (address token, uint256 amount) maximum_deposit_a, uint256 minimum_deposit_a, (address token, uint256 amount) maximum_deposit_b, uint256 minimum_deposit_b) params) external",
-    "function remove_liquidity((uint256 token_id, uint128 liquidity, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
-    "function collect_fees((uint256 token_id, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
+    "function bonded_create_position(((uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info, uint160 sqrt_price_lower_x96, uint160 sqrt_price_upper_x96, uint128 liquidity, uint160 sqrt_price_x96, (address token, uint256 amount) maximum_deposit_a, uint256 minimum_deposit_a, (address token, uint256 amount) maximum_deposit_b, uint256 minimum_deposit_b) params) external",
+    "function bonded_add_liquidity((uint256 token_id, uint128 liquidity, (address token, uint256 amount) maximum_deposit_a, uint256 minimum_deposit_a, (address token, uint256 amount) maximum_deposit_b, uint256 minimum_deposit_b) params) external",
+    "function bonded_remove_liquidity((uint256 token_id, uint128 liquidity, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
+    "function bonded_collect_fees((uint256 token_id, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
 
     "function get_lp_position(uint256 token_id) external view returns ((address hook, address token0, address token1, uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing, int24 tick_lower, int24 tick_upper) position_info)",
-    "function __OFF_CHAIN__get_position_info(bytes32 pool_id, uint256 token_id, int24 tick_lower, int24 tick_upper) external view returns (uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128)",
+    "function get_position_info(bytes32 pool_id, uint256 token_id, int24 tick_lower, int24 tick_upper) external view returns (uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128)",
 
     "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 ]);
@@ -1068,7 +1068,7 @@ export class SafeSwapSwaps {
 
         const call  =  encodeFunctionData({
             abi:          SAFESWAP_ROUTER_ABI,
-            functionName: "swap_exact_input",
+            functionName: "bonded_swap_exact_input",
             args:         [{
                 token_in:              params.input.token,
                 input_amount:          params.input.exact_amount,
@@ -1111,7 +1111,7 @@ export class SafeSwapSwaps {
 
         const call  =  encodeFunctionData({
             abi:          SAFESWAP_ROUTER_ABI,
-            functionName: "swap_exact_output",
+            functionName: "bonded_swap_exact_output",
             args:         [{
                 token_in:             params.input.token,
                 maximum_input_amount: params.input.maximum_amount,
@@ -1268,7 +1268,7 @@ export class SafeSwapPositions {
 
         const call  =  encodeFunctionData({
             abi:          SAFESWAP_NFT_ABI,
-            functionName: "create_position",
+            functionName: "bonded_create_position",
             args:         [{
                 pool_info:           this.#encode_pool_info( params.pool_info ),
                 sqrt_price_lower_x96: params.sqrt_price_lower_x96,
@@ -1318,7 +1318,7 @@ export class SafeSwapPositions {
 
         const call  =  encodeFunctionData({
             abi:          SAFESWAP_NFT_ABI,
-            functionName: "add_liquidity",
+            functionName: "bonded_add_liquidity",
             args:         [{
                 token_id:          params.token_id,
                 liquidity:         params.liquidity,
@@ -1363,7 +1363,7 @@ export class SafeSwapPositions {
 
         const call  =  encodeFunctionData({
             abi:          SAFESWAP_NFT_ABI,
-            functionName: "remove_liquidity",
+            functionName: "bonded_remove_liquidity",
             args:         [{
                 token_id:           params.token_id,
                 liquidity:          params.liquidity,
@@ -1399,7 +1399,7 @@ export class SafeSwapPositions {
 
         const call  =  encodeFunctionData({
             abi:          SAFESWAP_NFT_ABI,
-            functionName: "collect_fees",
+            functionName: "bonded_collect_fees",
             args:         [{
                 token_id:           params.token_id,
                 minimum_received_a: { token: params.a.token, amount: params.a.minimum_received },
@@ -1448,7 +1448,7 @@ export class SafeSwapPositions {
         const [ liquidity, fee_growth_inside_0_last_x128, fee_growth_inside_1_last_x128 ]  =  await this.#ctx.bond_route.public_client.readContract({
             address:      this.nft_address,
             abi:          SAFESWAP_NFT_ABI,
-            functionName: "__OFF_CHAIN__get_position_info",
+            functionName: "get_position_info",
             args:         [ pool_id, token_id, tick_lower, tick_upper ],
         }) as [ bigint, bigint, bigint ];
 

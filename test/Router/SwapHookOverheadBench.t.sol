@@ -135,7 +135,7 @@ contract SwapHookOverheadBenchTest is SafeSwapRealEnv {
             stake:    stake,
             salt:     _salt++,
             protocol: IBondRouteProtected( address(router) ),
-            call:     abi.encodeCall( router.swap_exact_input, ( params ) )
+            call:     abi.encodeCall( router.bonded_swap_exact_input, ( params ) )
         });
 
         bytes32 commitment_hash  =  bond_route.__OFF_CHAIN__calc_commitment_hash( user, execution_data );
@@ -180,7 +180,7 @@ contract SwapHookOverheadBenchTest is SafeSwapRealEnv {
             stake:    stake,
             salt:     _salt++,
             protocol: IBondRouteProtected( address(nft) ),
-            call:     abi.encodeCall( nft.create_position, ( params ) )
+            call:     abi.encodeCall( nft.bonded_create_position, ( params ) )
         });
 
         bytes32 commitment_hash  =  bond_route.__OFF_CHAIN__calc_commitment_hash( _LP, execution_data );

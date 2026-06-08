@@ -188,10 +188,10 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         bytes4[] memory selectors  =  _nft.BondRoute_get_protected_selectors( );
 
         assertEq( selectors.length, 4, "NFT should expose four protected lifecycle selectors." );
-        assertEq( selectors[ 0 ], _nft.create_position.selector, "selector 0 should be create_position." );
-        assertEq( selectors[ 1 ], _nft.add_liquidity.selector, "selector 1 should be add_liquidity." );
-        assertEq( selectors[ 2 ], _nft.remove_liquidity.selector, "selector 2 should be remove_liquidity." );
-        assertEq( selectors[ 3 ], _nft.collect_fees.selector, "selector 3 should be collect_fees." );
+        assertEq( selectors[ 0 ], _nft.bonded_create_position.selector, "selector 0 should be create_position." );
+        assertEq( selectors[ 1 ], _nft.bonded_add_liquidity.selector, "selector 1 should be add_liquidity." );
+        assertEq( selectors[ 2 ], _nft.bonded_remove_liquidity.selector, "selector 2 should be remove_liquidity." );
+        assertEq( selectors[ 3 ], _nft.bonded_collect_fees.selector, "selector 3 should be collect_fees." );
     }
 
     function test_bondroute_quote_reverts_for_unsupported_call( )
@@ -219,7 +219,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         fundings[0]  =  TokenAmount({ token: IERC20(address(_token_b)), amount: 1 });
 
         BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.create_position, (_create_params()) ),
+            abi.encodeCall( _nft.bonded_create_position, (_create_params()) ),
             IERC20(address(_token_a)),
             fundings
         );
@@ -235,7 +235,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         TokenAmount[] memory fundings  =  _two_fundings( 100 ether, 100 ether );
 
         BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.create_position, (_create_params()) ),
+            abi.encodeCall( _nft.bonded_create_position, (_create_params()) ),
             IERC20(address(_token_a)),
             fundings
         );
@@ -254,7 +254,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         fundings[0]  =  TokenAmount({ token: IERC20(address(_token_a)), amount: 100 ether });
 
         BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) ),
+            abi.encodeCall( _nft.bonded_add_liquidity, (_add_params(_minted_token_id, 1 ether)) ),
             IERC20(address(_token_a)),
             fundings
         );
@@ -270,7 +270,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) ),
+            abi.encodeCall( _nft.bonded_add_liquidity, (_add_params(_minted_token_id, 1 ether)) ),
             IERC20(address(_token_a)),
             _two_fundings( 100 ether, 100 ether )
         );
@@ -287,7 +287,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
 
         vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, -int128(1 ether), 2 ) );
         _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) ),
+            abi.encodeCall( _nft.bonded_remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) ),
             IERC20(address(_token_a)),
             _two_fundings( 100 ether, 100 ether )
         );
@@ -299,7 +299,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) ),
+            abi.encodeCall( _nft.bonded_remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) ),
             IERC20(address(_token_a)),
             new TokenAmount[](0)
         );
@@ -316,7 +316,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
 
         vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(0), 2 ) );
         _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.collect_fees, (_collect_params(_minted_token_id)) ),
+            abi.encodeCall( _nft.bonded_collect_fees, (_collect_params(_minted_token_id)) ),
             IERC20(address(_token_a)),
             _two_fundings( 100 ether, 100 ether )
         );
@@ -328,7 +328,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.collect_fees, (_collect_params(_minted_token_id)) ),
+            abi.encodeCall( _nft.bonded_collect_fees, (_collect_params(_minted_token_id)) ),
             IERC20(address(_token_a)),
             new TokenAmount[](0)
         );
@@ -344,7 +344,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
-            abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) )
+            abi.encodeCall( _nft.bonded_add_liquidity, (_add_params(_minted_token_id, 1 ether)) )
         );
 
         assertGt( bytes(typed_string).length, 0, "signing info should expose a readable EIP-712 type string." );
@@ -358,7 +358,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     external  view
     {
         ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
-            abi.encodeCall( _nft.create_position, (_create_params()) )
+            abi.encodeCall( _nft.bonded_create_position, (_create_params()) )
         );
 
         assertGt( bytes(typed_string).length, 0, "create signing info should return a readable EIP-712 type string." );
@@ -373,7 +373,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        bytes memory call  =  abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) );
+        bytes memory call  =  abi.encodeCall( _nft.bonded_add_liquidity, (_add_params(_minted_token_id, 1 ether)) );
         ( string memory typed_string, bytes32 struct_hash_before, uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
             call
         );
@@ -392,7 +392,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         ( string memory typed_string, , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
-            abi.encodeCall( _nft.remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) )
+            abi.encodeCall( _nft.bonded_remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) )
         );
 
         assertEq( token_amount_offset, 238, "remove-liquidity signing info should return the TokenAmount type offset." );
@@ -405,7 +405,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         ( string memory typed_string, , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
-            abi.encodeCall( _nft.collect_fees, (_collect_params(_minted_token_id)) )
+            abi.encodeCall( _nft.bonded_collect_fees, (_collect_params(_minted_token_id)) )
         );
 
         assertEq( token_amount_offset, 214, "collect-fees signing info should return the TokenAmount type offset." );
@@ -419,16 +419,16 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         SafeSwapSigningDescriptor descriptor  =  SafeSwapSigningDescriptor(_nft.SigningDescriptor());
 
         ( string[] memory create_values, address[] memory create_addresses )  =  descriptor.build_nft_signing_values(
-            _nft, abi.encodeCall( _nft.create_position, (_create_params()) )
+            _nft, abi.encodeCall( _nft.bonded_create_position, (_create_params()) )
         );
         ( string[] memory add_values, address[] memory add_addresses )  =  descriptor.build_nft_signing_values(
-            _nft, abi.encodeCall( _nft.add_liquidity, (_add_params(_minted_token_id, 1 ether)) )
+            _nft, abi.encodeCall( _nft.bonded_add_liquidity, (_add_params(_minted_token_id, 1 ether)) )
         );
         ( string[] memory remove_values, address[] memory remove_addresses )  =  descriptor.build_nft_signing_values(
-            _nft, abi.encodeCall( _nft.remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) )
+            _nft, abi.encodeCall( _nft.bonded_remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) )
         );
         ( string[] memory collect_values, address[] memory collect_addresses )  =  descriptor.build_nft_signing_values(
-            _nft, abi.encodeCall( _nft.collect_fees, (_collect_params(_minted_token_id)) )
+            _nft, abi.encodeCall( _nft.bonded_collect_fees, (_collect_params(_minted_token_id)) )
         );
 
         assertEq( create_values.length, 7, "create display-value count mismatch." );
@@ -495,7 +495,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
 
         vm.expectRevert();
         _execute_entry_point(
-            abi.encodeCall( _nft.create_position, (_create_params()) ),
+            abi.encodeCall( _nft.bonded_create_position, (_create_params()) ),
             _context( _two_fundings( 100 ether, 100 ether ) )
         );
     }
@@ -552,7 +552,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
             101 ether
         ));
         _execute_entry_point(
-            abi.encodeCall( _nft.create_position, (_create_params()) ),
+            abi.encodeCall( _nft.bonded_create_position, (_create_params()) ),
             _context( _two_fundings( 101 ether, 100 ether ) )
         );
     }
@@ -845,7 +845,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         PoolKey memory key  =  _pool_key();
         _seed_position_info( key.toId(), 1, -120, 120, 123 ether, 456, 789 );
 
-        ( uint128 liquidity, uint256 fee_growth_0, uint256 fee_growth_1 )  =  _nft.__OFF_CHAIN__get_position_info(
+        ( uint128 liquidity, uint256 fee_growth_0, uint256 fee_growth_1 )  =  _nft.get_position_info(
             key.toId(),
             1,
             -120,
@@ -890,7 +890,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     function _execute_create_position( CreatePositionParams memory params, TokenAmount[] memory fundings ) internal returns ( uint256 token_id )
     {
         BondContext memory context  =  _context( fundings );
-        bytes memory call_data      =  abi.encodeCall( _nft.create_position, (params) );
+        bytes memory call_data      =  abi.encodeCall( _nft.bonded_create_position, (params) );
 
         vm.recordLogs( );
         _execute_entry_point( call_data, context );
@@ -922,7 +922,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     function _execute_add_liquidity_as( address user, AddPositionLiquidityParams memory params, TokenAmount[] memory fundings ) internal
     {
         BondContext memory context  =  _context_for_user( user, fundings );
-        bytes memory call_data      =  abi.encodeCall( _nft.add_liquidity, (params) );
+        bytes memory call_data      =  abi.encodeCall( _nft.bonded_add_liquidity, (params) );
 
         _execute_entry_point( call_data, context );
     }
@@ -930,7 +930,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     function _execute_remove_liquidity_as( address user, RemovePositionLiquidityParams memory params, TokenAmount[] memory fundings ) internal
     {
         BondContext memory context  =  _context_for_user( user, fundings );
-        bytes memory call_data      =  abi.encodeCall( _nft.remove_liquidity, (params) );
+        bytes memory call_data      =  abi.encodeCall( _nft.bonded_remove_liquidity, (params) );
 
         _execute_entry_point( call_data, context );
     }
@@ -938,7 +938,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     function _execute_collect_fees_as( address user, CollectFeesParams memory params, TokenAmount[] memory fundings ) internal
     {
         BondContext memory context  =  _context_for_user( user, fundings );
-        bytes memory call_data      =  abi.encodeCall( _nft.collect_fees, (params) );
+        bytes memory call_data      =  abi.encodeCall( _nft.bonded_collect_fees, (params) );
 
         _execute_entry_point( call_data, context );
     }

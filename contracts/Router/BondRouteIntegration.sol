@@ -37,8 +37,8 @@ abstract contract BondRouteIntegration is User {
     public  pure override returns ( bytes4[] memory selectors )
     {
         selectors       =  new bytes4[]( 2 );
-        selectors[ 0 ]  =  this.swap_exact_input.selector;
-        selectors[ 1 ]  =  this.swap_exact_output.selector;
+        selectors[ 0 ]  =  this.bonded_swap_exact_input.selector;
+        selectors[ 1 ]  =  this.bonded_swap_exact_output.selector;
     }
 
     /**
@@ -55,12 +55,12 @@ abstract contract BondRouteIntegration is User {
 
         bytes4 selector  =  bytes4(call);
 
-        if(  selector == this.swap_exact_input.selector  )
+        if(  selector == this.bonded_swap_exact_input.selector  )
         {
             ExactInputSwapParams memory params  =  abi.decode( call[ 4: ], (ExactInputSwapParams) );
             return ExactInputSwapLib.get_constraints( params );
         }
-        else if(  selector == this.swap_exact_output.selector  )
+        else if(  selector == this.bonded_swap_exact_output.selector  )
         {
             ExactOutputSwapParams memory params  =  abi.decode( call[ 4: ], (ExactOutputSwapParams) );
             return ExactOutputSwapLib.get_constraints( params );

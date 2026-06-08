@@ -210,7 +210,7 @@ contract PathFairnessTest is IPathFairnessTests, SafeSwapRealEnv {
         ( BondStatus status, )  =  _create_and_execute_bond(
             _USER,
             IBondRouteProtected( address(nft) ),
-            abi.encodeCall( nft.create_position, ( params ) ),
+            abi.encodeCall( nft.bonded_create_position, ( params ) ),
             TokenAmount({ token: _token0(), amount: 50_000 ether }),
             fundings
         );
@@ -234,7 +234,7 @@ contract PathFairnessTest is IPathFairnessTests, SafeSwapRealEnv {
         ( BondStatus status, )  =  _create_and_execute_bond(
             _USER,
             IBondRouteProtected( address(router) ),
-            abi.encodeCall( router.swap_exact_input, ( params ) ),
+            abi.encodeCall( router.bonded_swap_exact_input, ( params ) ),
             _swap_stake( token_in, amount_in ),
             fundings
         );

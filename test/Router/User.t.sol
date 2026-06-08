@@ -259,7 +259,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         vm.expectRevert( abi.encodeWithSelector( HookConfigNotRegistered.selector, 45, _CAPTURE_PERCENT ) );
         _execute(
             abi.encodeCall(
-                _mock_router.swap_exact_input,
+                _mock_router.bonded_swap_exact_input,
                 (_exact_input_params(IERC20(address(_token1)), _unregistered_pool_info( ), 0))
             ),
             _context( IERC20(address(_token0)), _AMOUNT_IN )
@@ -373,7 +373,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         vm.expectRevert( abi.encodeWithSelector( SlippageExceeded.selector, user_output, user_output + 1 ) );
         _execute(
             abi.encodeCall(
-                _mock_router.swap_exact_input,
+                _mock_router.bonded_swap_exact_input,
                 (_exact_input_params(IERC20(address(_token1)), user_output + 1))
             ),
             _context( IERC20(address(_token0)), _AMOUNT_IN )
@@ -422,7 +422,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         vm.expectRevert( abi.encodeWithSelector( HookConfigNotRegistered.selector, 45, _CAPTURE_PERCENT ) );
         _execute(
             abi.encodeCall(
-                _mock_router.swap_exact_output,
+                _mock_router.bonded_swap_exact_output,
                 (_exact_output_params(IERC20(address(_token1)), _unregistered_pool_info( ), 100 ether))
             ),
             _context( IERC20(address(_token0)), _AMOUNT_IN )
@@ -510,7 +510,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         vm.expectRevert( abi.encodeWithSelector( MaximumInputExceeded.selector, _AMOUNT_IN + 1, _AMOUNT_IN ) );
         _execute(
             abi.encodeCall(
-                _mock_router.swap_exact_output,
+                _mock_router.bonded_swap_exact_output,
                 (_exact_output_params(IERC20(address(_token1)), 100 ether))
             ),
             _context( IERC20(address(_token0)), _AMOUNT_IN )
@@ -753,8 +753,8 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         bytes4[] memory selectors  =  _mock_router.BondRoute_get_protected_selectors( );
 
         assertEq( selectors.length, 2, "router should expose two protected selectors." );
-        assertEq( selectors[0], _mock_router.swap_exact_input.selector, "selector 0 should be exact input." );
-        assertEq( selectors[1], _mock_router.swap_exact_output.selector, "selector 1 should be exact output." );
+        assertEq( selectors[0], _mock_router.bonded_swap_exact_input.selector, "selector 0 should be exact input." );
+        assertEq( selectors[1], _mock_router.bonded_swap_exact_output.selector, "selector 1 should be exact output." );
     }
 
     function test_bondroute_quote_reverts_for_unsupported_call( )
@@ -801,7 +801,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         _set_up_mock_env( );
 
         BondConstraints memory constraints  =  _mock_router.BondRoute_quote_call(
-            abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 0)) ),
+            abi.encodeCall( _mock_router.bonded_swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 0)) ),
             IERC20(address(_token0)),
             _one_funding( IERC20(address(_token0)), _AMOUNT_IN )
         );
@@ -815,7 +815,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         _set_up_mock_env( );
 
         ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )  =  _mock_router.BondRoute_get_signing_info(
-            abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 123)) )
+            abi.encodeCall( _mock_router.bonded_swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 123)) )
         );
 
         assertGt( bytes(typed_string).length, 0, "signing info should expose a readable typed string." );
@@ -830,10 +830,10 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         SafeSwapSigningDescriptor descriptor  =  SafeSwapSigningDescriptor(_mock_router.SigningDescriptor());
 
         ( string[] memory exact_input_values, address[] memory exact_input_addresses )  =  descriptor.build_router_signing_values(
-            abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 123)) )
+            abi.encodeCall( _mock_router.bonded_swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 123)) )
         );
         ( string[] memory exact_output_values, address[] memory exact_output_addresses )  =  descriptor.build_router_signing_values(
-            abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(IERC20(address(_token1)), 456)) )
+            abi.encodeCall( _mock_router.bonded_swap_exact_output, (_exact_output_params(IERC20(address(_token1)), 456)) )
         );
         string memory input_symbol   =  TestERC20(address(_default_token_in(IERC20(address(_token1))))).symbol();
         string memory output_symbol  =  _token1.symbol();
@@ -919,7 +919,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     {
         _set_exact_input_delta( token_in, token_out, _AMOUNT_IN, _POOL_OUTPUT );
         _execute(
-            abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(token_in, _AMOUNT_IN, token_out, pool_info, minimum_output_amount)) ),
+            abi.encodeCall( _mock_router.bonded_swap_exact_input, (_exact_input_params(token_in, _AMOUNT_IN, token_out, pool_info, minimum_output_amount)) ),
             _context( token_in, _AMOUNT_IN )
         );
     }
@@ -928,7 +928,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     {
         _set_exact_input_delta( NATIVE_TOKEN, IERC20(address(_token1)), _AMOUNT_IN, _POOL_OUTPUT );
         _execute(
-            abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(NATIVE_TOKEN, _AMOUNT_IN, IERC20(address(_token1)), _pool_info( ), 0)) ),
+            abi.encodeCall( _mock_router.bonded_swap_exact_input, (_exact_input_params(NATIVE_TOKEN, _AMOUNT_IN, IERC20(address(_token1)), _pool_info( ), 0)) ),
             _context_native_input( _AMOUNT_IN )
         );
     }
@@ -962,7 +962,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
 
         _set_exact_output_delta( NATIVE_TOKEN, IERC20(address(_token1)), required_input, exact_output );
         _execute(
-            abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(NATIVE_TOKEN, _AMOUNT_IN, IERC20(address(_token1)), _pool_info( ), exact_output)) ),
+            abi.encodeCall( _mock_router.bonded_swap_exact_output, (_exact_output_params(NATIVE_TOKEN, _AMOUNT_IN, IERC20(address(_token1)), _pool_info( ), exact_output)) ),
             _context_native_input( _AMOUNT_IN )
         );
     }
@@ -978,7 +978,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     {
         _set_exact_output_delta( token_in, token_out, required_input, exact_output );
         _execute(
-            abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(token_in, maximum_input, token_out, pool_info, exact_output)) ),
+            abi.encodeCall( _mock_router.bonded_swap_exact_output, (_exact_output_params(token_in, maximum_input, token_out, pool_info, exact_output)) ),
             _context( token_in, maximum_input )
         );
     }
@@ -1033,8 +1033,8 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     {
         TokenAmount[] memory fundings  =  new TokenAmount[](0);
         bytes memory call              =  exact_input
-            ? abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 0)) )
-            : abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(IERC20(address(_token1)), 100 ether)) );
+            ? abi.encodeCall( _mock_router.bonded_swap_exact_input, (_exact_input_params(IERC20(address(_token1)), 0)) )
+            : abi.encodeCall( _mock_router.bonded_swap_exact_output, (_exact_output_params(IERC20(address(_token1)), 100 ether)) );
 
         BondConstraints memory constraints  =  _mock_router.BondRoute_quote_call( call, IERC20(address(_token0)), fundings );
 
@@ -1046,8 +1046,8 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
     function _expect_quote_revert_same_token( bool exact_input ) internal
     {
         bytes memory call  =  exact_input
-            ? abi.encodeCall( _mock_router.swap_exact_input, (_exact_input_params(IERC20(address(_token0)), _AMOUNT_IN, IERC20(address(_token0)), _pool_info(), 0)) )
-            : abi.encodeCall( _mock_router.swap_exact_output, (_exact_output_params(IERC20(address(_token0)), _AMOUNT_IN, IERC20(address(_token0)), _pool_info(), 100 ether)) );
+            ? abi.encodeCall( _mock_router.bonded_swap_exact_input, (_exact_input_params(IERC20(address(_token0)), _AMOUNT_IN, IERC20(address(_token0)), _pool_info(), 0)) )
+            : abi.encodeCall( _mock_router.bonded_swap_exact_output, (_exact_output_params(IERC20(address(_token0)), _AMOUNT_IN, IERC20(address(_token0)), _pool_info(), 100 ether)) );
 
         vm.expectRevert( bytes(TOKENS_MUST_BE_DIFFERENT) );
         _mock_router.BondRoute_quote_call( call, IERC20(address(_token0)), _one_funding(IERC20(address(_token0)), _AMOUNT_IN) );
@@ -1104,7 +1104,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         _create_and_execute_bond(
             _USER,
             IBondRouteProtected( address(nft) ),
-            abi.encodeCall( nft.create_position, ( params ) ),
+            abi.encodeCall( nft.bonded_create_position, ( params ) ),
             TokenAmount({ token: token0, amount: 50_000 ether }),
             fundings
         );
@@ -1123,7 +1123,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         ( status, )  =  _create_and_execute_bond(
             _USER,
             IBondRouteProtected( address(router) ),
-            abi.encodeCall( router.swap_exact_input, ( params ) ),
+            abi.encodeCall( router.bonded_swap_exact_input, ( params ) ),
             _real_swap_stake( amount_in ),
             _real_one_funding( amount_in )
         );
@@ -1142,7 +1142,7 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         ( status, )  =  _create_and_execute_bond(
             _USER,
             IBondRouteProtected( address(router) ),
-            abi.encodeCall( router.swap_exact_output, ( params ) ),
+            abi.encodeCall( router.bonded_swap_exact_output, ( params ) ),
             _real_swap_stake( maximum_input ),
             _real_one_funding( maximum_input )
         );

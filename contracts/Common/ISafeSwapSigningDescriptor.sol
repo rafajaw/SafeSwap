@@ -16,16 +16,16 @@ import { ExactOutputSwapParams } from "@SafeSwapRouter/libraries/ExactOutputSwap
  * @notice Selector-only surface for the four BondRoute-protected NFT lifecycle actions.
  */
 interface ISafeSwapNftActions {
-    function create_position( CreatePositionParams calldata params )
+    function bonded_create_position( CreatePositionParams calldata params )
     external;
 
-    function add_liquidity( AddPositionLiquidityParams calldata params )
+    function bonded_add_liquidity( AddPositionLiquidityParams calldata params )
     external;
 
-    function remove_liquidity( RemovePositionLiquidityParams calldata params )
+    function bonded_remove_liquidity( RemovePositionLiquidityParams calldata params )
     external;
 
-    function collect_fees( CollectFeesParams calldata params )
+    function bonded_collect_fees( CollectFeesParams calldata params )
     external;
 }
 
@@ -34,10 +34,10 @@ interface ISafeSwapNftActions {
  * @notice Selector-only surface for the two BondRoute-protected router swap actions.
  */
 interface ISafeSwapRouterActions {
-    function swap_exact_input( ExactInputSwapParams calldata params )
+    function bonded_swap_exact_input( ExactInputSwapParams calldata params )
     external;
 
-    function swap_exact_output( ExactOutputSwapParams calldata params )
+    function bonded_swap_exact_output( ExactOutputSwapParams calldata params )
     external;
 }
 

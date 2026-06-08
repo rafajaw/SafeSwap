@@ -35,7 +35,7 @@ abstract contract User is Orchestrator, HookRegistry, BondRouteProtected {
      *      fee (base + repricing) is applied by the hook and accrues to LPs; the user's net output is after the SafeSwap
      *      protocol fee and is checked against `minimum_output_amount`.
      */
-    function swap_exact_input( ExactInputSwapParams calldata params )
+    function bonded_swap_exact_input( ExactInputSwapParams calldata params )
     external
     {
         BondContext memory context  =  BondRoute_initialize( );
@@ -53,7 +53,7 @@ abstract contract User is Orchestrator, HookRegistry, BondRouteProtected {
      * @dev Callable only through a valid BondRoute bond. Maximum input comes from the bond funding; the LP fee is charged
      *      on the input by the hook and counts against that maximum.
      */
-    function swap_exact_output( ExactOutputSwapParams calldata params )
+    function bonded_swap_exact_output( ExactOutputSwapParams calldata params )
     external
     {
         BondContext memory context  =  BondRoute_initialize( );

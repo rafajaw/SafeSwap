@@ -172,7 +172,7 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
         ( status, )  =  _create_and_execute_bond(
             user,
             IBondRouteProtected( address(nft) ),
-            abi.encodeCall( nft.create_position, ( _create_params() ) ),
+            abi.encodeCall( nft.bonded_create_position, ( _create_params() ) ),
             _stake_token0( 10 ether ),
             _two_fundings( 100 ether, 100 ether )
         );
@@ -213,7 +213,7 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
         ( status, )  =  _create_and_execute_bond(
             user,
             IBondRouteProtected( address(nft) ),
-            abi.encodeCall( nft.add_liquidity, ( params ) ),
+            abi.encodeCall( nft.bonded_add_liquidity, ( params ) ),
             _stake_token0( 10 ether ),
             _two_fundings( 100 ether, 100 ether )
         );
@@ -231,7 +231,7 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
         ( status, )  =  _create_and_execute_bond(
             user,
             IBondRouteProtected( address(nft) ),
-            abi.encodeCall( nft.remove_liquidity, ( params ) ),
+            abi.encodeCall( nft.bonded_remove_liquidity, ( params ) ),
             _stake_token0( 10 ether ),
             new TokenAmount[](0)
         );
@@ -248,7 +248,7 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
         ( status, )  =  _create_and_execute_bond(
             user,
             IBondRouteProtected( address(nft) ),
-            abi.encodeCall( nft.collect_fees, ( params ) ),
+            abi.encodeCall( nft.bonded_collect_fees, ( params ) ),
             _stake_token0( 10 ether ),
             new TokenAmount[](0)
         );
