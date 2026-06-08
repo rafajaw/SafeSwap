@@ -28,7 +28,7 @@ interface ISafeSwapNftTests {
     function test_create_position_resolves_hook_from_router_registry() external;
     function test_create_position_builds_dynamic_fee_pool_key() external;
     function test_create_position_initializes_uninitialized_pool_at_signed_price() external;
-    function test_create_position_reverts_when_initialized_pool_price_differs_from_signed_price() external;
+    function test_create_position_into_existing_pool_tolerates_signed_spot_price_drift() external;
     function test_create_position_mints_token_id_to_bond_context_user() external;
     function test_create_position_derives_distinct_token_id_per_mint() external;
     function test_create_position_uses_token_id_as_v4_position_salt() external;

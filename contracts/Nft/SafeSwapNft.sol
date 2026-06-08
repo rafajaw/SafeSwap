@@ -47,7 +47,6 @@ using PoolIdLibrary for PoolKey;
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 error PositionUnauthorized( uint256 token_id, address caller, address owner );
-error PoolInitializationPriceMismatch( PoolId pool_id, uint160 current_sqrt_price_x96, uint160 expected_sqrt_price_x96 );
 
 
 // ━━━━  ROUTER VIEW  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -344,10 +343,13 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
             //                path that can set a SafeSwap pool's first price, and it uses the BondRoute-signed price.
             PoolManager.initialize( pool_key, params.sqrt_price_x96 );
         }
-        else if(  current_sqrt_price_x96 != params.sqrt_price_x96  )
-        {
-            revert PoolInitializationPriceMismatch({ pool_id: pool_id, current_sqrt_price_x96: current_sqrt_price_x96, expected_sqrt_price_x96: params.sqrt_price_x96 });
-        }
+        // *NOTE*  -  Existing pool: we deliberately do NOT require the live price to equal the signed spot
+        //            (`params.sqrt_price_x96` is only the first-price seed used above). The pool price can drift during
+        //            BondRoute's commit->execute delay, and the signed deposit band is the economic anchor — the ticks come
+        //            from the signed price *bounds* (not the spot), `_settle_added_liquidity` reverts `SlippageExceeded`
+        //            below the signed `minimum_deposit_*`, and the deposit is capped above by the funded `maximum_deposit_*`.
+        //            A strict equality here would collapse that band to a single point and revert on any benign drift,
+        //            making existing-pool creates unusable under the bond delay.
 
         SafeSwapPositionInfo memory new_position_info  =  SafeSwapPositionInfo({
             opened_at:      uint40(block.timestamp),

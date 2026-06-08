@@ -14,7 +14,7 @@ import { Vm } from "forge-std/Vm.sol";
 import "@SafeSwapCommon/Definitions.sol";
 import { HookAddress } from "@SafeSwapCommon/HookAddress.sol";
 import { OneSidedDepositMismatch } from "@SafeSwapCommon/SafeSwapCommon.sol";
-import { SafeSwapNft, PoolInitializationPriceMismatch, PositionUnauthorized } from "@SafeSwapNft/SafeSwapNft.sol";
+import { SafeSwapNft, PositionUnauthorized } from "@SafeSwapNft/SafeSwapNft.sol";
 import { SafeSwapPositionDescriptor } from "@SafeSwapNft/SafeSwapPositionDescriptor.sol";
 import { SafeSwapSigningDescriptor } from "@SafeSwapCommon/SafeSwapSigningDescriptor.sol";
 import {
@@ -437,17 +437,20 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         assertEq( _pool_manager.last_initialize_sqrt_price_x96(), _SQRT_PRICE_1_1, "pool should initialize at the BondRoute-signed price." );
     }
 
-    function test_create_position_reverts_when_initialized_pool_price_differs_from_signed_price( )
+    function test_create_position_into_existing_pool_tolerates_signed_spot_price_drift( )
     external
     {
+        // The pool already exists at a price that has drifted from the signed spot (`_create_params().sqrt_price_x96`).
+        // Create must NOT revert on that drift: the signed spot is only the first-price seed, and the deposit band — not a
+        // strict price equality — is the economic anchor under BondRoute's commit->execute delay.
         PoolKey memory key  =  _pool_key();
-        _seed_slot0( key, _SQRT_PRICE_1_1 + 1 );
+        _seed_slot0( key, _SQRT_PRICE_1_1 * 2 );
 
-        vm.expectRevert();
-        _execute_entry_point(
-            abi.encodeCall( _nft.bonded_create_position, (_create_params()) ),
-            _context( _two_fundings( 100 ether, 100 ether ) )
-        );
+        uint256 token_id  =  _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
+
+        assertFalse( _pool_manager.initialize_called(), "an already-initialized pool must not be re-initialized." );
+        assertEq( _nft.ownerOf( token_id ), _USER, "create into an existing drifted-price pool should still mint to the user." );
+        assertEq( _pool_manager.last_modify_liquidity_salt(), bytes32(token_id), "create should proceed to modifyLiquidity despite the price drift." );
     }
 
     function test_create_position_mints_token_id_to_bond_context_user( )
