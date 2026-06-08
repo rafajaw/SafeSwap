@@ -48,7 +48,6 @@ using PoolIdLibrary for PoolKey;
 
 error PositionUnauthorized( uint256 token_id, address caller, address owner );
 error PoolInitializationPriceMismatch( PoolId pool_id, uint160 current_sqrt_price_x96, uint160 expected_sqrt_price_x96 );
-error FeeTotalOverflow( uint256 token_id, uint256 earned0, uint256 earned1 );
 
 
 // ━━━━  ROUTER VIEW  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -530,15 +529,10 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         uint256 next_earned0      =  uint256(totals.earned0) + earned0;
         uint256 next_earned1      =  uint256(totals.earned1) + earned1;
 
-        if(  next_earned0 > type(uint128).max  ||  next_earned1 > type(uint128).max  )
-        {
-            revert FeeTotalOverflow({ token_id: params.token_id, earned0: next_earned0, earned1: next_earned1 });
-        }
-
-        // *NOTE*  -  These totals are lifetime earned fees checkpointed before a position touch. They are not limited to
-        //            explicit collect calls, and they intentionally exclude remove-liquidity principal.
-        totals.earned0  =  uint128(next_earned0);
-        totals.earned1  =  uint128(next_earned1);
+        // *NOTE*  -  Display-only lifetime earned fees (excludes principal). Saturate at uint128 so this cosmetic counter can never
+        //            brick add / remove / collect — real claimable fees live in V4, independent of this checkpoint.
+        totals.earned0  =  next_earned0 > type(uint128).max  ?  type(uint128).max  :  uint128(next_earned0);
+        totals.earned1  =  next_earned1 > type(uint128).max  ?  type(uint128).max  :  uint128(next_earned1);
     }
 
     function _positive_liquidity_delta( uint256 token_id, uint128 liquidity ) private pure returns ( int128 liquidity_delta )

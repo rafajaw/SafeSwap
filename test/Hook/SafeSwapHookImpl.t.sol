@@ -13,8 +13,8 @@ import {
     CallerNotPoolManager,
     CallerNotRouter,
     CallerNotPositionManager,
-    HookSpawnRejected,
-    SpawnRejection
+    DeployHookFailed,
+    DeployHookError
 } from "@SafeSwapHook/SafeSwapHookImpl.sol";
 import { ISafeSwapHook, ISafeSwapHookRegistry } from "@SafeSwapHook/ISafeSwapHook.sol";
 import { Clones } from "@OpenZeppelin/proxy/Clones.sol";
@@ -259,7 +259,7 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
     external
     {
         // deploy_hook deploys clones with OpenZeppelin's Clones; the registry authorizes keccak256 of the canonical
-        // EIP-1167 runtime. Prove the deployed bytecode is exactly that runtime so spawned hooks pass the codehash gate.
+        // EIP-1167 runtime. Prove the deployed bytecode is exactly that runtime so deployed hooks pass the codehash gate.
         address clone               =  Clones.clone( address(_implementation) );
         bytes memory canonical      =  _eip1167_runtime( address(_implementation) );
 
@@ -275,7 +275,7 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
         address predicted   =  Clones.predictDeterministicAddress( address(_implementation), salt, address(_implementation) );
         _etch_hook_clone( predicted, address(_implementation) );
 
-        vm.expectRevert( abi.encodeWithSelector( HookSpawnRejected.selector, SpawnRejection.ALREADY_EXISTS, predicted, uint16(30), uint8(50) ) );
+        vm.expectRevert( abi.encodeWithSelector( DeployHookFailed.selector, DeployHookError.ALREADY_EXISTS, predicted, uint16(30), uint8(50) ) );
         _implementation.deploy_hook( 30, 50, salt );
     }
 
@@ -298,7 +298,7 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
         address predicted   =  Clones.predictDeterministicAddress( address(_implementation), salt, address(_implementation) );
         _etch_hook_clone( predicted, address(_implementation) );
 
-        vm.expectRevert( abi.encodeWithSelector( HookSpawnRejected.selector, SpawnRejection.ALREADY_EXISTS, predicted, uint16(30), uint8(50) ) );
+        vm.expectRevert( abi.encodeWithSelector( DeployHookFailed.selector, DeployHookError.ALREADY_EXISTS, predicted, uint16(30), uint8(50) ) );
         SafeSwapHookImpl(_hook).deploy_hook( 30, 50, salt );
     }
 

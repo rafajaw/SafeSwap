@@ -41,13 +41,8 @@ error CallerNotPositionManager( address sender, address position_manager );
 // Hook deployment failure modes. ALREADY_EXISTS: a hook is already deployed at this salt's address. CONFIG_MISMATCH: the
 // mined address does not decode to the requested base fee and capture. PERMISSIONS: the address lacks the required V4 hook
 // permission bits. The new_hook address recovers all decoded detail off-chain.
-enum SpawnRejection { ALREADY_EXISTS, CONFIG_MISMATCH, PERMISSIONS }
-error HookSpawnRejected( SpawnRejection reason, address new_hook, uint16 base_fee_bps, uint8 rebate_percent );
-
-
-// ━━━━  EVENTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-event HookSpawned( address indexed new_hook, uint16 indexed base_fee_bps, uint8 indexed rebate_percent );
+enum DeployHookError { ALREADY_EXISTS, CONFIG_MISMATCH, PERMISSIONS }
+error DeployHookFailed( DeployHookError reason, address new_hook, uint16 base_fee_bps, uint8 rebate_percent );
 
 
 /**
@@ -140,18 +135,17 @@ contract SafeSwapHookImpl is ISafeSwapHook {
         if(  address(this) != IMPLEMENTATION_SELF  )  return SafeSwapHookImpl(IMPLEMENTATION_SELF).deploy_hook( base_fee_bps, rebate_percent, salt );
 
         new_hook  =  Clones.predictDeterministicAddress( IMPLEMENTATION_SELF, salt );
-        if(  new_hook.code.length != 0  )  revert HookSpawnRejected( SpawnRejection.ALREADY_EXISTS, new_hook, base_fee_bps, rebate_percent );
+        if(  new_hook.code.length != 0  )  revert DeployHookFailed( DeployHookError.ALREADY_EXISTS, new_hook, base_fee_bps, rebate_percent );
 
         ( uint16 decoded_fee, uint8 decoded_capture )  =  HookAddress.decode( new_hook );
-        if(  decoded_fee != base_fee_bps  ||  decoded_capture != rebate_percent  )  revert HookSpawnRejected( SpawnRejection.CONFIG_MISMATCH, new_hook, base_fee_bps, rebate_percent );
+        if(  decoded_fee != base_fee_bps  ||  decoded_capture != rebate_percent  )  revert DeployHookFailed( DeployHookError.CONFIG_MISMATCH, new_hook, base_fee_bps, rebate_percent );
 
-        if(  HookAddress.has_required_permissions( new_hook ) == false  )  revert HookSpawnRejected( SpawnRejection.PERMISSIONS, new_hook, base_fee_bps, rebate_percent );
+        if(  HookAddress.has_required_permissions( new_hook ) == false  )  revert DeployHookFailed( DeployHookError.PERMISSIONS, new_hook, base_fee_bps, rebate_percent );
 
         Clones.cloneDeterministic( IMPLEMENTATION_SELF, salt );    // canonical EIP-1167, this implementation baked in.
 
         SafeSwapHookImpl(new_hook).initialize_once( );             // registers with the router; re-validates codehash + config.
-
-        emit HookSpawned( new_hook, base_fee_bps, rebate_percent );
+        // *NOTE*  -  No deploy event here; the canonical HookRegistered is emitted by the router on that registration.
     }
 
 

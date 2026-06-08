@@ -38,7 +38,7 @@ interface ISafeSwapHookImplTests {
     function test_deploy_hook_reverts_when_a_contract_already_exists_at_the_salt_address() external;
     function test_deploy_hook_reverts_when_the_salt_address_is_not_a_valid_hook_config() external;
     function test_deploy_hook_forwards_to_the_implementation_when_called_on_a_clone() external;
-    // NOTE: deploy_hook's success path (CREATE2 clone -> initialize_once registration -> HookSpawned event) and its
+    // NOTE: deploy_hook's success path (CREATE2 clone -> initialize_once registration -> HookRegistered event) and its
     //       CONFIG_MISMATCH / PERMISSIONS rejections all require the CREATE2 clone address to carry the HookAddress BCD
     //       config AND the exact V4 permission bits. A fully valid hook address costs ~2^38 to mine (24 BCD bits + 14
     //       permission bits), which is infeasible inside the unit suite. Those paths are exercised by the deploy/mining
