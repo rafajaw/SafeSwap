@@ -397,6 +397,20 @@ export type ParsedSafeSwapRevert =
         amount:      bigint;
     }
     | {
+        kind:           "signed_swap_input_mismatch";
+        description:    string;
+        signed_token:   Address;
+        signed_amount:  bigint;
+        funded_token:   Address;
+        funded_amount:  bigint;
+    }
+    | {
+        kind:             "repricing_fee_exceeds_v4_limit";
+        description:      string;
+        total_fee_pips:   bigint;
+        maximum_fee_pips: bigint;
+    }
+    | {
         kind:        "unknown";
         description: string;
     };
@@ -486,6 +500,8 @@ export const SAFESWAP_ERRORS_ABI  =  parseAbi([
     "error UnsupportedCall()",
     "error Invalid(string field, uint256 value)",
     "error TransferFailed(address token, address recipient, uint256 amount)",
+    "error SignedSwapInputMismatch(address signed_token, uint256 signed_amount, address funded_token, uint256 funded_amount)",
+    "error RepricingFeeExceedsV4Limit(uint256 total_fee_pips, uint256 maximum_fee_pips)",
 ]);
 
 /** Combined ABI for revert decoding: every SafeSwap function, event, and custom error. */
@@ -686,6 +702,32 @@ export function parse_safeswap_revert( output: Hex ): ParsedSafeSwapRevert
                 token,
                 recipient,
                 amount,
+            };
+        }
+
+        case "SignedSwapInputMismatch": {
+            const signed_token   =  as_address( decoded.args[0] );
+            const signed_amount  =  as_bigint( decoded.args[1] );
+            const funded_token   =  as_address( decoded.args[2] );
+            const funded_amount  =  as_bigint( decoded.args[3] );
+            return {
+                kind:        "signed_swap_input_mismatch",
+                description: `SafeSwap swap funding ${ String(funded_amount) } for ${ funded_token } does not match the signed input ${ String(signed_amount) } for ${ signed_token }.`,
+                signed_token,
+                signed_amount,
+                funded_token,
+                funded_amount,
+            };
+        }
+
+        case "RepricingFeeExceedsV4Limit": {
+            const total_fee_pips    =  as_bigint( decoded.args[0] );
+            const maximum_fee_pips  =  as_bigint( decoded.args[1] );
+            return {
+                kind:        "repricing_fee_exceeds_v4_limit",
+                description: `SafeSwap total fee ${ String(total_fee_pips) } pips exceeds the Uniswap V4 limit of ${ String(maximum_fee_pips) } pips.`,
+                total_fee_pips,
+                maximum_fee_pips,
             };
         }
 

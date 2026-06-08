@@ -716,6 +716,32 @@ describe( "parse_safeswap_revert", () => {
         if(  parsed.kind === "position_unauthorized"  )  expect( parsed.token_id ).toBe( 1n );
     });
 
+    test( "parses a signed-swap-input-mismatch revert", () => {
+        const output = encodeErrorResult({ abi: SAFESWAP_ABI, errorName: "SignedSwapInputMismatch", args: [ TOKEN_IN, 100n, TOKEN_OUT, 90n ] });
+
+        const parsed = parse_safeswap_revert( output as Hex );
+        expect( parsed.kind ).toBe( "signed_swap_input_mismatch" );
+        if(  parsed.kind === "signed_swap_input_mismatch"  )
+        {
+            expect( parsed.signed_token ).toBe( TOKEN_IN );
+            expect( parsed.signed_amount ).toBe( 100n );
+            expect( parsed.funded_token ).toBe( TOKEN_OUT );
+            expect( parsed.funded_amount ).toBe( 90n );
+        }
+    });
+
+    test( "parses a repricing-fee-exceeds-v4-limit revert", () => {
+        const output = encodeErrorResult({ abi: SAFESWAP_ABI, errorName: "RepricingFeeExceedsV4Limit", args: [ 1_000_000n, 999_999n ] });
+
+        const parsed = parse_safeswap_revert( output as Hex );
+        expect( parsed.kind ).toBe( "repricing_fee_exceeds_v4_limit" );
+        if(  parsed.kind === "repricing_fee_exceeds_v4_limit"  )
+        {
+            expect( parsed.total_fee_pips ).toBe( 1_000_000n );
+            expect( parsed.maximum_fee_pips ).toBe( 999_999n );
+        }
+    });
+
     test( "returns an unknown shape for unknown revert data", () => {
         expect( parse_safeswap_revert( "0xdeadbeef" ) ).toEqual({
             kind:        "unknown",
