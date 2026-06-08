@@ -16,6 +16,7 @@ remappings = [
     "@SafeSwapHook=contracts/Hook/",
     "@SafeSwapNft=contracts/Nft/",
     "@SafeSwapCommon=contracts/Common/",
+    "@SafeSwapRelayer=contracts/Relayer/",
     "@BondRoute=lib/BondRoute/src/",
     "@BondRouteProtected=lib/BondRoute/src/integrations/",
     "@ChainConfig=lib/ChainConfig/src/integrations/",
