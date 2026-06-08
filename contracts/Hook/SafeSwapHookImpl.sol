@@ -142,6 +142,7 @@ contract SafeSwapHookImpl is ISafeSwapHook {
 
         if(  HookAddress.has_required_permissions( new_hook ) == false  )  revert DeployHookFailed( DeployHookError.PERMISSIONS, new_hook, base_fee_bps, rebate_percent );
 
+        // *NOTE*  -  Clones surfaces OZ's FailedDeployment / InsufficientBalance in the ABI; both are unreachable here - we pre-check occupancy above and pass no value.
         Clones.cloneDeterministic( IMPLEMENTATION_SELF, salt );    // canonical EIP-1167, this implementation baked in.
 
         SafeSwapHookImpl(new_hook).initialize_once( );             // registers with the router; re-validates codehash + config.

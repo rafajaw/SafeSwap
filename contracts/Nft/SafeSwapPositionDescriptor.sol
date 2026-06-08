@@ -51,7 +51,7 @@ using PoolIdLibrary for PoolKey;
  */
 contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
 
-    IPoolManager public immutable PoolManager;
+    IPoolManager internal immutable PoolManager;
 
     /// @notice Fractional-digit cap for token amounts shown on the cosmetic position card. The card is
     ///         display-only, so a 4-decimal cap keeps it readable. This rendering is intentionally LOSSY and
