@@ -16,8 +16,8 @@ pragma solidity ^0.8.30;
 interface IHookRegistryTests {
     // ─── Registration ───────────────────────────────────────────────────────────
     function test_register_hook_accepts_clone_with_approved_runtime_codehash() external;
-    function test_register_hook_sets_registered_hook_flag() external;
-    function test_register_hook_stores_hook_under_packed_config_key() external;
+    function test_get_hook_config_returns_config_for_registered_hook() external;
+    function test_get_hook_config_reverts_for_unregistered_hook() external;
     function test_register_hook_emits_hook_registered_event() external;
     function test_register_hook_rejects_unapproved_runtime_codehash() external;
     function test_register_hook_rejects_when_approved_codehash_is_unset() external;
@@ -29,8 +29,8 @@ interface IHookRegistryTests {
     function test_register_hook_rejects_duplicate_config_from_different_hook() external;
 
     // ─── Resolution ─────────────────────────────────────────────────────────────
-    function test_get_hook_returns_registered_hook_for_config() external;
-    function test_get_hook_reverts_for_unregistered_config() external;
+    function test_get_hook_address_returns_registered_hook_for_config() external;
+    function test_get_hook_address_reverts_for_unregistered_config() external;
 }
 
 

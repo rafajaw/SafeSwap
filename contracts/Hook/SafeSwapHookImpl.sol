@@ -47,7 +47,7 @@ error DeployHookFailed( DeployHookError reason, address new_hook, uint16 base_fe
 
 /**
  * @title SafeSwapHookImpl
- * @notice Single audited Uniswap V4 hook implementation. Every SafeSwap pool's hook is a tiny EIP-1167 clone of this
+ * @notice Single Uniswap V4 hook implementation. Every SafeSwap pool's hook is a tiny EIP-1167 clone of this
  *         contract whose CREATE2 address encodes the pool's base fee and LP capture share (see the HookAddress library). Because the
  *         clone delegatecalls into this code, `address(this)` here is the clone, so the economic config is decoded from the
  *         clone address on every call — no per-clone storage, no constructor.

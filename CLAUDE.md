@@ -28,7 +28,7 @@ contracts/Nft/libraries/ModifyLiquidityLib.sol
 
 SafeSwap is a canonical BondRoute-protected **router** (swaps + hook registry + treasury) plus a BondRoute-protected
 **NFT** (owns the V4 positions, salt = tokenId) plus many permissionlessly-deployed **config hooks** — one EIP-1167 clone of
-the audited `SafeSwapHookImpl` per `(base fee, capture)` profile. Each profile is encoded in the clone's CREATE2 address as
+the `SafeSwapHookImpl` per `(base fee, capture)` profile. Each profile is encoded in the clone's CREATE2 address as
 readable BCD (`0xF` fee marker + 3 base-fee digits + `0xC` capture marker + 1 rebate digit, + V4 permission bits), so each
 profile yields a distinct V4 PoolId. Pools are **dynamic-fee**: in `beforeSwap` the hook simulates the swap (`SwapSimulator`),
 estimates the **repricing surplus** (output valued at the post-swap price minus input paid), and returns

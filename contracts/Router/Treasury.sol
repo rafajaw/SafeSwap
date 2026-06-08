@@ -18,7 +18,7 @@ error TransferFailed( address token, address recipient, uint256 amount );
 
 event TreasuryTransferInitiated( address indexed current_treasury, address indexed pending_treasury );
 event TreasuryTransferred( address indexed previous_treasury, address indexed new_treasury );
-event ProtocolFeesWithdrawn( address indexed recipient, IERC20 indexed token, uint256 amount );
+event ProtocolFeesWithdrawn( address indexed recipient, address indexed token, uint256 amount );
 
 
 /**
@@ -153,6 +153,6 @@ abstract contract Treasury {
             if(  success == false  )  revert TransferFailed({ token: address(token), recipient: recipient, amount: withdraw_amount });
         }
 
-        emit ProtocolFeesWithdrawn( recipient, token, withdraw_amount );
+        emit ProtocolFeesWithdrawn( recipient, address(token), withdraw_amount );
     }
 }

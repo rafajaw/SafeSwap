@@ -5,7 +5,7 @@ pragma solidity ^0.8.30;
 /**
  * @title HookAddress
  * @notice Encoding and decoding of a SafeSwap config-hook address. Every SafeSwap pool's hook is a tiny delegatecall clone
- *         of one audited implementation whose CREATE2 address carries the pool economics as readable binary-coded decimal:
+ *         of one implementation whose CREATE2 address carries the pool economics as readable binary-coded decimal:
  *
  *             0x F d2 d1 d0 C r .......................... PPPP
  *                │ └──┬───┘ │ │                            └─ low 14 bits: Uniswap V4 hook permission bitmap

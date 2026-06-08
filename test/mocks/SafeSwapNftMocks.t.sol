@@ -38,7 +38,7 @@ contract MockSafeSwapNftRouter is ISafeSwapRouterHooks {
         _should_revert  =  value;
     }
 
-    function get_hook( uint16 base_fee_bps, uint8 rebate_percent )
+    function get_hook_address( uint16 base_fee_bps, uint8 rebate_percent )
     external  view returns ( address )
     {
         if(  _should_revert  )  revert( "hook resolution failed" );

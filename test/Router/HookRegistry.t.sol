@@ -65,29 +65,26 @@ contract HookRegistryTest is IHookRegistryTests, ChainConfigTestHelper, SafeSwap
 
         _register_from_hook( _hook, _BASE_FEE_BPS, _CAPTURE_PERCENT );
 
-        assertEq( _registry.get_hook( _BASE_FEE_BPS, _CAPTURE_PERCENT ), _hook, "approved hook should register for its config." );
+        assertEq( _registry.get_hook_address( _BASE_FEE_BPS, _CAPTURE_PERCENT ), _hook, "approved hook should register for its config." );
     }
 
-    function test_register_hook_sets_registered_hook_flag( )
+    function test_get_hook_config_returns_config_for_registered_hook( )
     external
     {
         _publish_approved_runtime( );
 
         _register_from_hook( _hook, _BASE_FEE_BPS, _CAPTURE_PERCENT );
 
-        assertTrue( _registry.registeredHook( _hook ), "registeredHook flag should be set for the hook." );
+        ( uint16 base_fee_bps, uint8 rebate_percent )  =  _registry.get_hook_config( _hook );
+        assertEq( base_fee_bps, _BASE_FEE_BPS, "get_hook_config should decode the registered hook's base fee." );
+        assertEq( rebate_percent, _CAPTURE_PERCENT, "get_hook_config should decode the registered hook's capture." );
     }
 
-    function test_register_hook_stores_hook_under_packed_config_key( )
+    function test_get_hook_config_reverts_for_unregistered_hook( )
     external
     {
-        _publish_approved_runtime( );
-
-        _register_from_hook( _hook, _BASE_FEE_BPS, _CAPTURE_PERCENT );
-
-        uint256 packed_key  =  ( uint256(_BASE_FEE_BPS) << 8 ) | uint256(_CAPTURE_PERCENT);
-
-        assertEq( _registry.hookByConfig( packed_key ), _hook, "hook should be stored under (base_fee_bps << 8) | capture." );
+        vm.expectRevert( abi.encodeWithSelector( HookConfigNotRegistered.selector, _BASE_FEE_BPS, _CAPTURE_PERCENT ) );
+        _registry.get_hook_config( _hook );
     }
 
     function test_register_hook_emits_hook_registered_event( )
@@ -96,7 +93,7 @@ contract HookRegistryTest is IHookRegistryTests, ChainConfigTestHelper, SafeSwap
         _publish_approved_runtime( );
 
         vm.expectEmit( true, true, true, true );
-        emit HookRegistered( _BASE_FEE_BPS, _CAPTURE_PERCENT, _hook );
+        emit HookRegistered( _hook, _BASE_FEE_BPS, _CAPTURE_PERCENT );
 
         _register_from_hook( _hook, _BASE_FEE_BPS, _CAPTURE_PERCENT );
     }
@@ -175,7 +172,7 @@ contract HookRegistryTest is IHookRegistryTests, ChainConfigTestHelper, SafeSwap
         _register_from_hook( _hook, _BASE_FEE_BPS, _CAPTURE_PERCENT );
         _register_from_hook( _hook, _BASE_FEE_BPS, _CAPTURE_PERCENT );
 
-        assertEq( _registry.get_hook( _BASE_FEE_BPS, _CAPTURE_PERCENT ), _hook, "same hook should remain registered for the config." );
+        assertEq( _registry.get_hook_address( _BASE_FEE_BPS, _CAPTURE_PERCENT ), _hook, "same hook should remain registered for the config." );
     }
 
     function test_register_hook_rejects_duplicate_config_from_different_hook( )
@@ -195,21 +192,21 @@ contract HookRegistryTest is IHookRegistryTests, ChainConfigTestHelper, SafeSwap
 
     // ━━━━  RESOLUTION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    function test_get_hook_returns_registered_hook_for_config( )
+    function test_get_hook_address_returns_registered_hook_for_config( )
     external
     {
         _publish_approved_runtime( );
 
         _register_from_hook( _hook, _BASE_FEE_BPS, _CAPTURE_PERCENT );
 
-        assertEq( _registry.get_hook( _BASE_FEE_BPS, _CAPTURE_PERCENT ), _hook, "get_hook should return the registered hook." );
+        assertEq( _registry.get_hook_address( _BASE_FEE_BPS, _CAPTURE_PERCENT ), _hook, "get_hook_address should return the registered hook." );
     }
 
-    function test_get_hook_reverts_for_unregistered_config( )
+    function test_get_hook_address_reverts_for_unregistered_config( )
     external
     {
         vm.expectRevert( abi.encodeWithSelector( HookConfigNotRegistered.selector, _BASE_FEE_BPS, _CAPTURE_PERCENT ) );
-        _registry.get_hook( _BASE_FEE_BPS, _CAPTURE_PERCENT );
+        _registry.get_hook_address( _BASE_FEE_BPS, _CAPTURE_PERCENT );
     }
 
 

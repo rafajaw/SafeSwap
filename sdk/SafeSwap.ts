@@ -455,7 +455,7 @@ export const SAFESWAP_ROUTER_ABI  =  parseAbi([
     "function swap_exact_input((address token_in, uint256 input_amount, address token_out, uint256 minimum_output_amount, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) params) external",
     "function swap_exact_output((address token_in, uint256 maximum_input_amount, address token_out, uint256 exact_output_amount, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) params) external",
 
-    "function get_hook(uint16 base_fee_bps, uint8 rebate_percent) external view returns (address hook)",
+    "function get_hook_address(uint16 base_fee_bps, uint8 rebate_percent) external view returns (address hook)",
 
     "function __OFF_CHAIN__get_pool_id(address token_a, address token_b, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) external view returns (bytes32 pool_id)",
     "function __OFF_CHAIN__quote_swap_exact_input(address token_in, address token_out, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info, uint256 amount_in) external view returns (uint256 expected_net_output, uint24 total_fee_pips, uint256 movement_bps)",
@@ -1194,14 +1194,14 @@ export class SafeSwapSwaps {
     }
 
     /** Resolve the registered config-hook clone address for a `(base_fee_bps, rebate_percent)` profile. */
-    async get_hook( base_fee_bps: number, rebate_percent: number ): Promise<Address>
+    async get_hook_address( base_fee_bps: number, rebate_percent: number ): Promise<Address>
     {
         assert_pool_info({ base_fee_bps, rebate_percent, tick_spacing: 1 });
 
         return await this.#ctx.bond_route.public_client.readContract({
             address:      this.router_address,
             abi:          SAFESWAP_ROUTER_ABI,
-            functionName: "get_hook",
+            functionName: "get_hook_address",
             args:         [ base_fee_bps, rebate_percent ],
         }) as Address;
     }

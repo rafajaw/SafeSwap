@@ -131,7 +131,7 @@ const { required_input, total_fee_pips, movement_bps } = await safeswap.swaps.qu
 
 ```typescript
 const pool_id = await safeswap.swaps.get_pool_id( USDC, WETH, pool_info );  // tokens in any order
-const hook    = await safeswap.swaps.get_hook( 30, 50 );                    // registered clone for (base_fee_bps, rebate_percent)
+const hook    = await safeswap.swaps.get_hook_address( 30, 50 );            // registered clone for (base_fee_bps, rebate_percent)
 ```
 
 ## Positions (NFT LP)

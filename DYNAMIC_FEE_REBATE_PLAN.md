@@ -20,7 +20,7 @@ input; the surplus is only the price-impact triangle ≈ ½·movement·input), s
 ## Decisions (confirmed)
 
 1. **Design A — the hook prices the swap.** `beforeSwap` runs `SwapSimulator`, computes the repricing fee from the estimated
-   **surplus**, returns the V4 override fee. Trustless: depends only on pool state + the audited hook code.
+   **surplus**, returns the V4 override fee. Trustless: depends only on pool state + the hook code.
 2. **Pools are `DYNAMIC_FEE_FLAG`.** Base fee lives in the hook address, not `PoolKey.fee`.
 3. **Hook address is BCD `0xF d d d 0xC r`** (3 base-fee digits → `base_fee_bps` 0..999; 1 rebate digit →
    `capture_percent = 10·r`, 0..90) + 14 permission bits. See the architecture doc. `REQUIRED_PERMISSIONS = 0x2A80`

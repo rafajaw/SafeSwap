@@ -17,23 +17,22 @@ error HookConfigNotRegistered( uint16 base_fee_bps, uint8 rebate_percent );
 
 // ━━━━  EVENTS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-event HookRegistered( uint16 indexed base_fee_bps, uint8 indexed rebate_percent, address indexed hook );
+event HookRegistered( address indexed hook, uint16 indexed base_fee_bps, uint8 indexed rebate_percent );
 
 
 /**
  * @title HookRegistry
  * @notice Permissionless-deployment registry binding each `(base fee, capture)` config to its SafeSwap hook clone.
  *
- * @dev Hooks are deployed permissionlessly as EIP-1167 clones of the audited implementation but registered under three
- *      independent proofs: exact runtime codehash (the clone stub, with the audited impl address baked in — proves the
- *      clone delegatecalls the audited code); address-bit config (the `HookAddress` BCD must decode to the submitted
- *      config); and the Uniswap V4 permission bits. The approved stub codehash is published in ChainConfig and read lazily
- *      so the router can deploy before the audited bytecode hash is finalized.
+ * @dev Hooks are deployed permissionlessly as EIP-1167 clones of the implementation but registered under three independent
+ *      proofs: exact runtime codehash (the clone stub, with the impl address baked in — proves the clone delegatecalls the
+ *      implementation); address-bit config (the `HookAddress` BCD must decode to the submitted config); and the Uniswap V4
+ *      permission bits. The approved stub codehash is published in ChainConfig and read lazily so the router can deploy
+ *      before the stub bytecode hash is finalized.
  */
 abstract contract HookRegistry {
 
-    mapping( uint256 => address ) public hookByConfig;
-    mapping( address => bool ) public registeredHook;
+    mapping( uint256 => address ) internal _hook_by_config;
 
 
     // ━━━━  REGISTRATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -42,7 +41,7 @@ abstract contract HookRegistry {
      * @notice Register the calling hook clone for its `(base_fee_bps, rebate_percent)` config. Called once by the clone.
      *
      * @dev EMITTED EVENTS:
-     *      - `HookRegistered(base_fee_bps, rebate_percent, hook)` on success.
+     *      - `HookRegistered(hook, base_fee_bps, rebate_percent)` on success.
      *
      * @dev ERROR CODES:
      *      - `UnauthorizedHookCode(caller, codehash)` if the caller's runtime codehash is not the approved clone stub.
@@ -69,14 +68,15 @@ abstract contract HookRegistry {
 
         if(  HookAddress.has_required_permissions( msg.sender ) == false  )  revert HookPermissionsMismatch({ hook: msg.sender });
 
+        // *DESIGN*  -  First valid clone to claim a config wins (a duplicate reverts); hook addresses are intentionally per-chain, not deterministic.
+        //             The base-fee / rebate config choice is permissionless and trustless: anyone mines + deploys a clone; router/NFT gate every hook touch.
         uint256 key       =  _config_key( base_fee_bps, rebate_percent );
-        address existing  =  hookByConfig[ key ];
+        address existing  =  _hook_by_config[ key ];
         if(  existing != address(0)  &&  existing != msg.sender  )  revert HookConfigAlreadyRegistered({ base_fee_bps: base_fee_bps, rebate_percent: rebate_percent, existing_hook: existing });
 
-        hookByConfig[ key ]           =  msg.sender;
-        registeredHook[ msg.sender ]  =  true;
+        _hook_by_config[ key ]  =  msg.sender;
 
-        emit HookRegistered( base_fee_bps, rebate_percent, msg.sender );
+        emit HookRegistered( msg.sender, base_fee_bps, rebate_percent );
     }
 
 
@@ -85,15 +85,26 @@ abstract contract HookRegistry {
     /**
      * @notice Resolve the registered hook clone for a `(base_fee_bps, rebate_percent)` config. Reverts if none is registered.
      */
-    function get_hook( uint16 base_fee_bps, uint8 rebate_percent )
+    function get_hook_address( uint16 base_fee_bps, uint8 rebate_percent )
     external  view returns ( address hook )
     {
         hook  =  _resolve_hook( base_fee_bps, rebate_percent );
     }
 
+    /**
+     * @notice Reverse lookup: the `(base_fee_bps, rebate_percent)` config a registered hook clone serves, decoded from its
+     *         address. Reverts with `HookConfigNotRegistered` if `hook` is not the registered hook for that config.
+     */
+    function get_hook_config( address hook )
+    external  view returns ( uint16 base_fee_bps, uint8 rebate_percent )
+    {
+        ( base_fee_bps, rebate_percent )  =  HookAddress.decode( hook );
+        if(  _hook_by_config[ _config_key( base_fee_bps, rebate_percent ) ] != hook  )  revert HookConfigNotRegistered({ base_fee_bps: base_fee_bps, rebate_percent: rebate_percent });
+    }
+
     function _resolve_hook( uint16 base_fee_bps, uint8 rebate_percent ) internal view returns ( address hook )
     {
-        hook  =  hookByConfig[ _config_key( base_fee_bps, rebate_percent ) ];
+        hook  =  _hook_by_config[ _config_key( base_fee_bps, rebate_percent ) ];
         if(  hook == address(0)  )  revert HookConfigNotRegistered({ base_fee_bps: base_fee_bps, rebate_percent: rebate_percent });
     }
 
@@ -105,7 +116,7 @@ abstract contract HookRegistry {
 
     // ━━━━  VALIDATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    // *SECURITY*  -  Authorize the clone by EXACT runtime codehash (the EIP-1167 stub with the audited impl address baked in),
+    // *SECURITY*  -  Authorize the clone by EXACT runtime codehash (the EIP-1167 stub with the impl address baked in),
     //                never by interface self-identification or tx.origin. An EIP-7702 delegated EOA's code is the
     //                `0xef0100 || delegate` designator, whose hash never equals the stub codehash, so this rejects it.
     function _require_approved_hook_runtime( address account ) internal view

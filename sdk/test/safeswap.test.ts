@@ -180,7 +180,7 @@ function make_sdk_clients( balances?: Record<string, bigint> )
             if(  fn === "__OFF_CHAIN__quote_swap_exact_input"  )   return [ 990n, 3050, 12n ];
             if(  fn === "__OFF_CHAIN__quote_swap_exact_output"  )  return [ 1010n, 3050, 12n ];
             if(  fn === "__OFF_CHAIN__get_pool_id"  )             return "0xabc0000000000000000000000000000000000000000000000000000000000def";
-            if(  fn === "get_hook"  )                             return TOKEN_OTHER;
+            if(  fn === "get_hook_address"  )                     return TOKEN_OTHER;
             if(  fn === "get_lp_position"  )
             {
                 return {
@@ -329,11 +329,11 @@ describe( "SafeSwapSwaps", () => {
         const { safeswap, view_calls } = await make_sdk();
 
         const pool_id = await safeswap.swaps.get_pool_id( TOKEN_OUT, TOKEN_IN, POOL_INFO );
-        const hook    = await safeswap.swaps.get_hook( 30, 50 );
+        const hook    = await safeswap.swaps.get_hook_address( 30, 50 );
 
         expect( pool_id.startsWith( "0xabc" ) ).toBe( true );
         expect( hook ).toBe( TOKEN_OTHER );
-        expect( view_calls.map( ( c ) => c.functionName ) ).toEqual( [ "__OFF_CHAIN__get_pool_id", "get_hook" ] );
+        expect( view_calls.map( ( c ) => c.functionName ) ).toEqual( [ "__OFF_CHAIN__get_pool_id", "get_hook_address" ] );
     });
 
     test( "rejects same-token swaps before quoting", async () => {

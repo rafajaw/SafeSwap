@@ -53,7 +53,7 @@ error PoolInitializationPriceMismatch( PoolId pool_id, uint160 current_sqrt_pric
 // ━━━━  ROUTER VIEW  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 interface ISafeSwapRouterHooks {
-    function get_hook( uint16 base_fee_bps, uint8 rebate_percent ) external view returns ( address hook );
+    function get_hook_address( uint16 base_fee_bps, uint8 rebate_percent ) external view returns ( address hook );
 }
 
 
@@ -65,7 +65,7 @@ interface ISafeSwapRouterHooks {
  *         protocol surface.
  *
  * @dev Pools are dynamic-fee (the hook applies the LP fee), so every PoolKey uses `DYNAMIC_FEE_FLAG`. The config hook for a
- *      new position is resolved from the canonical router's registry (`router.get_hook`); follow-up actions read the hook
+ *      new position is resolved from the canonical router's registry (`router.get_hook_address`); follow-up actions read the hook
  *      from the position's stored metadata.
  */
 contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteProtected, IUnlockCallback {
@@ -333,7 +333,7 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         //                      exists. This one-time mint cost is accepted so wallets can display and sign human bounds.
         ( int24 tick_lower, int24 tick_upper )  =  ModifyLiquidityLib.derive_ticks_from_price_bounds( params.sqrt_price_lower_x96, params.sqrt_price_upper_x96, params.pool_info.tick_spacing );
 
-        address hook  =  ISafeSwapRouterHooks(SafeSwapRouter).get_hook( params.pool_info.base_fee_bps, params.pool_info.rebate_percent );
+        address hook  =  ISafeSwapRouterHooks(SafeSwapRouter).get_hook_address( params.pool_info.base_fee_bps, params.pool_info.rebate_percent );
 
         PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token0, token1, LPFeeLibrary.DYNAMIC_FEE_FLAG, params.pool_info.tick_spacing, hook );
         PoolId pool_id           =  pool_key.toId( );

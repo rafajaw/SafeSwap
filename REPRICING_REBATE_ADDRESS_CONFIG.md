@@ -14,7 +14,7 @@ SafeSwapNft         BondRoute-protected position lifecycle (create / add / remov
                     OWNS the V4 positions (it is the modifyLiquidity caller; salt = tokenId). Resolves the hook via the router.
 SafeSwapSigningDescriptor
                     Immutable external REFERENCE_2 renderer shared by the router and NFT signing-info surfaces.
-SafeSwapHook        one audited implementation (SafeSwapHookImpl) + many permissionlessly-deployed config clones, one per
+SafeSwapHook        one implementation (SafeSwapHookImpl) + many permissionlessly-deployed config clones, one per
                     (base fee, capture) profile, all sharing one runtime codehash. Dynamic-fee override logic.
 ```
 
@@ -96,8 +96,8 @@ Users and the NFT pass `(base_fee_bps, rebate_percent)`, never raw hook addresse
 
 Authorize by **exact runtime codehash** of `msg.sender`, never by `isSafeSwapHook()`-style self-identification or `tx.origin`.
 An EIP-7702 delegated EOA's code is the `0xef0100 || delegate` designator, whose hash never equals the clone-stub codehash, so
-exact-codehash matching rejects it. The approved codehash is the EIP-1167 clone stub's (the audited `SafeSwapHookImpl` address
-baked in), so an approved hook provably delegatecalls the audited implementation.
+exact-codehash matching rejects it. The approved codehash is the EIP-1167 clone stub's (the `SafeSwapHookImpl` address
+baked in), so an approved hook provably delegatecalls the implementation.
 
 > **Status:** the `SafeSwapHookProxy` (EIP-1167 stub) is not yet a contract in the repo — only the impl exists. The test
 > harness synthesizes a clone with the standard EIP-1167 runtime via `vm.etch` (see `test/helpers/SafeSwapRealEnv.t.sol`). A
@@ -138,7 +138,7 @@ struct SafeSwapPositionInfo {
 ```
 1. Choose base_fee_bps and capture_percent.
 2. GPU-mine a CREATE2 salt for a clone address with the F/d/d/d/C/r config nibbles and REQUIRED_PERMISSIONS low bits.
-3. CREATE2-deploy the EIP-1167 clone of the audited SafeSwapHookImpl.
+3. CREATE2-deploy the EIP-1167 clone of the SafeSwapHookImpl.
 4. Call clone.initialize_once() → router.register_hook(base_fee_bps, capture_percent).
 5. Router validates codehash + address config + permissions, then records the clone.
 6. Users create positions and swap via (base_fee_bps, capture_percent) through the router/NFT.

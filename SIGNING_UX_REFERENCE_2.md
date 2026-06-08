@@ -77,12 +77,12 @@ executes and against which tokens*. Two checks, in order:
    included - is only trustworthy once `protocol` is confirmed to be the canonical SafeSwap router (swaps) or NFT (LP)**,
    checked against the published ChainConfig addresses, never against anything in the receipt itself. If `protocol` is wrong,
    nothing else here means anything.
-2. **Token addresses** - with a genuine `protocol`, the audited contract still pools and swaps any token permissionlessly, so
+2. **Token addresses** - with a genuine `protocol`, the contract still pools and swaps any token permissionlessly, so
    the signer must confirm the token addresses are the real assets they intend (especially the token they *receive*) and not
    look-alikes.
 
 Amounts and slippage are shown for confirmation, but the raw `fundings` / `stake` the signer already committed are the hard
-limits the audited contract enforces.
+limits the contract enforces.
 
 ## Exact Input Swap
 
