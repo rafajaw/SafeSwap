@@ -22,8 +22,9 @@ input; the surplus is only the price-impact triangle ≈ ½·movement·input), s
 1. **Design A — the hook prices the swap.** `beforeSwap` runs `SwapSimulator`, computes the repricing fee from the estimated
    **surplus**, returns the V4 override fee. Trustless: depends only on pool state + the hook code.
 2. **Pools are `DYNAMIC_FEE_FLAG`.** Base fee lives in the hook address, not `PoolKey.fee`.
-3. **Hook address is BCD `0xF d d d 0xC r`** (3 base-fee digits → `base_fee_bps` 0..999; 1 rebate digit →
-   `capture_percent = 10·r`, 0..90) + 14 permission bits. See the architecture doc. `REQUIRED_PERMISSIONS = 0x2A80`
+3. **Hook address is BCD `0xF d d d 0xC r 0`** (3 base-fee digits → `base_fee_bps` 0..999; 2 readable capture digits,
+   with the ones digit forced to zero → `capture_percent = 10·r`, 0..90) + 14 permission bits. See the architecture doc.
+   `REQUIRED_PERMISSIONS = 0x2A80`
    (no `beforeDonate`).
 4. **Capture is a share of surplus, delivered as a native dynamic LP fee.** No measure-and-donate; the fee accrues per swap
    step. The **90% ceiling** guarantees arbitrageurs keep ≥10% of the surplus.
@@ -106,7 +107,7 @@ beforeSwap(sender, key, params, hookData):
 ## Testing
 
 - **Unit (the headline calibration test):** for a seeded real pool, assert the repricing fee ≈ `capture% × surplus` — e.g.
-  C5 leaves ~half the surplus to the trader (the old displacement-rate code took ~all of it). Include `capture% = 0` and `90`.
+  C50 leaves ~half the surplus to the trader (the old displacement-rate code took ~all of it). Include `capture% = 0` and `90`.
 - **Symmetry:** an up-move and the equal down-move charge the same share of surplus (`zeroForOne` vs `oneForZero`).
 - **Splitting (documents behavior, not a guarantee):** one big move vs N small moves — the summed captured fee is *less* for
   the split path; assert the direction and document it (the formula is not splitting-proof; BondRoute is the deterrent).

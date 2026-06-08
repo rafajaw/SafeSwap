@@ -55,7 +55,7 @@
       behaviors already covered. Found and filled one real gap - router `unlockCallback` caller guard
       (`test_unlock_callback_reverts_when_caller_is_not_pool_manager`). Deferred by choice: no fuzz/invariant layer (behaviors
       covered by concrete unit tests); protocol-fee floor exact-threshold boundary not separately pinned.
-- [x] Cover `deploy_hook` + `get_hook_config` in the Hook manifest/suite: impl-call revert, canonical EIP-1167 runtime
+- [x] Cover `deploy_hook` + `get_config` in the Hook manifest/suite: impl-call revert, canonical EIP-1167 runtime
       parity (the codehash gate), already-deployed collision, invalid-config decode revert, and clone->impl forwarding. The
       success / `CONFIG_MISMATCH` / `PERMISSIONS` paths need a mined valid address and are deferred to the deploy script.
 - [x] Fix `SafeSwapRealEnv._create_and_execute_bond` multi-bond timing: the test frame reads `block.number` / `block.timestamp`
@@ -93,14 +93,14 @@
 - [x] **Config-hook deployment** - solved by the self-replicating `SafeSwapHookImpl.deploy_hook(base_fee_bps,
       rebate_percent, salt)`: deploys the canonical EIP-1167 clone (OZ `Clones`, this impl baked in) at a mined salt,
       pre-flights BCD config + V4 permission bits (`DeployHookFailed`), then `initialize_once` registers it. Callable on
-      the impl or any clone (a clone-call forwards to the impl so the canonical code is always baked in). `get_hook_config()`
+      the impl or any clone (a clone-call forwards to the impl so the canonical code is always baked in). `get_config()`
       replaces the verb-less getters and reverts on the impl. No separate `SafeSwapHookProxy` artifact needed; the parity
       test (`test_clone_deploys_exact_canonical_eip1167_runtime_bytecode`) proves the deployed runtime is byte-exact EIP-1167
       so clones pass the registry `extcodehash` gate. The impl's clone runtime codehash is published once to ChainConfig
       (`SAFESWAP_HOOK_CODEHASH_KEY`) after the impl is deployed - authorizing the bytecode, not addresses. The real-env test
       harness intentionally keeps synthesizing clones via `vm.etch` - it gives the most flexibility for testing.
 - [ ] Deploy tooling: `script/` currently contains only the NFT example renderer. Add the off-chain salt miner (BCD config +
-      exact V4 permission bits, ~2^38 per profile), the per-profile `deploy_hook` call, publishing the impl's clone runtime
+      exact V4 permission bits, ~2^42 per profile), the per-profile `deploy_hook` call, publishing the impl's clone runtime
       codehash to ChainConfig, and signing descriptor / metadata descriptor / router / NFT / treasury wiring from ChainConfig.
       Also the home for `deploy_hook`'s success / `CONFIG_MISMATCH` / `PERMISSIONS` paths that the unit suite can't mine
       (see `test/Hook/TestManifest.sol` note).

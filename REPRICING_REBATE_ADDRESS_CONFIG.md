@@ -47,23 +47,23 @@ The clone's CREATE2 address carries the economics as readable binary-coded decim
 bitmap in its low 14 bits:
 
 ```
-0x F d2 d1 d0 C r ....(free salt)…. PPPP
-   │ └──┬───┘ │ │                   └─ low 14 bits: V4 hook permission bitmap
-   │    │     │ └─ rebate digit r  → capture% = 10·r            (0..90, 10% steps)
-   │    │     └─── capture marker  0xC
-   │    └───────── 3 base-fee digits → base_fee_bps = 100·d2 + 10·d1 + d0   (0..999 → 0.00%..9.99%)
-   └────────────── fee marker 0xF  (also marks the address as a SafeSwap config hook)
+0x F d2 d1 d0 C r 0 ....(free salt)…. PPPP
+   │ └──┬───┘ │ └┬┘                  └─ low 14 bits: V4 hook permission bitmap
+   │    │     │  └─ capture digits → 10·r + 0              (0..90, forced 10% steps)
+   │    │     └──── capture marker 0xC
+   │    └────────── 3 base-fee digits → base_fee_bps = 100·d2 + 10·d1 + d0   (0..999 → 0.00%..9.99%)
+   └─────────────── fee marker 0xF  (also marks the address as a SafeSwap config hook)
 ```
 
-Decode (lives in `contracts/Common/HookAddress.sol`): assert `digit0 == 0xF` and `digit4 == 0xC` and every data nibble `≤ 9`;
-then `base_fee_bps = 100·d2 + 10·d1 + d0` and `capture_percent = 10·r`. `0xF` and `0xC` are both `> 9`, so a marker can never
-be confused with a data digit and the address self-parses. Examples: `0xF030C5…` → base 0.30%, capture 50%;
-`0xF150C9…` → base 1.50%, capture 90%.
+Decode (lives in `contracts/Common/HookAddress.sol`): assert `digit0 == 0xF`, `digit4 == 0xC`, every data nibble `≤ 9`, and
+the capture ones digit is exactly zero; then `base_fee_bps = 100·d2 + 10·d1 + d0` and `capture_percent = 10·r`. `0xF` and
+`0xC` are both `> 9`, so a marker can never be confused with a data digit and the address self-parses. Examples:
+`0xF030C50…` → base 0.30%, capture 50%; `0xF150C90…` → base 1.50%, capture 90%.
 
 **Base fee is open** (any whole bps ≤ 9.99%); **capture is quantized** to 10% steps and capped at 90% (see
 `LVR_DETERRENCE.md` §4–6). Fragmentation is rate-limited by *real friction*, not a governance allowlist: every profile must be
-GPU-vanity-mined, deployed, registered, and seeded by a first LP. ~38 bits to mine (24 config + 14 permission), one-time per
-profile, minutes on a GPU.
+GPU-vanity-mined, deployed, registered, and seeded by a first LP. ~42 bits to mine (28 config + 14 permission), one-time per
+profile, practical as a protocol-deployment operation on a modern GPU.
 
 ### Required V4 permissions
 
@@ -137,7 +137,7 @@ struct SafeSwapPositionInfo {
 
 ```
 1. Choose base_fee_bps and capture_percent.
-2. GPU-mine a CREATE2 salt for a clone address with the F/d/d/d/C/r config nibbles and REQUIRED_PERMISSIONS low bits.
+2. GPU-mine a CREATE2 salt for a clone address with the F/d/d/d/C/r/0 config nibbles and REQUIRED_PERMISSIONS low bits.
 3. CREATE2-deploy the EIP-1167 clone of the SafeSwapHookImpl.
 4. Call clone.initialize_once() → router.register_hook(base_fee_bps, capture_percent).
 5. Router validates codehash + address config + permissions, then records the clone.

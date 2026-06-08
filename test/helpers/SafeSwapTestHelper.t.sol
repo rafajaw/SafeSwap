@@ -12,7 +12,7 @@ contract SafeSwapTestHelper is Test {
         uint256 d2  =  base_fee_bps / 100;
         uint256 d1  =  ( base_fee_bps / 10 ) % 10;
         uint256 d0  =  base_fee_bps % 10;
-        uint256 r   =  rebate_percent / 10;
+        uint256 rebate_tens_digit  =  rebate_percent / 10;
 
         uint160 bits  =  uint160(
             ( uint256(HookAddress.FEE_MARKER) << HookAddress.FEE_MARKER_SHIFT )
@@ -20,7 +20,7 @@ contract SafeSwapTestHelper is Test {
             | ( d1 << HookAddress.BASE_FEE_D1_SHIFT )
             | ( d0 << HookAddress.BASE_FEE_D0_SHIFT )
             | ( uint256(HookAddress.CAPTURE_MARKER) << HookAddress.CAPTURE_MARKER_SHIFT )
-            | ( r << HookAddress.REBATE_SHIFT )
+            | ( rebate_tens_digit << HookAddress.REBATE_TENS_SHIFT )
             | uint256(permission_bits)
         );
 
@@ -33,7 +33,8 @@ contract SafeSwapTestHelper is Test {
         uint8 base_fee_tens,
         uint8 base_fee_ones,
         uint8 capture_marker,
-        uint8 rebate_digit,
+        uint8 rebate_tens_digit,
+        uint8 rebate_ones_digit,
         uint160 permission_bits
     ) internal pure returns ( address hook )
     {
@@ -43,11 +44,11 @@ contract SafeSwapTestHelper is Test {
             | ( uint256(base_fee_tens) << HookAddress.BASE_FEE_D1_SHIFT )
             | ( uint256(base_fee_ones) << HookAddress.BASE_FEE_D0_SHIFT )
             | ( uint256(capture_marker) << HookAddress.CAPTURE_MARKER_SHIFT )
-            | ( uint256(rebate_digit) << HookAddress.REBATE_SHIFT )
+            | ( uint256(rebate_tens_digit) << HookAddress.REBATE_TENS_SHIFT )
+            | ( uint256(rebate_ones_digit) << HookAddress.REBATE_ONES_SHIFT )
             | uint256(permission_bits)
         );
 
         hook  =  address(bits);
     }
 }
-

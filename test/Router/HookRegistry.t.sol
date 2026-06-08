@@ -136,7 +136,7 @@ contract HookRegistryTest is IHookRegistryTests, ChainConfigTestHelper, SafeSwap
     {
         _publish_approved_runtime( );
 
-        address invalid_hook  =  _hook_address_with_config_nibbles( 0xE, 0, 3, 0, HookAddress.CAPTURE_MARKER, 5, HookAddress.REQUIRED_PERMISSIONS );
+        address invalid_hook  =  _hook_address_with_config_nibbles( 0xE, 0, 3, 0, HookAddress.CAPTURE_MARKER, 5, 0, HookAddress.REQUIRED_PERMISSIONS );
         _etch_runtime( invalid_hook, _APPROVED_RUNTIME );
 
         vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, invalid_hook ) );

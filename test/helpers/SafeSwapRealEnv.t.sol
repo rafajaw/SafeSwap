@@ -43,7 +43,7 @@ interface IPoolManagerDeployer {
  *
  * @dev There is no `SafeSwapHookProxy` contract yet, so the hook clone is hand-built: `SafeSwapHookImpl` is deployed once
  *      (its self-guard forbids being deployed *at* a config address), and the EIP-1167 runtime that delegatecalls it is
- *      etched at a CREATE2-style config address whose top bytes carry the `F d d d C r` BCD config and whose low 14 bits
+ *      etched at a CREATE2-style config address whose top bytes carry the `F d d d C r 0` BCD config and whose low 14 bits
  *      carry the V4 permission bitmap. The registry approves the etched runtime's codehash.
  */
 abstract contract SafeSwapRealEnv is ChainConfigTestHelper, SafeSwapTestHelper, BondRouteTestHelper {

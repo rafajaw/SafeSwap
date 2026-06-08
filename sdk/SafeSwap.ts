@@ -65,9 +65,9 @@ const ZERO_ADDRESS  =  "0x0000000000000000000000000000000000000000" as const;
 
 /** Highest base fee a config hook encodes (3 BCD digits → 0..999 bps, i.e. 0.00%..9.99%). */
 const MAX_BASE_FEE_BPS    =  999;
-/** Highest capture share a config hook encodes (one BCD digit r → 10·r, capped at 90). */
+/** Highest capture share a config hook encodes (BCD digits r0 → 10·r, capped at 90). */
 const MAX_REBATE_PERCENT  =  90;
-/** Capture is quantized to whole 10% steps (the single rebate digit). */
+/** Capture is quantized to whole 10% steps (the address's percentage ones digit is forced to zero). */
 const REBATE_PERCENT_STEP =  10;
 
 

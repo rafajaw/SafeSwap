@@ -95,7 +95,7 @@ For each action, prove:
 
 `script/` currently contains only the NFT example renderer. Add:
 
-- off-chain CREATE2 salt miner for the BCD profile bits plus exact V4 permission bits (about 38 constrained bits);
+- off-chain CREATE2 salt miner for the BCD profile bits plus exact V4 permission bits (about 42 constrained bits);
 - deployment scripts for descriptor/signing helper, router, NFT, hook implementation, and per-profile hook clones;
 - `deploy_hook` success plus `CONFIG_MISMATCH` / `PERMISSIONS` integration paths;
 - publication of the canonical clone runtime codehash;

@@ -23,7 +23,8 @@ interface IHookAddressTests {
     function test_decode_reverts_when_base_fee_hundreds_digit_is_not_decimal() external;
     function test_decode_reverts_when_base_fee_tens_digit_is_not_decimal() external;
     function test_decode_reverts_when_base_fee_ones_digit_is_not_decimal() external;
-    function test_decode_reverts_when_rebate_digit_is_not_decimal() external;
+    function test_decode_reverts_when_rebate_tens_digit_is_not_decimal() external;
+    function test_decode_reverts_when_rebate_ones_digit_is_not_zero() external;
 
     // ─── V4 Permission Bitmap ───────────────────────────────────────────────────
     function test_has_required_permissions_accepts_exact_safeswap_permission_bitmap() external;

@@ -27,7 +27,7 @@ contract HookAddressTest is IHookAddressTests, SafeSwapTestHelper {
         ( uint16 base_fee_bps, uint8 rebate_percent )  =  HookAddress.decode( hook );
 
         assertEq( base_fee_bps, 30, "Base fee should decode from F030." );
-        assertEq( rebate_percent, 50, "Rebate percent should decode from C5." );
+        assertEq( rebate_percent, 50, "Rebate percent should decode from C50." );
     }
 
     function test_decode_zero_digits_returns_zero_base_fee_and_zero_rebate_percent( )
@@ -38,7 +38,7 @@ contract HookAddressTest is IHookAddressTests, SafeSwapTestHelper {
         ( uint16 base_fee_bps, uint8 rebate_percent )  =  HookAddress.decode( hook );
 
         assertEq( base_fee_bps, 0, "Zero base-fee digits should decode to zero bps." );
-        assertEq( rebate_percent, 0, "Zero rebate digit should decode to zero percent." );
+        assertEq( rebate_percent, 0, "Zero rebate digits should decode to zero percent." );
     }
 
     function test_decode_max_supported_digits_returns_nine_hundred_ninety_nine_bps_and_ninety_percent( )
@@ -49,13 +49,13 @@ contract HookAddressTest is IHookAddressTests, SafeSwapTestHelper {
         ( uint16 base_fee_bps, uint8 rebate_percent )  =  HookAddress.decode( hook );
 
         assertEq( base_fee_bps, 999, "F999 should decode to 999 bps." );
-        assertEq( rebate_percent, 90, "C9 should decode to 90 percent." );
+        assertEq( rebate_percent, 90, "C90 should decode to 90 percent." );
     }
 
     function test_decode_reverts_when_fee_marker_is_not_f( )
     external
     {
-        address hook  =  _hook_address_with_config_nibbles( 0xE, 0, 3, 0, HookAddress.CAPTURE_MARKER, 5, HookAddress.REQUIRED_PERMISSIONS );
+        address hook  =  _hook_address_with_config_nibbles( 0xE, 0, 3, 0, HookAddress.CAPTURE_MARKER, 5, 0, HookAddress.REQUIRED_PERMISSIONS );
 
         vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, hook ) );
         this.decode_external( hook );
@@ -64,7 +64,7 @@ contract HookAddressTest is IHookAddressTests, SafeSwapTestHelper {
     function test_decode_reverts_when_capture_marker_is_not_c( )
     external
     {
-        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0, 3, 0, 0xB, 5, HookAddress.REQUIRED_PERMISSIONS );
+        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0, 3, 0, 0xB, 5, 0, HookAddress.REQUIRED_PERMISSIONS );
 
         vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, hook ) );
         this.decode_external( hook );
@@ -73,7 +73,7 @@ contract HookAddressTest is IHookAddressTests, SafeSwapTestHelper {
     function test_decode_reverts_when_base_fee_hundreds_digit_is_not_decimal( )
     external
     {
-        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0xA, 3, 0, HookAddress.CAPTURE_MARKER, 5, HookAddress.REQUIRED_PERMISSIONS );
+        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0xA, 3, 0, HookAddress.CAPTURE_MARKER, 5, 0, HookAddress.REQUIRED_PERMISSIONS );
 
         vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, hook ) );
         this.decode_external( hook );
@@ -82,7 +82,7 @@ contract HookAddressTest is IHookAddressTests, SafeSwapTestHelper {
     function test_decode_reverts_when_base_fee_tens_digit_is_not_decimal( )
     external
     {
-        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0, 0xA, 0, HookAddress.CAPTURE_MARKER, 5, HookAddress.REQUIRED_PERMISSIONS );
+        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0, 0xA, 0, HookAddress.CAPTURE_MARKER, 5, 0, HookAddress.REQUIRED_PERMISSIONS );
 
         vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, hook ) );
         this.decode_external( hook );
@@ -91,16 +91,25 @@ contract HookAddressTest is IHookAddressTests, SafeSwapTestHelper {
     function test_decode_reverts_when_base_fee_ones_digit_is_not_decimal( )
     external
     {
-        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0, 3, 0xA, HookAddress.CAPTURE_MARKER, 5, HookAddress.REQUIRED_PERMISSIONS );
+        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0, 3, 0xA, HookAddress.CAPTURE_MARKER, 5, 0, HookAddress.REQUIRED_PERMISSIONS );
 
         vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, hook ) );
         this.decode_external( hook );
     }
 
-    function test_decode_reverts_when_rebate_digit_is_not_decimal( )
+    function test_decode_reverts_when_rebate_tens_digit_is_not_decimal( )
     external
     {
-        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0, 3, 0, HookAddress.CAPTURE_MARKER, 0xA, HookAddress.REQUIRED_PERMISSIONS );
+        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0, 3, 0, HookAddress.CAPTURE_MARKER, 0xA, 0, HookAddress.REQUIRED_PERMISSIONS );
+
+        vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, hook ) );
+        this.decode_external( hook );
+    }
+
+    function test_decode_reverts_when_rebate_ones_digit_is_not_zero( )
+    external
+    {
+        address hook  =  _hook_address_with_config_nibbles( HookAddress.FEE_MARKER, 0, 3, 0, HookAddress.CAPTURE_MARKER, 5, 5, HookAddress.REQUIRED_PERMISSIONS );
 
         vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, hook ) );
         this.decode_external( hook );

@@ -40,7 +40,7 @@ interface ISafeSwapHookImplTests {
     function test_deploy_hook_forwards_to_the_implementation_when_called_on_a_clone() external;
     // NOTE: deploy_hook's success path (CREATE2 clone -> initialize_once registration -> HookRegistered event) and its
     //       CONFIG_MISMATCH / PERMISSIONS rejections all require the CREATE2 clone address to carry the HookAddress BCD
-    //       config AND the exact V4 permission bits. A fully valid hook address costs ~2^38 to mine (24 BCD bits + 14
+    //       config AND the exact V4 permission bits. A fully valid hook address costs ~2^42 to mine (28 BCD bits + 14
     //       permission bits), which is infeasible inside the unit suite. Those paths are exercised by the deploy/mining
     //       script (see TODO.md "Deploy tooling") against real mined salts. The guards above are address-shape independent
     //       and cover every deploy_hook branch reachable without a mined address: the implementation/clone forwarding

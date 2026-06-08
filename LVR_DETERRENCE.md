@@ -56,7 +56,7 @@ fee / surplus  =  (movement · capture · input) / (½ · movement · input)  = 
 
 A "50% capture" dial would actually take **~100% of the surplus**; a "90%" dial would try to take **~180%** — i.e. the
 repricing trade goes underwater and never happens, leaving the pool stale. The factor is ~2× and scale-invariant. Defining
-`capture%` directly against the surplus removes it: C5 means LPs get ~half the surplus and the arbitrageur keeps ~half, which
+`capture%` directly against the surplus removes it: C50 means LPs get ~half the surplus and the arbitrageur keeps ~half, which
 is what the name always implied.
 
 This is why the **90% ceiling** is meaningful: it guarantees arbitrageurs keep **at least 10% of the surplus**, preserving

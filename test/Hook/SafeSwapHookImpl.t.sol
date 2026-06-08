@@ -178,7 +178,7 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
     function test_clone_getters_revert_when_clone_address_does_not_encode_valid_config( )
     external
     {
-        address invalid_hook  =  _hook_address_with_config_nibbles( 0xE, 0, 3, 0, HookAddress.CAPTURE_MARKER, 5, HookAddress.REQUIRED_PERMISSIONS );
+        address invalid_hook  =  _hook_address_with_config_nibbles( 0xE, 0, 3, 0, HookAddress.CAPTURE_MARKER, 5, 0, HookAddress.REQUIRED_PERMISSIONS );
         _etch_hook_clone( invalid_hook, address(_implementation) );
 
         vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, invalid_hook ) );

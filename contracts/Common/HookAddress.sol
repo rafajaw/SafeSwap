@@ -7,22 +7,23 @@ pragma solidity ^0.8.30;
  * @notice Encoding and decoding of a SafeSwap config-hook address. Every SafeSwap pool's hook is a tiny delegatecall clone
  *         of one implementation whose CREATE2 address carries the pool economics as readable binary-coded decimal:
  *
- *             0x F d2 d1 d0 C r .......................... PPPP
- *                │ └──┬───┘ │ │                            └─ low 14 bits: Uniswap V4 hook permission bitmap
- *                │    │     │ └─ rebate digit r        → capture percent = r × 10        (0..90, in 10% steps)
- *                │    │     └─── capture marker (0xC)
- *                │    └───────── 3 base-fee digits     → base fee bps = 100·d2 + 10·d1 + d0   (0..999 → 0.00%..9.99%)
- *                └────────────── fee marker (0xF), also marks the address as a SafeSwap config hook
+ *             0x F d2 d1 d0 C r 0 ........................ PPPP
+ *                │ └──┬───┘ │ └┬┘                         └─ low 14 bits: Uniswap V4 hook permission bitmap
+ *                │    │     │  └─ capture percent digits → 10·r + 0       (0..90, forced 10% steps)
+ *                │    │     └──── capture marker (0xC)
+ *                │    └────────── 3 base-fee digits      → base fee bps = 100·d2 + 10·d1 + d0   (0..999 → 0.00%..9.99%)
+ *                └─────────────── fee marker (0xF), also marks the address as a SafeSwap config hook
  *
- *         Example: 0xF030C5… → base fee 0.3%, capture 50%. The markers 0xF and 0xC are both greater than 9, so they can
- *         never be confused with a 0..9 data digit. Base fee is open (any value the digits express); capture is 10%-quantized.
+ *         Example: 0xF030C50… → base fee 0.3%, capture 50%. The explicit trailing zero makes the percentage readable while
+ *         preserving 10%-quantized profiles: addresses such as 0xF030C55… are invalid. The markers 0xF and 0xC are both
+ *         greater than 9, so they can never be confused with a 0..9 data digit.
  */
 library HookAddress {
 
     error InvalidHookConfig( address hook );
 
     uint8   internal constant FEE_MARKER         =   0xF;   // Leading nibble: "Fee" — base-fee digits follow; marks a SafeSwap hook.
-    uint8   internal constant CAPTURE_MARKER     =   0xC;   // Separator nibble: "Capture" — the rebate digit follows.
+    uint8   internal constant CAPTURE_MARKER     =   0xC;   // Separator nibble: "Capture" — two percentage digits follow.
     uint8   internal constant MAX_DECIMAL_DIGIT  =   9;
     uint160 internal constant NIBBLE_MASK        =   0xF;
 
@@ -31,7 +32,8 @@ library HookAddress {
     uint256 internal constant BASE_FEE_D1_SHIFT     =   148;
     uint256 internal constant BASE_FEE_D0_SHIFT     =   144;
     uint256 internal constant CAPTURE_MARKER_SHIFT  =   140;
-    uint256 internal constant REBATE_SHIFT          =   136;
+    uint256 internal constant REBATE_TENS_SHIFT     =   136;
+    uint256 internal constant REBATE_ONES_SHIFT     =   132;
 
     uint160 internal constant PERMISSIONS_MASK      =   0x3FFF;     // (1 << 14) - 1, matches Hooks.ALL_HOOK_MASK.
 
@@ -43,8 +45,8 @@ library HookAddress {
 
     /**
      * @notice Decode the base fee (in basis points) and the LP capture share (in percent) from a config-hook address.
-     * @dev Reverts if the address does not carry the `0xF` fee marker and `0xC` capture marker, or if any base/rebate nibble
-     *      is not a decimal digit (greater than 9).
+     * @dev Reverts if the address does not carry the `0xF` fee marker and `0xC` capture marker, if any value nibble is not
+     *      decimal, or if the capture ones digit is not zero.
      */
     function decode( address hook ) internal pure returns ( uint16 base_fee_bps, uint8 rebate_percent )
     {
@@ -57,16 +59,18 @@ library HookAddress {
         uint8 base_fee_hundreds  =  uint8( (bits >> BASE_FEE_D2_SHIFT) & NIBBLE_MASK );
         uint8 base_fee_tens      =  uint8( (bits >> BASE_FEE_D1_SHIFT) & NIBBLE_MASK );
         uint8 base_fee_ones      =  uint8( (bits >> BASE_FEE_D0_SHIFT) & NIBBLE_MASK );
-        uint8 rebate_digit       =  uint8( (bits >> REBATE_SHIFT)      & NIBBLE_MASK );
+        uint8 rebate_tens_digit  =  uint8( (bits >> REBATE_TENS_SHIFT) & NIBBLE_MASK );
+        uint8 rebate_ones_digit  =  uint8( (bits >> REBATE_ONES_SHIFT) & NIBBLE_MASK );
 
         bool any_digit_invalid  =  base_fee_hundreds > MAX_DECIMAL_DIGIT
                                    ||  base_fee_tens > MAX_DECIMAL_DIGIT
                                    ||  base_fee_ones > MAX_DECIMAL_DIGIT
-                                   ||  rebate_digit > MAX_DECIMAL_DIGIT;
-        if(  any_digit_invalid  )  revert InvalidHookConfig( hook );
+                                   ||  rebate_tens_digit > MAX_DECIMAL_DIGIT
+                                   ||  rebate_ones_digit > MAX_DECIMAL_DIGIT;
+        if(  any_digit_invalid  ||  rebate_ones_digit != 0  )  revert InvalidHookConfig( hook );
 
         base_fee_bps    =  uint16(base_fee_hundreds) * 100  +  uint16(base_fee_tens) * 10  +  uint16(base_fee_ones);
-        rebate_percent  =  rebate_digit * 10;
+        rebate_percent  =  rebate_tens_digit * 10;
     }
 
     /**
