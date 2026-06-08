@@ -134,7 +134,7 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
         string memory image  =  string.concat( "data:image/svg+xml;base64,", Base64.encode( bytes(_render_svg( position )) ) );
 
         string memory json  =  string.concat(
-            '{"name":"', SAFESWAP_POSITIONS_NAME, ' #', LibString.toString( token_id ), ' ', position.tokens.symbol0, '/', position.tokens.symbol1, '",',
+            '{"name":"', SAFESWAP_POSITIONS_NAME, ' #', _token_id_hex( token_id ), ' ', position.tokens.symbol0, '/', position.tokens.symbol1, '",',
             '"description":"', SAFESWAP_POSITIONS_DESCRIPTION, '",',
             '"image":"', image, '",',
             '"attributes":', _render_attributes( position ),
@@ -485,7 +485,7 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
             StringHelperLib.attribute( "Pair", string.concat( position.tokens.symbol0, "/", position.tokens.symbol1 ) ), ",",
             StringHelperLib.attribute( "Chain Id", LibString.toString( block.chainid ) ), ",",
             StringHelperLib.attribute( "NFT Contract", LibString.toHexString( position.identity.nft_contract ) ), ",",
-            StringHelperLib.attribute( "Token Id", LibString.toString( position.identity.token_id ) ), ",",
+            StringHelperLib.attribute( "Token Id", _token_id_hex( position.identity.token_id ) ), ",",
             StringHelperLib.attribute( "Tick Spacing", LibString.toString( int256(position.identity.tick_spacing) ) ), ",",
             StringHelperLib.attribute( "Hook", LibString.toHexString( position.identity.hook ) ), ",",
             StringHelperLib.attribute( "Pool Id", LibString.toHexString( uint256(position.identity.pool_id), 32 ) )

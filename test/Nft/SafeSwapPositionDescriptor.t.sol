@@ -66,7 +66,7 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
     {
         string memory json  =  _decoded_json( nft.tokenURI( _token_id ) );
 
-        assertTrue( _contains( json, string.concat( '"name":"SafeSwap Positions #', Strings.toString( _token_id ), " " ) ), "name should carry the collection name and token id." );
+        assertTrue( _contains( json, string.concat( '"name":"SafeSwap Positions #', Strings.toHexString( _token_id, 8 ), " " ) ), "name should carry the collection name and token id." );
         assertTrue( _contains( json, "TKNA" )  &&  _contains( json, "TKNB" ), "name/attributes should carry both token symbols." );
         assertTrue( _contains( json, string.concat( '"description":"', SAFESWAP_POSITIONS_DESCRIPTION, '"' ) ), "description should match the constant." );
         assertTrue( _contains( json, string.concat( '"image":"', _SVG_PREFIX ) ), "image should be an on-chain svg data uri." );
@@ -88,7 +88,7 @@ contract SafeSwapPositionDescriptorTest is ISafeSwapPositionDescriptorTests, Saf
 
         assertTrue( _contains( json, string.concat( '"trait_type":"Chain Id","value":"', Strings.toString( block.chainid ), '"' ) ), "attributes should include the chain id." );
         assertTrue( _contains( json, expected_nft_contract ), "attributes should include the NFT contract." );
-        assertTrue( _contains( json, string.concat( '"trait_type":"Token Id","value":"', Strings.toString( _token_id ), '"' ) ), "attributes should include the token id." );
+        assertTrue( _contains( json, string.concat( '"trait_type":"Token Id","value":"', Strings.toHexString( _token_id, 8 ), '"' ) ), "attributes should include the token id." );
         assertTrue( _contains( json, '"trait_type":"Tick Spacing","value":"60"' ), "attributes should include tick spacing." );
         assertTrue( _contains( json, string.concat( '"trait_type":"Hook","value":"', Strings.toHexString( _hook ), '"' ) ), "attributes should include the hook address." );
         assertTrue( _contains( json, string.concat( '"trait_type":"Pool Id","value":"', expected_pool_id, '"' ) ), "attributes should include the V4 pool id." );
