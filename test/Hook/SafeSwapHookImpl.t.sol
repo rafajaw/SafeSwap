@@ -170,7 +170,7 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
     function test_clone_getters_decode_base_fee_and_rebate_percent_from_clone_address( )
     external
     {
-        ( uint16 base_fee_bps, uint8 rebate_percent )  =  ISafeSwapHook(_hook).get_hook_config( );
+        ( uint16 base_fee_bps, uint8 rebate_percent )  =  ISafeSwapHook(_hook).get_config( );
         assertEq( base_fee_bps, 30, "clone should decode base fee from its address." );
         assertEq( rebate_percent, 50, "clone should decode rebate percent from its address." );
     }
@@ -182,14 +182,14 @@ contract SafeSwapHookImplTest is ISafeSwapHookImplTests, ChainConfigTestHelper, 
         _etch_hook_clone( invalid_hook, address(_implementation) );
 
         vm.expectRevert( abi.encodeWithSelector( HookAddress.InvalidHookConfig.selector, invalid_hook ) );
-        ISafeSwapHook(invalid_hook).get_hook_config( );
+        ISafeSwapHook(invalid_hook).get_config( );
     }
 
-    function test_get_hook_config_reverts_when_called_on_implementation( )
+    function test_get_config_reverts_when_called_on_implementation( )
     external
     {
         vm.expectRevert( abi.encodeWithSelector( DirectImplementationCallForbidden.selector, address(_implementation) ) );
-        _implementation.get_hook_config( );
+        _implementation.get_config( );
     }
 
     function test_clone_runtime_codehash_is_shared_across_config_instances( )

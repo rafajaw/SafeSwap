@@ -95,7 +95,7 @@ contract SafeSwapHookImpl is ISafeSwapHook {
      * @notice Base LP fee in basis points and LP capture share in percent, decoded from this clone's address.
      * @dev Reverts with `DirectImplementationCallForbidden` if called on the implementation, which carries no valid config.
      */
-    function get_hook_config( )
+    function get_config( )
     external  view returns ( uint16 base_fee_bps, uint8 rebate_percent )
     {
         _require_clone_context( );

@@ -33,7 +33,7 @@ interface ISafeSwapHookImplTests {
     function test_initialize_once_reverts_when_called_on_implementation() external;
 
     // ─── Permissionless Hook Deployment (deploy_hook) ───────────────────────────
-    function test_get_hook_config_reverts_when_called_on_implementation() external;
+    function test_get_config_reverts_when_called_on_implementation() external;
     function test_clone_deploys_exact_canonical_eip1167_runtime_bytecode() external;
     function test_deploy_hook_reverts_when_a_contract_already_exists_at_the_salt_address() external;
     function test_deploy_hook_reverts_when_the_salt_address_is_not_a_valid_hook_config() external;
