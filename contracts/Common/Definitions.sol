@@ -15,6 +15,8 @@ bytes32 constant SAFESWAP_NFT_KEY                      =  bytes32("safeswap/nft"
 bytes32 constant SAFESWAP_HOOK_CODEHASH_KEY            =  bytes32("safeswap/hook_codehash");
 bytes32 constant SAFESWAP_POSITION_DESCRIPTOR_KEY      =  bytes32("safeswap/position_descriptor");
 bytes32 constant SAFESWAP_SIGNING_DESCRIPTOR_KEY       =  bytes32("safeswap/signing_descriptor");
+bytes32 constant NATIVE_TOKEN_SYMBOL_KEY               =  bytes32("safeswap/native_token_symbol");
+bytes32 constant NATIVE_TOKEN_DECIMALS_KEY             =  bytes32("safeswap/native_token_decimals");
 
 
 // ━━━━  SAFESWAP ECONOMICS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

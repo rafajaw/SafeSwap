@@ -10,6 +10,7 @@ import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { BalanceDelta } from "@UniswapV4Core/types/BalanceDelta.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
+import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
 
 
 // ━━━━  PARAMETERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -58,12 +59,14 @@ library ExactOutputSwapLib {
     function get_signing_info( ExactOutputSwapParams memory params )
     internal view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
     {
-        string memory symbol_in   =  SigningLib.read_sanitized_symbol( params.token_in );
-        string memory symbol_out  =  SigningLib.read_sanitized_symbol( params.token_out );
+        string memory symbol_in   =  StringHelperLib.get_sanitized_token_symbol( params.token_in );
+        string memory symbol_out  =  StringHelperLib.get_sanitized_token_symbol( params.token_out );
+        uint8 decimals_in         =  StringHelperLib.get_token_decimals( params.token_in );
+        uint8 decimals_out        =  StringHelperLib.get_token_decimals( params.token_out );
 
-        string memory pay      =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_AT_MOST, params.maximum_input_amount, SigningLib.read_token_decimals( params.token_in ), symbol_in );
-        string memory receive_value  =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_EXACT, params.exact_output_amount, SigningLib.read_token_decimals( params.token_out ), symbol_out );
-        string memory pool     =  SigningLib.render_pool_value( params.pool_info );
+        string memory pay            =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_AT_MOST, params.maximum_input_amount, decimals_in, symbol_in );
+        string memory receive_value  =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_EXACT, params.exact_output_amount, decimals_out, symbol_out );
+        string memory pool           =  SigningLib.render_pool_value( params.pool_info );
 
         string memory inner_definition  =  string.concat( INNER_DEFINITION_HEAD, symbol_out, ")" );
 
@@ -82,12 +85,14 @@ library ExactOutputSwapLib {
     function get_signing_values( ExactOutputSwapParams memory params )
     internal view returns ( string[] memory display_values, address[] memory token_addresses )
     {
-        string memory symbol_in   =  SigningLib.read_sanitized_symbol( params.token_in );
-        string memory symbol_out  =  SigningLib.read_sanitized_symbol( params.token_out );
+        string memory symbol_in   =  StringHelperLib.get_sanitized_token_symbol( params.token_in );
+        string memory symbol_out  =  StringHelperLib.get_sanitized_token_symbol( params.token_out );
+        uint8 decimals_in         =  StringHelperLib.get_token_decimals( params.token_in );
+        uint8 decimals_out        =  StringHelperLib.get_token_decimals( params.token_out );
 
         display_values     =  new string[]( 4 );
-        display_values[0]  =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_AT_MOST, params.maximum_input_amount, SigningLib.read_token_decimals( params.token_in ), symbol_in );
-        display_values[1]  =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_EXACT, params.exact_output_amount, SigningLib.read_token_decimals( params.token_out ), symbol_out );
+        display_values[0]  =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_AT_MOST, params.maximum_input_amount, decimals_in, symbol_in );
+        display_values[1]  =  SigningLib.render_single_amount_value( SigningLib.OPERATOR_EXACT, params.exact_output_amount, decimals_out, symbol_out );
         display_values[2]  =  SigningLib.render_pool_value( params.pool_info );
         display_values[3]  =  SigningLib.WARNING_VALUE;
 

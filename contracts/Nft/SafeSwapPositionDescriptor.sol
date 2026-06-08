@@ -120,6 +120,10 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
         address pool_manager  =  ChainConfig.read_address( CONFIG_SIGNER, POOL_MANAGER_KEY );
         if(  pool_manager.code.length == 0  )  revert( "SafeSwapDescriptor: Invalid pool_manager" );
 
+        // Fail-fast: the native-token display keys are read lazily at render, but require them at deploy so a chain can never
+        // ship a descriptor without its native symbol / decimals set.
+        StringHelperLib.validate_native_token_config( );
+
         PoolManager  =  IPoolManager(pool_manager);
     }
 
@@ -164,14 +168,14 @@ contract SafeSwapPositionDescriptor is ISafeSwapPositionDescriptor {
         PoolId pool_id                    =  _pool_id( info );
 
         ( uint160 sqrt_price_x96, int24 current_tick, , )  =  PoolManager.getSlot0( pool_id );
-        uint8 decimals0  =  StringHelperLib.token_decimals( info.token0 );
-        uint8 decimals1  =  StringHelperLib.token_decimals( info.token1 );
+        uint8 decimals0  =  StringHelperLib.get_token_decimals( info.token0 );
+        uint8 decimals1  =  StringHelperLib.get_token_decimals( info.token1 );
 
         ( AmountView memory amounts, uint128 liquidity )  =  _load_amounts( nft, token_id, info, pool_id, sqrt_price_x96 );
 
         position.tokens            =  TokenView({
-            symbol0:   StringHelperLib.token_symbol( info.token0 ),
-            symbol1:   StringHelperLib.token_symbol( info.token1 ),
+            symbol0:   StringHelperLib.get_sanitized_token_symbol( info.token0 ),
+            symbol1:   StringHelperLib.get_sanitized_token_symbol( info.token1 ),
             decimals0: decimals0,
             decimals1: decimals1
         });

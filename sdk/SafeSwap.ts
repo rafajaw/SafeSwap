@@ -946,7 +946,7 @@ async function sign_signing_preview( ctx: SafeSwapContext, preview: SafeSwapSign
 
 async function get_token_display_metadata( ctx: SafeSwapContext, token: Address, opts?: RenderDescriptionOpts ): Promise<TokenDisplayMetadata>
 {
-    if(  is_native_token( token )  )  return opts?.native_token ?? { symbol: "ETH", decimals: 18 };
+    if(  is_native_token( token )  )  return opts?.native_token ?? native_currency_metadata( ctx );
 
     const key     =  token.toLowerCase();
     const cached  =  ctx.token_metadata_cache.get( key );
@@ -955,6 +955,16 @@ async function get_token_display_metadata( ctx: SafeSwapContext, token: Address,
     const promise  =  fetch_token_display_metadata( ctx, token );
     ctx.token_metadata_cache.set( key, promise );
     return await promise;
+}
+
+// The native gas token has no on-chain symbol/decimals source (that is why the contracts read it from ChainConfig). Off-chain
+// the standard source is viem's chain.nativeCurrency (EIP-3085), populated when the client is created with a chain. Falls back
+// to ETH/18 when the client has no chain configured; callers can always override via `RenderDescriptionOpts.native_token`.
+function native_currency_metadata( ctx: SafeSwapContext ): TokenDisplayMetadata
+{
+    const native  =  ctx.bond_route.public_client.chain?.nativeCurrency;
+    if(  native !== undefined  )  return { symbol: native.symbol, decimals: native.decimals };
+    return { symbol: "ETH", decimals: 18 };
 }
 
 async function fetch_token_display_metadata( ctx: SafeSwapContext, token: Address ): Promise<TokenDisplayMetadata>

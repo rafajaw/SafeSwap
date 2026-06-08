@@ -5,6 +5,8 @@ import { IERC20 } from "@BondRouteProtected/BondRouteProtected.sol";
 import { IERC20Metadata } from "@OpenZeppelin/token/ERC20/extensions/IERC20Metadata.sol";
 import { DateTimeLib } from "@Solady/utils/DateTimeLib.sol";
 import { LibString } from "@Solady/utils/LibString.sol";
+import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
+import { CONFIG_SIGNER, NATIVE_TOKEN_SYMBOL_KEY, NATIVE_TOKEN_DECIMALS_KEY } from "@SafeSwapCommon/Definitions.sol";
 
 
 /**
@@ -257,12 +259,12 @@ library StringHelperLib {
         }
     }
 
-    // Safe token symbol for embedding in JSON and SVG: native ETH is labelled directly; a non-conforming `symbol()`
-    // (missing, reverting, or non-string) falls back to the short address; the result is filtered to an alphanumeric
-    // subset so it can never break out of the surrounding XML/JSON or exceed a sane length.
-    function token_symbol( IERC20 token ) internal view returns ( string memory )
+    // Safe display symbol for embedding in JSON, SVG, and the signed receipt: the native token (`address(0)`) renders the
+    // chain-configured native symbol; a non-conforming `symbol()` (missing, reverting, or non-string) falls back to the short
+    // address; the result is filtered to an alphanumeric subset so it can never break out of the surrounding XML/JSON/type string.
+    function get_sanitized_token_symbol( IERC20 token ) internal view returns ( string memory )
     {
-        if(  address(token) == address(0)  )  return "ETH";
+        if(  address(token) == address(0)  )  return get_native_token_symbol( );
 
         try IERC20Metadata( address(token) ).symbol( ) returns ( string memory symbol )
         {
@@ -274,9 +276,11 @@ library StringHelperLib {
         }
     }
 
-    function token_decimals( IERC20 token ) internal view returns ( uint8 )
+    // The native token (`address(0)`) renders the chain-configured native decimals; a token whose `decimals()` is missing or
+    // reverts falls back to the universal 18-decimal ERC20 default.
+    function get_token_decimals( IERC20 token ) internal view returns ( uint8 )
     {
-        if(  address(token) == address(0)  )  return 18;
+        if(  address(token) == address(0)  )  return get_native_token_decimals( );
 
         try IERC20Metadata( address(token) ).decimals( ) returns ( uint8 decimals )
         {
@@ -286,6 +290,28 @@ library StringHelperLib {
         {
             return 18;
         }
+    }
+
+    // The native token (`address(0)`) display name and decimals are chain-scoped, read live from ChainConfig so a chain rename
+    // (e.g. ETH -> ETC) is reflected by republishing the key with no redeploy. These are the source of truth the signing
+    // receipt and the NFT card both render; an unset key reverts `KeyNotSet`, and the size-bound descriptors touch-read both
+    // in their constructors so a misconfigured deploy fails fast rather than at first render. Sanitized like any other symbol.
+    function get_native_token_symbol( ) internal view returns ( string memory )
+    {
+        return sanitize( LibString.fromSmallString( ChainConfig.read_bytes32( CONFIG_SIGNER, NATIVE_TOKEN_SYMBOL_KEY ) ) );
+    }
+
+    function get_native_token_decimals( ) internal view returns ( uint8 )
+    {
+        return uint8( ChainConfig.read_uint( CONFIG_SIGNER, NATIVE_TOKEN_DECIMALS_KEY ) );
+    }
+
+    // Deploy-time guard for the size-bound descriptors: require the native-token display keys before first render so a
+    // misconfigured deploy fails fast rather than at the first signing receipt or card. An unset key reverts `KeyNotSet`.
+    function validate_native_token_config( ) internal view
+    {
+        if(  bytes( get_native_token_symbol() ).length == 0  )  revert( "SafeSwap: native_token_symbol not set" );
+        if(  get_native_token_decimals() == 0  )                revert( "SafeSwap: native_token_decimals not set" );
     }
 
     // Keep only [0-9A-Za-z], '.', '-' and cap the length. Drops quotes, angle brackets, backslashes, and control bytes, so a

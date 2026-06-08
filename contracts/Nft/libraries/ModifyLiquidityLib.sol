@@ -17,6 +17,7 @@ import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { SqrtPriceMath } from "@UniswapV4Core/libraries/SqrtPriceMath.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
+import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
 
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -330,10 +331,10 @@ library ModifyLiquidityLib {
     {
         tokens.token0    =  address(token0);
         tokens.token1    =  address(token1);
-        tokens.decimals0 =  SigningLib.read_token_decimals( token0 );
-        tokens.decimals1 =  SigningLib.read_token_decimals( token1 );
-        tokens.symbol0   =  SigningLib.read_sanitized_symbol( token0 );
-        tokens.symbol1   =  SigningLib.read_sanitized_symbol( token1 );
+        tokens.decimals0 =  StringHelperLib.get_token_decimals( token0 );
+        tokens.decimals1 =  StringHelperLib.get_token_decimals( token1 );
+        tokens.symbol0   =  StringHelperLib.get_sanitized_token_symbol( token0 );
+        tokens.symbol1   =  StringHelperLib.get_sanitized_token_symbol( token1 );
     }
 
     function _create_struct_hash( CreatePositionParams memory params, _PoolTokens memory tokens, uint256 minimum0, uint256 minimum1, string memory inner_definition )

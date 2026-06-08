@@ -397,6 +397,7 @@ contract SafeSwapRouterTest is ISafeSwapRouterTests, SafeSwapRealEnv {
 
         RouterMockPoolManager descriptor_pool_manager  =  new RouterMockPoolManager( );
         _publish_config_address( POOL_MANAGER_KEY, address(descriptor_pool_manager) );
+        _publish_native_token_config( );
         _publish_config_address( SAFESWAP_SIGNING_DESCRIPTOR_KEY, address(new SafeSwapSigningDescriptor( )) );
 
         if(  pool_manager == address(0)  )

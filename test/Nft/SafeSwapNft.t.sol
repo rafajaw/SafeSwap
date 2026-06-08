@@ -87,6 +87,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
 
         _publish_config_address( POOL_MANAGER_KEY, address(_pool_manager) );
         _publish_config_address( SAFESWAP_ROUTER_KEY, address(_router) );
+        _publish_native_token_config( );
         _publish_config_address( SAFESWAP_POSITION_DESCRIPTOR_KEY, address(new SafeSwapPositionDescriptor()) );
         _publish_config_address( SAFESWAP_SIGNING_DESCRIPTOR_KEY, address(new SafeSwapSigningDescriptor( )) );
 

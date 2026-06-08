@@ -25,6 +25,7 @@ import {
     ExactOutputSwapParams
 } from "@SafeSwapRouter/libraries/ExactOutputSwapLib.sol";
 import { UnsupportedCall } from "@BondRouteProtected/BondRouteProtected.sol";
+import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
 
 
 /**
@@ -34,6 +35,12 @@ import { UnsupportedCall } from "@BondRouteProtected/BondRouteProtected.sol";
  *      NFT store this descriptor address as an immutable, so neither BondRoute signing surface can be redirected after deploy.
  */
 contract SafeSwapSigningDescriptor is ISafeSwapSigningDescriptor, PoolManagerIntegration {
+
+    // Fail-fast: native-token symbol / decimals feed the signed EIP-712 receipt, so require both keys at deploy, not lazily.
+    constructor( )
+    {
+        StringHelperLib.validate_native_token_config( );
+    }
 
     function build_router_signing_info( bytes calldata protected_call )
     external  view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )

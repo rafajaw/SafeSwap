@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import { Test } from "forge-std/Test.sol";
 
-import { CONFIG_SIGNER } from "@SafeSwapCommon/Definitions.sol";
+import { CONFIG_SIGNER, NATIVE_TOKEN_SYMBOL_KEY, NATIVE_TOKEN_DECIMALS_KEY } from "@SafeSwapCommon/Definitions.sol";
 import { ChainConfig as ChainConfigImplementation } from "@ChainConfigCore/ChainConfig.sol";
 import {
     AddressEntry,
@@ -60,6 +60,31 @@ contract ChainConfigTestHelper is Test {
 
         vm.prank( CONFIG_SIGNER );
         ChainConfig.write_config( config );
+    }
+
+    function _publish_config_uint( bytes32 key, uint256 value ) internal
+    {
+        UintEntry[] memory uints  =  new UintEntry[](1);
+        uints[0]  =  UintEntry({ key: _bytes32_to_string( key ), value: value });
+
+        Config memory config;
+        config.chain_id   =  block.chainid;
+        config.timestamp  =  _next_config_timestamp;
+        config.addresses  =  new AddressEntry[](0);
+        config.bytes32s   =  new Bytes32Entry[](0);
+        config.uints      =  uints;
+
+        _next_config_timestamp  =  _next_config_timestamp + 1;
+
+        vm.prank( CONFIG_SIGNER );
+        ChainConfig.write_config( config );
+    }
+
+    // Publish the native-token display config every descriptor constructor requires (defaults to an ETH/18 launch chain).
+    function _publish_native_token_config( ) internal
+    {
+        _publish_config_bytes32( NATIVE_TOKEN_SYMBOL_KEY, bytes32("ETH") );
+        _publish_config_uint( NATIVE_TOKEN_DECIMALS_KEY, 18 );
     }
 
     function _bytes32_to_string( bytes32 value ) private pure returns ( string memory )

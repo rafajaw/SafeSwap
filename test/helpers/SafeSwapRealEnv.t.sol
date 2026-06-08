@@ -93,6 +93,7 @@ abstract contract SafeSwapRealEnv is ChainConfigTestHelper, SafeSwapTestHelper, 
         poolManager  =  IPoolManager( IPoolManagerDeployer( pool_manager_deployer ).deploy( address(this) ) );
         _publish_config_address( POOL_MANAGER_KEY, address(poolManager) );
         _publish_config_address( INITIAL_TREASURY_KEY, TREASURY );
+        _publish_native_token_config( );
 
         _signing_descriptor  =  new SafeSwapSigningDescriptor( );
         _publish_config_address( SAFESWAP_SIGNING_DESCRIPTOR_KEY, address(_signing_descriptor) );

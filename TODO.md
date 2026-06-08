@@ -92,7 +92,7 @@
       validates exact token+amount equality at execution. Remove-liquidity and collect-fees continue to require no fundings.
 - [x] **Config-hook deployment** - solved by the self-replicating `SafeSwapHookImpl.deploy_hook(base_fee_bps,
       rebate_percent, salt)`: deploys the canonical EIP-1167 clone (OZ `Clones`, this impl baked in) at a mined salt,
-      pre-flights BCD config + V4 permission bits (`HookSpawnRejected`), then `initialize_once` registers it. Callable on
+      pre-flights BCD config + V4 permission bits (`DeployHookFailed`), then `initialize_once` registers it. Callable on
       the impl or any clone (a clone-call forwards to the impl so the canonical code is always baked in). `get_hook_config()`
       replaces the verb-less getters and reverts on the impl. No separate `SafeSwapHookProxy` artifact needed; the parity
       test (`test_clone_deploys_exact_canonical_eip1167_runtime_bytecode`) proves the deployed runtime is byte-exact EIP-1167
@@ -109,10 +109,12 @@
       publish/archive `POOL_MANAGER_KEY`, `INITIAL_TREASURY_KEY`, `SAFESWAP_ROUTER_KEY`, `SAFESWAP_NFT_KEY`,
       `SAFESWAP_HOOK_CODEHASH_KEY`, `SAFESWAP_POSITION_DESCRIPTOR_KEY`, and
       `SAFESWAP_SIGNING_DESCRIPTOR_KEY`.
-- [ ] **Move native-token display metadata into ChainConfig for multichain support.** Native `address(0)` currently renders
-      with hardcoded symbol `"ETH"` and 18 decimals in `StringHelperLib`. Add chain-scoped native-symbol and native-decimals
-      keys, resolve and validate them in the shared signing and position descriptors, mirror the same source of truth in the
-      SDK/frontend, and add launch-chain tests covering a non-ETH native symbol and non-18 native decimals.
+- [x] **Source native-token display per chain (no hardcoded `"ETH"`/18).** On-chain (the only source): `NATIVE_TOKEN_SYMBOL_KEY`
+      / `NATIVE_TOKEN_DECIMALS_KEY` in ChainConfig, read live by `StringHelperLib.get_native_token_symbol/decimals` (so a chain
+      rename is a republish, not a redeploy) and rendered in both the signed receipt and the NFT card; both descriptors fail-fast
+      at deploy via `validate_native_token_config()`. Off-chain the SDK/frontend use the standard viem `chain.nativeCurrency`
+      (EIP-3085), not ChainConfig: the SDK reads `public_client.chain?.nativeCurrency`; the frontend resolves the connected chain
+      so it is populated, dropping its hardcoded constant. DEFERRED: a dedicated non-ETH-symbol / non-18-decimals chain test.
 - [x] Remove `legacy_tests/` - deleted after the coverage cross-check.
 - [x] Decide quoter precision + fee ceilings: keep two-pass quote simulation for exact-input and exact-output so quotes match
       execution, remove the low SafeSwap-specific repricing/total fee caps, and explicitly revert when configured surplus
@@ -244,3 +246,10 @@ Decisions already baked into both references (see the docs for the why):
       static-fee, path, test-count, or runtime-size claims; reconcile them with router + NFT + config-hook-clone reality.
 - [ ] Run the final verification pass: full Foundry suite, SDK tests/build, all deploy-profile size checks, gas benchmarks,
       Slither triage, deployment dry run, explorer verification rehearsal, and external-audit package.
+
+
+- [x] **Final ABI pass across all contracts.** Enumerated every event and error and triaged each: saturated the display-only LP
+      fee totals (dropped `FeeTotalOverflow`), removed the redundant `HookSpawned` (HookRegistered gates deployment), renamed the
+      deploy error to `DeployHookFailed`/`DeployHookError`, and rendered the LP NFT token id as hex in metadata JSON. Interface
+      parity is compiler-enforced; the SDK revert-decoder now mirrors the execution path (`SignedSwapInputMismatch`,
+      `RepricingFeeExceedsV4Limit`).

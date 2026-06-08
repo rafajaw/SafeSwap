@@ -1,5 +1,5 @@
 import { formatUnits, isAddress, parseAbi, parseUnits, type Address, type PublicClient } from "viem";
-import { NATIVE_TOKEN_METADATA, ZERO_ADDRESS } from "./constants";
+import { ZERO_ADDRESS } from "./constants";
 import type { TokenMetadata } from "./types";
 
 const ERC20_METADATA_ABI  =  parseAbi([
@@ -20,7 +20,8 @@ export async function get_token_metadata( public_client: PublicClient, token: Ad
 {
     if(  token.toLowerCase() === ZERO_ADDRESS.toLowerCase()  )
     {
-        return { address: token, ...NATIVE_TOKEN_METADATA };
+        const native  =  public_client.chain?.nativeCurrency;
+        return { address: token, symbol: native?.symbol ?? "ETH", decimals: native?.decimals ?? 18 };
     }
 
     const key     =  token.toLowerCase();

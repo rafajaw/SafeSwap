@@ -41,19 +41,6 @@ library SigningLib {
     string internal constant OPERATOR_AT_LEAST  =  ">= ";
 
 
-    // ━━━━  TOKEN METADATA (DEFENSIVE)  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    function read_sanitized_symbol( IERC20 token ) internal view returns ( string memory )
-    {
-        return StringHelperLib.token_symbol( token );
-    }
-
-    function read_token_decimals( IERC20 token ) internal view returns ( uint8 )
-    {
-        return StringHelperLib.token_decimals( token );
-    }
-
-
     // ━━━━  DISPLAY VALUES  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     // "= 1.25 WETH"
