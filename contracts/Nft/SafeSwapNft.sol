@@ -61,8 +61,8 @@ interface ISafeSwapRouterHooks {
  * @title SafeSwapNft
  * @notice Shared ERC721 position manager for SafeSwap LP positions. It owns the Uniswap V4 positions it represents (it is
  *         the `modifyLiquidity` caller; the V4 salt is the NFT token id), and exposes the BondRoute-protected position
- *         lifecycle: create, add, remove, collect. Swaps live in the separate SwapRouter; this contract is its own BondRoute
- *         protocol surface.
+ *         lifecycle: BondRoute-protected create/add/remove plus direct fee collection. Swaps live in the separate SwapRouter;
+ *         this contract is its own BondRoute protocol surface.
  *
  * @dev Pools are dynamic-fee (the hook applies the LP fee), so every PoolKey uses `DYNAMIC_FEE_FLAG`. The config hook for a
  *      new position is resolved from the canonical router's registry (`router.get_hook_address`); follow-up actions read the hook
@@ -173,14 +173,21 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     }
 
     /**
-     * @notice Collect fees from an existing NFT-backed position through BondRoute.
+     * @notice Collect accrued fees from an existing NFT-backed position. Fee collection has no price impact or MEV exposure,
+     *         so the owner or an approved operator calls it directly without BondRoute delay or stake.
      */
-    function bonded_collect_fees( CollectFeesParams calldata params )
-    external
+    function collect_fees( CollectFeesParams calldata params )
+    external  override
     {
-        BondContext memory context  =  BondRoute_initialize( );
+        BondContext memory context  =  BondContext({
+            user:               msg.sender,
+            stake:              TokenAmount({ token: IERC20(address(0)), amount: 0 }),
+            fundings:           new TokenAmount[](0),
+            creation_block:     0,
+            creation_timestamp: 0
+        });
 
-        ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )  =  _prepare_collect_fees( context, params );
+        ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )  =  _prepare_collect_fees( msg.sender, params );
 
         PoolManager.unlock( abi.encode( context, executable_params, position_info ) );
     }
@@ -190,11 +197,10 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
     function BondRoute_get_protected_selectors( )
     public  pure override returns ( bytes4[] memory selectors )
     {
-        selectors       =  new bytes4[]( 4 );
+        selectors       =  new bytes4[]( 3 );
         selectors[ 0 ]  =  this.bonded_create_position.selector;
         selectors[ 1 ]  =  this.bonded_add_liquidity.selector;
         selectors[ 2 ]  =  this.bonded_remove_liquidity.selector;
-        selectors[ 3 ]  =  this.bonded_collect_fees.selector;
     }
 
     function BondRoute_quote_call( bytes calldata call, IERC20 preferred_stake_token, TokenAmount[] memory preferred_fundings )
@@ -224,13 +230,6 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
             RemovePositionLiquidityParams memory params  =  abi.decode( call[ 4: ], (RemovePositionLiquidityParams) );
             SafeSwapPositionInfo memory position_info    =  get_lp_position( params.token_id );
             ModifyLiquidityParams memory modify_params   =  _remove_liquidity_modify_params( params, position_info );
-            return ModifyLiquidityLib.get_constraints( modify_params, preferred_stake_token, preferred_fundings, PoolManager, position_info );
-        }
-        else if(  selector == this.bonded_collect_fees.selector  )
-        {
-            CollectFeesParams memory params             =  abi.decode( call[ 4: ], (CollectFeesParams) );
-            SafeSwapPositionInfo memory position_info   =  get_lp_position( params.token_id );
-            ModifyLiquidityParams memory modify_params  =  _collect_fees_modify_params( params, position_info );
             return ModifyLiquidityLib.get_constraints( modify_params, preferred_stake_token, preferred_fundings, PoolManager, position_info );
         }
         else
@@ -397,9 +396,9 @@ contract SafeSwapNft is ERC721, ISafeSwapNft, PoolManagerIntegration, BondRouteP
         executable_params  =  _remove_liquidity_modify_params( params, position_info );
     }
 
-    function _prepare_collect_fees( BondContext memory context, CollectFeesParams memory params ) internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
+    function _prepare_collect_fees( address caller, CollectFeesParams memory params ) internal view returns ( ModifyLiquidityParams memory executable_params, SafeSwapPositionInfo memory position_info )
     {
-        _require_lp_position_authority( params.token_id, context.user );
+        _require_lp_position_authority( params.token_id, caller );
         position_info  =  get_lp_position( params.token_id );
 
         executable_params  =  _collect_fees_modify_params( params, position_info );

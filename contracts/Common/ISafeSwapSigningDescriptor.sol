@@ -4,7 +4,6 @@ pragma solidity ^0.8.30;
 import { ISafeSwapNft } from "@SafeSwapNft/ISafeSwapNft.sol";
 import {
     AddPositionLiquidityParams,
-    CollectFeesParams,
     CreatePositionParams,
     RemovePositionLiquidityParams
 } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
@@ -13,7 +12,7 @@ import { ExactOutputSwapParams } from "@SafeSwapRouter/libraries/ExactOutputSwap
 
 
 /**
- * @notice Selector-only surface for the four BondRoute-protected NFT lifecycle actions.
+ * @notice Selector-only surface for the three BondRoute-protected NFT lifecycle actions.
  */
 interface ISafeSwapNftActions {
     function bonded_create_position( CreatePositionParams calldata params )
@@ -23,9 +22,6 @@ interface ISafeSwapNftActions {
     external;
 
     function bonded_remove_liquidity( RemovePositionLiquidityParams calldata params )
-    external;
-
-    function bonded_collect_fees( CollectFeesParams calldata params )
     external;
 }
 

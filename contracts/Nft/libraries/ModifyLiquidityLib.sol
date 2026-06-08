@@ -158,7 +158,6 @@ library ModifyLiquidityLib {
     string constant CREATE_FIELD_DECLARATION   =  "CreatePosition sS__CREATE_POSITION__Ss";
     string constant ADD_FIELD_DECLARATION      =  "AddLiquidity sS__ADD_LIQUIDITY__Ss";
     string constant REMOVE_FIELD_DECLARATION   =  "RemoveLiquidity sS__REMOVE_LIQUIDITY__Ss";
-    string constant COLLECT_FIELD_DECLARATION  =  "CollectFees sS__COLLECT_FEES__Ss";
 
     // Resolved pool-token pair: addresses (the raw anchors) plus the once-read symbol / decimals reused across the fields.
     struct _PoolTokens {
@@ -282,48 +281,6 @@ library ModifyLiquidityLib {
         token_addresses[0]  =  tokens.token1;
         token_addresses[1]  =  tokens.token0;
     }
-
-    function get_collect_fees_signing_info( CollectFeesParams memory params, SafeSwapPositionInfo memory position_info )
-    internal view returns ( string memory typed_string, bytes32 struct_hash, uint256 token_amount_offset )
-    {
-        _PoolTokens memory tokens  =  _resolve_pool_tokens( position_info.token0, position_info.token1 );
-        ( , uint256 received0, , uint256 received1 )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_received_a, params.minimum_received_b );
-
-        string memory inner_definition  =  string.concat(
-            "CollectFees(string Position,string Receive,string Pool,string Warning,address ",
-            tokens.symbol1, ",address ", tokens.symbol0, ")"
-        );
-
-        ( typed_string, token_amount_offset )  =  SigningLib.build_typed_string( COLLECT_FIELD_DECLARATION, inner_definition );
-
-        struct_hash  =  SigningLib.hash_words(
-            SigningLib.hash_string( inner_definition ),
-            SigningLib.hash_string( SigningLib.render_position_value( params.token_id ) ),
-            SigningLib.hash_string( SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, received1, tokens.decimals1, tokens.symbol1, received0, tokens.decimals0, tokens.symbol0 ) ),
-            SigningLib.hash_string( SigningLib.render_pool_value( _pool_info_of( position_info ) ) ),
-            SigningLib.WARNING_VALUE_HASH,
-            SigningLib.encode_address_word( tokens.token1 ),
-            SigningLib.encode_address_word( tokens.token0 )
-        );
-    }
-
-    function get_collect_fees_signing_values( CollectFeesParams memory params, SafeSwapPositionInfo memory position_info )
-    internal view returns ( string[] memory display_values, address[] memory token_addresses )
-    {
-        _PoolTokens memory tokens  =  _resolve_pool_tokens( position_info.token0, position_info.token1 );
-        ( , uint256 received0, , uint256 received1 )  =  SafeSwapCommon.sort_token_amount_pair( params.minimum_received_a, params.minimum_received_b );
-
-        display_values     =  new string[]( 4 );
-        display_values[0]  =  SigningLib.render_position_value( params.token_id );
-        display_values[1]  =  SigningLib.render_pair_amount_value( SigningLib.OPERATOR_AT_LEAST, received1, tokens.decimals1, tokens.symbol1, received0, tokens.decimals0, tokens.symbol0 );
-        display_values[2]  =  SigningLib.render_pool_value( _pool_info_of( position_info ) );
-        display_values[3]  =  SigningLib.WARNING_VALUE;
-
-        token_addresses     =  new address[]( 2 );
-        token_addresses[0]  =  tokens.token1;
-        token_addresses[1]  =  tokens.token0;
-    }
-
 
     // ━━━━  SIGNING HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

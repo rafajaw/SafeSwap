@@ -139,8 +139,8 @@ contract SigningLibTest is ISigningLibTests, Test {
     function test_build_typed_string_offset_points_at_token_amount_definition( )
     external
     {
-        string memory inner_definition  =  "CollectFees(string Position,string Receive,string Pool,string Warning,address WETH,address USDC)";
-        ( string memory typed_string, uint256 token_amount_offset )  =  SigningLib.build_typed_string( "CollectFees sS__COLLECT_FEES__Ss", inner_definition );
+        string memory inner_definition  =  "RemoveLiquidity(string Position,string Burn,string Receive,string Pool,string Warning,address WETH,address USDC)";
+        ( string memory typed_string, uint256 token_amount_offset )  =  SigningLib.build_typed_string( "RemoveLiquidity sS__REMOVE_LIQUIDITY__Ss", inner_definition );
 
         bytes memory raw  =  bytes(typed_string);
         assertEq( raw[ token_amount_offset - 1 ], bytes1(")"), "the byte before the offset must be the `)` BondRoute validates." );

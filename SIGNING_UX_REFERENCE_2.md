@@ -292,42 +292,6 @@ Message
     USDC:     0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
 ```
 
-## Collect Fees
-
-Proposed SafeSwap type string:
-
-```text
-ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,CollectFees sS__COLLECT_FEES__Ss)CollectFees(string Position,string Receive,string Pool,string Warning,address WETH,address USDC)TokenAmount(address token,uint256 amount)
-```
-
-Wallet display:
-
-```text
-Domain
-  name:              BondRoute
-  version:           1
-  chainId:           1
-  verifyingContract: 0x1111111111111111111111111111111111111111
-
-Primary type
-  ExecuteBondAs
-
-Message
-  fundings: []
-  stake
-    token:  0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
-    amount: 1000000
-  salt:     9223372036854775814
-  protocol: 0x3333333333333333333333333333333333333333
-  sS__COLLECT_FEES__Ss
-    Position: LP #9166523579416187058
-    Receive:  >= 0.01 WETH + 42 USDC
-    Pool:     0.3% base fee | 50% rebate | tick spacing 60
-    Warning:  >>  Check protocol and token addresses  <<
-    WETH:     0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2
-    USDC:     0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
-```
-
 ## Notes Before Coding
 
 - `BondRoute_get_signing_info()` must generate the same display strings on-chain that the wallet signs.

@@ -59,9 +59,8 @@ interface ISafeSwapNftTests {
     // ─── Collect Fees ───────────────────────────────────────────────────────────
     function test_collect_fees_requires_owner_or_approved_operator() external;
     function test_collect_fees_uses_zero_liquidity_delta() external;
-    function test_collect_fees_sends_tokens_directly_to_bond_context_user() external;
+    function test_collect_fees_sends_tokens_directly_to_caller() external;
     function test_collect_fees_records_earned_fee_totals() external;
-    function test_collect_fees_reverts_when_funding_count_is_not_zero() external;
 
     // ─── Metadata And Views ─────────────────────────────────────────────────────
     function test_get_lp_position_returns_stored_metadata_for_existing_token() external;
@@ -80,14 +79,11 @@ interface ISafeSwapNftTests {
     function test_bondroute_quote_add_computes_normalized_liquidity_stake_from_current_pool_price() external;
     function test_bondroute_quote_remove_requires_no_fundings() external;
     function test_bondroute_quote_remove_computes_stake_from_removed_liquidity_value() external;
-    function test_bondroute_quote_collect_requires_no_fundings() external;
-    function test_bondroute_quote_collect_computes_stake_from_one_unit_liquidity_value() external;
     function test_bondroute_signing_info_hashes_position_params_readably() external;
     function test_bondroute_signing_info_returns_create_position_offset() external;
     function test_bondroute_signing_info_returns_add_liquidity_offset() external;
     function test_bondroute_signing_info_returns_remove_liquidity_offset() external;
-    function test_bondroute_signing_info_returns_collect_fees_offset() external;
-    function test_signing_descriptor_returns_all_nft_message_values() external;
+    function test_signing_descriptor_returns_all_protected_nft_message_values() external;
     function test_bondroute_signing_info_reverts_for_unsupported_call() external;
     function test_bondroute_signing_info_reverts_for_short_call_data() external;
 }

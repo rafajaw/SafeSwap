@@ -169,8 +169,8 @@ await safeswap.positions.prepare_remove_liquidity({
     b: { token: WETH, minimum_received: 198_000_000_000_000_000n },
 });
 
-// Collect accrued fees — no fundings
-await safeswap.positions.prepare_collect_fees({
+// Collect accrued fees directly — no bond, stake, or execution delay
+const transaction_hash = await safeswap.positions.collect_fees({
     token_id,
     a: { token: USDC, minimum_received: 0n },
     b: { token: WETH, minimum_received: 0n },
@@ -186,9 +186,9 @@ const state = await safeswap.positions.get_position_state( pool_id, token_id, in
 
 ## Stake Token Selection
 
-The position operations (`prepare_create_position`, `prepare_add_liquidity`, `prepare_remove_liquidity`,
-`prepare_collect_fees`) accept an optional `preferred_stake_token`. Swaps do not — a swap's bond stake is always a share of
-its single input funding.
+The bonded position operations (`prepare_create_position`, `prepare_add_liquidity`, `prepare_remove_liquidity`) accept an
+optional `preferred_stake_token`. Direct `collect_fees` does not use a stake. Swaps do not accept a preference because a
+swap's bond stake is always a share of its single input funding.
 
 If you pass `preferred_stake_token`, it must be one of the two pool tokens and is used exactly.
 

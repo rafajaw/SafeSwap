@@ -90,17 +90,6 @@ const SIGNING_VECTORS = {
             [ "USDC", "address", TOKEN_IN ],
         ],
     },
-    collect_fees: {
-        action_type: "CollectFees", action_field: "sS__COLLECT_FEES__Ss",
-        fields: [
-            [ "Position", "string", "LP #8" ],
-            [ "Receive", "string", ">= 0.01 WETH + 30 USDC" ],
-            [ "Pool", "string", "0.3% base fee | 50% rebate | tick spacing 60" ],
-            [ "Warning", "string", ">>  Check protocol and token addresses  <<" ],
-            [ "WETH", "address", TOKEN_OUT ],
-            [ "USDC", "address", TOKEN_IN ],
-        ],
-    },
 } as const;
 
 function signing_vector_for_call( protocol: Address, call: Hex )
@@ -138,6 +127,7 @@ function make_sdk_clients( balances?: Record<string, bigint> )
 {
     const quote_calls: Array<{ address: Address, functionName: string, args: readonly unknown[] }> = [];
     const view_calls: Array<{ address: Address, functionName: string, args: readonly unknown[] }> = [];
+    const write_calls: Array<{ address: Address, functionName: string, args: readonly unknown[] }> = [];
     const signing_requests: any[] = [];
 
     const public_client = {
@@ -201,12 +191,20 @@ function make_sdk_clients( balances?: Record<string, bigint> )
         },
     };
     const wallet_client = {
+        writeContract: async ( request: { address: Address, functionName?: string, args?: readonly unknown[] } ) => {
+            write_calls.push({
+                address: request.address,
+                functionName: request.functionName ?? "",
+                args: request.args ?? [],
+            });
+            return `0x${ "22".repeat( 32 ) }` as Hex;
+        },
         signTypedData: async ( request: unknown ) => {
             signing_requests.push( request );
             return `0x${ "11".repeat( 65 ) }` as Hex;
         },
     };
-    return { public_client, wallet_client, quote_calls, view_calls, signing_requests };
+    return { public_client, wallet_client, quote_calls, view_calls, write_calls, signing_requests };
 }
 
 async function make_sdk( balances?: Record<string, bigint> )
@@ -401,7 +399,7 @@ describe( "SafeSwapSwaps", () => {
 });
 
 
-describe( "SafeSwapPositions stake-token selection", () => {
+describe( "SafeSwapPositions", () => {
 
     test( "auto-quotes both pool tokens when no stake preference is given for create", async () => {
         const { safeswap, quote_calls } = await make_sdk();
@@ -458,20 +456,26 @@ describe( "SafeSwapPositions stake-token selection", () => {
         expect( op.execution_data.fundings ).toEqual( [] );
     });
 
-    test( "prefers native stake when both collect-fees candidates are affordable", async () => {
-        const { safeswap } = await make_sdk({
-            [ NATIVE_TOKEN.toLowerCase() ]: 1_000n,
-            [ TOKEN_OUT.toLowerCase() ]: 1_000n,
-        });
+    test( "collects fees directly through the NFT contract", async () => {
+        const { safeswap, quote_calls, write_calls } = await make_sdk();
 
-        const op = await safeswap.positions.prepare_collect_fees({
+        const transaction_hash  =  await safeswap.positions.collect_fees({
             token_id: 1n,
             a: { token: TOKEN_OUT, minimum_received: 0n },
             b: { token: NATIVE_TOKEN, minimum_received: 0n },
         });
 
-        expect( op.kind ).toBe( "collect_fees" );
-        expect( op.execution_data.stake.token ).toBe( NATIVE_TOKEN );
+        expect( transaction_hash ).toBe( `0x${ "22".repeat( 32 ) }` );
+        expect( quote_calls.length ).toBe( 0 );
+        expect( write_calls ).toEqual( [{
+            address: NFT,
+            functionName: "collect_fees",
+            args: [{
+                token_id: 1n,
+                minimum_received_a: { token: TOKEN_OUT, amount: 0n },
+                minimum_received_b: { token: NATIVE_TOKEN, amount: 0n },
+            }],
+        }] );
     });
 
     test( "passes an explicit stake preference through for add liquidity", async () => {
@@ -618,16 +622,10 @@ describe( "REFERENCE_2 signing previews", () => {
                 b: { token: TOKEN_OUT, minimum_received: 490_000_000_000_000_000n },
                 preferred_stake_token: TOKEN_IN,
             }),
-            await safeswap.positions.prepare_collect_fees({
-                token_id: 8n,
-                a: { token: TOKEN_IN, minimum_received: 30_000_000n },
-                b: { token: TOKEN_OUT, minimum_received: 10_000_000_000_000_000n },
-                preferred_stake_token: TOKEN_IN,
-            }),
         ] as const;
     }
 
-    test( "builds digest-verified golden previews for all six actions", async () => {
+    test( "builds digest-verified golden previews for all five protected actions", async () => {
         const operations  =  await prepared_vectors();
 
         for(  const operation of operations  )

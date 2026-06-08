@@ -52,15 +52,6 @@ const ACTIONS = {
         "WETH: 0x5555555555555555555555555555555555555555",
         "USDC: 0x4444444444444444444444444444444444444444",
     ],
-    collect_fees: [
-        "CollectFees (sS__COLLECT_FEES__Ss)",
-        "Position: LP #8",
-        "Receive: >= 0.01 WETH + 30 USDC",
-        "Pool: 0.3% base fee | 50% rebate | tick spacing 60",
-        "Warning: >>  Check protocol and token addresses  <<",
-        "WETH: 0x5555555555555555555555555555555555555555",
-        "USDC: 0x4444444444444444444444444444444444444444",
-    ],
 } as const;
 
 function preview_for( kind: SafeSwapOperationKind, lines: readonly string[] ): SafeSwapSigningPreview

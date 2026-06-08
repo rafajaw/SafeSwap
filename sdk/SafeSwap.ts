@@ -10,8 +10,8 @@
 //
 // SafeSwap SDK — single-file TypeScript client wrapping BondRoute for SafeSwap operations.
 //
-// The protocol is two BondRoute-protected contracts: a canonical SwapRouter (swaps + quoting + hook registry) and an
-// NFT position manager (LP lifecycle: create / add / remove / collect). This SDK mirrors that split with two objects:
+// The protocol is a BondRoute-protected SwapRouter (swaps + quoting + hook registry) and an NFT position manager
+// (BondRoute-protected create / add / remove plus direct fee collection). This SDK mirrors that split with two objects:
 //
 //   safeswap.swaps      → SafeSwapSwaps      (exact-input / exact-output swaps, quoting, pool ids)
 //   safeswap.positions  → SafeSwapPositions  (create / add / remove / collect NFT-backed LP positions)
@@ -83,8 +83,7 @@ export type SafeSwapOperationKind =
     | "swap_exact_output"
     | "create_position"
     | "add_liquidity"
-    | "remove_liquidity"
-    | "collect_fees";
+    | "remove_liquidity";
 
 export type TokenDisplayMetadata = {
     symbol:   string;
@@ -284,7 +283,6 @@ export type CollectFeesParams = {
         token:  Address;
         minimum_received: bigint;
     };
-    preferred_stake_token?: Address;
 };
 
 /** Immutable metadata for an NFT-backed SafeSwap LP position (mirrors the on-chain `SafeSwapPositionInfo`). */
@@ -467,7 +465,7 @@ export const SAFESWAP_NFT_ABI  =  parseAbi([
     "function bonded_create_position(((uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info, uint160 sqrt_price_lower_x96, uint160 sqrt_price_upper_x96, uint128 liquidity, uint160 sqrt_price_x96, (address token, uint256 amount) maximum_deposit_a, uint256 minimum_deposit_a, (address token, uint256 amount) maximum_deposit_b, uint256 minimum_deposit_b) params) external",
     "function bonded_add_liquidity((uint256 token_id, uint128 liquidity, (address token, uint256 amount) maximum_deposit_a, uint256 minimum_deposit_a, (address token, uint256 amount) maximum_deposit_b, uint256 minimum_deposit_b) params) external",
     "function bonded_remove_liquidity((uint256 token_id, uint128 liquidity, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
-    "function bonded_collect_fees((uint256 token_id, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
+    "function collect_fees((uint256 token_id, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
 
     "function get_lp_position(uint256 token_id) external view returns ((address hook, address token0, address token1, uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing, int24 tick_lower, int24 tick_upper) position_info)",
     "function get_position_info(bytes32 pool_id, uint256 token_id, int24 tick_lower, int24 tick_upper) external view returns (uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128)",
@@ -750,6 +748,8 @@ export function explain_safeswap_revert( output: Hex ): string
 /** Internal context shared by both SafeSwap surfaces: one BondRoute instance and one token-metadata cache. */
 type SafeSwapContext = {
     bond_route:           BondRoute;
+    wallet_client:        WalletClient;
+    account:              Account | Address;
     token_metadata_cache: Map<string, Promise<TokenDisplayMetadata>>;
 };
 
@@ -1381,35 +1381,31 @@ export class SafeSwapPositions {
     }
 
     /**
-     * Prepare collecting accrued fees from an existing position; no fundings needed.
+     * Collect accrued fees directly from an existing position. Fee collection has no price impact, so it does not require
+     * BondRoute stake, delay, or signing.
      *
      * @example
-     *   const op = await safeswap.positions.prepare_collect_fees({
+     *   const transaction_hash = await safeswap.positions.collect_fees({
      *       token_id: 1n,
      *       a: { token: USDC, minimum_received: 0n },
      *       b: { token: WETH, minimum_received: 0n },
      *   });
-     *   await op.dispatch();
      */
-    async prepare_collect_fees( params: CollectFeesParams ): Promise<PreparedSafeSwapOperation>
+    async collect_fees( params: CollectFeesParams ): Promise<Hex>
     {
         assert_distinct_tokens( params.a.token, params.b.token, "liquidity" );
 
-        const preferred_stake_token  =  resolve_explicit_preferred_stake_token( params.preferred_stake_token, params.a.token, params.b.token );
-
-        const call  =  encodeFunctionData({
+        return await this.#ctx.wallet_client.writeContract({
+            account:      this.#ctx.account,
+            chain:        this.#ctx.wallet_client.chain,
+            address:      this.nft_address,
             abi:          SAFESWAP_NFT_ABI,
-            functionName: "bonded_collect_fees",
+            functionName: "collect_fees",
             args:         [{
                 token_id:           params.token_id,
                 minimum_received_a: { token: params.a.token, amount: params.a.minimum_received },
                 minimum_received_b: { token: params.b.token, amount: params.b.minimum_received },
             }],
-        });
-
-        const operation  =  await prepare_with_auto_stake_token( this.#ctx, this.nft_address, call, params.a.token, params.b.token, [], preferred_stake_token );
-        return attach_operation_description( this.#ctx, operation, "collect_fees", async () => {
-            return `Collect accrued fees from position ${ String(params.token_id) }.`;
         });
     }
 
@@ -1557,7 +1553,12 @@ export class SafeSwap {
             min_confirmations_to_forget: opts.min_confirmations_to_forget,
         });
 
-        const ctx: SafeSwapContext  =  { bond_route, token_metadata_cache: new Map() };
+        const ctx: SafeSwapContext  =  {
+            bond_route,
+            wallet_client: opts.wallet_client,
+            account: opts.account,
+            token_metadata_cache: new Map()
+        };
         return new SafeSwap( ctx, router_address, nft_address );
     }
 

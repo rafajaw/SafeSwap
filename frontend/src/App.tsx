@@ -14,8 +14,10 @@ import { connect_wallet, has_wallet_provider, short_address } from "./wallet";
 import type { WalletState } from "./types";
 import { signing_preview_rows } from "./signing_preview";
 
+type FormAction = SafeSwapOperationKind | "collect_fees";
+
 type FormState = {
-    action: SafeSwapOperationKind;
+    action: FormAction;
     token_a: string;
     token_b: string;
     amount_a: string;
@@ -61,7 +63,7 @@ const DEFAULT_FORM: FormState  =  {
     preferred_stake_token: "",
 };
 
-const ACTION_LABELS: Record<SafeSwapOperationKind, string>  =  {
+const ACTION_LABELS: Record<FormAction, string>  =  {
     swap_exact_input:  "Swap exact input",
     swap_exact_output: "Swap exact output",
     create_position:   "Create position",
@@ -129,6 +131,14 @@ export function App()
         set_status( null );
         try
         {
+            if(  form.action === "collect_fees"  )
+            {
+                const transaction_hash  =  await collect_fees( safeswap, wallet.public_client, form );
+                set_review( null );
+                set_status( `Collection transaction submitted: ${ transaction_hash }` );
+                return;
+            }
+
             const operation  =  await prepare_operation( safeswap, wallet.public_client, form );
             const preview    =  await operation.get_signing_preview();
             set_review({ operation, preview });
@@ -188,8 +198,8 @@ export function App()
             <section className="workspace">
                 <div className="operation_panel">
                     <label className="text_field">
-                        <span>Protected action</span>
-                        <select value={ form.action } onChange={ ( event ) => set_form({ ...form, action: event.target.value as SafeSwapOperationKind }) }>
+                        <span>Action</span>
+                        <select value={ form.action } onChange={ ( event ) => set_form({ ...form, action: event.target.value as FormAction }) }>
                             { Object.entries( ACTION_LABELS ).map(( [ value, label ] ) => <option value={ value } key={ value }>{ label }</option> ) }
                         </select>
                     </label>
@@ -198,10 +208,12 @@ export function App()
                         <Field label="Token A / input" value={ form.token_a } set_value={ ( value ) => set_form({ ...form, token_a: value }) } />
                         <Field label="Token B / output" value={ form.token_b } set_value={ ( value ) => set_form({ ...form, token_b: value }) } />
                     </div>
-                    <div className="field_grid">
-                        <Field label={ amount_a_label( form.action ) } value={ form.amount_a } set_value={ ( value ) => set_form({ ...form, amount_a: value }) } />
-                        <Field label={ amount_b_label( form.action ) } value={ form.amount_b } set_value={ ( value ) => set_form({ ...form, amount_b: value }) } />
-                    </div>
+                    { form.action !== "collect_fees" && (
+                        <div className="field_grid">
+                            <Field label={ amount_a_label( form.action ) } value={ form.amount_a } set_value={ ( value ) => set_form({ ...form, amount_a: value }) } />
+                            <Field label={ amount_b_label( form.action ) } value={ form.amount_b } set_value={ ( value ) => set_form({ ...form, amount_b: value }) } />
+                        </div>
+                    ) }
 
                     { is_position_action( form.action ) && form.action !== "create_position" && (
                         <Field label="Position token ID" value={ form.token_id } set_value={ ( value ) => set_form({ ...form, token_id: value }) } />
@@ -223,17 +235,21 @@ export function App()
                         </div>
                     ) }
 
-                    <div className="field_grid">
-                        <Field label="Base fee (bps)" value={ form.base_fee_bps } set_value={ ( value ) => set_form({ ...form, base_fee_bps: value }) } />
-                        <Field label="Repricing capture (%)" value={ form.rebate_percent } set_value={ ( value ) => set_form({ ...form, rebate_percent: value }) } />
-                    </div>
-                    <Field label="Tick spacing" value={ form.tick_spacing } set_value={ ( value ) => set_form({ ...form, tick_spacing: value }) } />
-                    { is_position_action( form.action ) && (
+                    { form.action !== "collect_fees" && (
+                        <>
+                            <div className="field_grid">
+                                <Field label="Base fee (bps)" value={ form.base_fee_bps } set_value={ ( value ) => set_form({ ...form, base_fee_bps: value }) } />
+                                <Field label="Repricing capture (%)" value={ form.rebate_percent } set_value={ ( value ) => set_form({ ...form, rebate_percent: value }) } />
+                            </div>
+                            <Field label="Tick spacing" value={ form.tick_spacing } set_value={ ( value ) => set_form({ ...form, tick_spacing: value }) } />
+                        </>
+                    ) }
+                    { is_position_action( form.action ) && form.action !== "collect_fees" && (
                         <Field label="Preferred stake token (optional)" value={ form.preferred_stake_token } set_value={ ( value ) => set_form({ ...form, preferred_stake_token: value }) } />
                     ) }
 
                     <button className="primary_button full_width" disabled={ is_working } onClick={ prepare }>
-                        { is_working ? "Preparing..." : "Prepare and verify" }
+                        { is_working ? "Working..." : form.action === "collect_fees" ? "Collect fees" : "Prepare and verify" }
                     </button>
                 </div>
 
@@ -353,11 +369,20 @@ async function prepare_operation( sdk: SafeSwap, public_client: PublicClient, fo
             preferred_stake_token,
         });
     }
-    return await sdk.positions.prepare_collect_fees({
-        token_id,
+    throw new Error( "Fee collection executes directly and cannot be prepared as a BondRoute operation." );
+}
+
+async function collect_fees( sdk: SafeSwap, public_client: PublicClient, form: FormState )
+{
+    const token_a   =  require_address( "Token A", form.token_a );
+    const token_b   =  require_address( "Token B", form.token_b );
+    const minimum_a =  await parse_token_amount( public_client, token_a, form.minimum_a );
+    const minimum_b =  await parse_token_amount( public_client, token_b, form.minimum_b );
+
+    return await sdk.positions.collect_fees({
+        token_id: parse_bigint( "Token ID", form.token_id ),
         a: { token: token_a, minimum_received: minimum_a },
         b: { token: token_b, minimum_received: minimum_b },
-        preferred_stake_token,
     });
 }
 
@@ -383,17 +408,17 @@ function parse_bigint( label: string, value: string ): bigint
     return BigInt( value );
 }
 
-function is_position_action( action: SafeSwapOperationKind ): boolean
+function is_position_action( action: FormAction ): boolean
 {
     return action !== "swap_exact_input" && action !== "swap_exact_output";
 }
 
-function is_liquidity_amount_action( action: SafeSwapOperationKind ): boolean
+function is_liquidity_amount_action( action: FormAction ): boolean
 {
     return action === "create_position" || action === "add_liquidity" || action === "remove_liquidity";
 }
 
-function amount_a_label( action: SafeSwapOperationKind ): string
+function amount_a_label( action: FormAction ): string
 {
     if(  action === "swap_exact_input"  )  return "Exact input";
     if(  action === "swap_exact_output"  ) return "Maximum input";
@@ -401,7 +426,7 @@ function amount_a_label( action: SafeSwapOperationKind ): string
     return "Token A amount (unused)";
 }
 
-function amount_b_label( action: SafeSwapOperationKind ): string
+function amount_b_label( action: FormAction ): string
 {
     if(  action === "swap_exact_input"  )  return "Minimum output";
     if(  action === "swap_exact_output"  ) return "Exact output";

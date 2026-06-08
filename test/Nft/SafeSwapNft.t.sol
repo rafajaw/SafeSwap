@@ -187,11 +187,10 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         bytes4[] memory selectors  =  _nft.BondRoute_get_protected_selectors( );
 
-        assertEq( selectors.length, 4, "NFT should expose four protected lifecycle selectors." );
+        assertEq( selectors.length, 3, "NFT should expose three protected lifecycle selectors." );
         assertEq( selectors[ 0 ], _nft.bonded_create_position.selector, "selector 0 should be create_position." );
         assertEq( selectors[ 1 ], _nft.bonded_add_liquidity.selector, "selector 1 should be add_liquidity." );
         assertEq( selectors[ 2 ], _nft.bonded_remove_liquidity.selector, "selector 2 should be remove_liquidity." );
-        assertEq( selectors[ 3 ], _nft.bonded_collect_fees.selector, "selector 3 should be collect_fees." );
     }
 
     function test_bondroute_quote_reverts_for_unsupported_call( )
@@ -309,35 +308,6 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         assertEq( constraints.min_fundings.length, 0, "remove quote should require no fundings." );
     }
 
-    function test_bondroute_quote_collect_requires_no_fundings( )
-    external
-    {
-        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
-
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(0), 2 ) );
-        _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.bonded_collect_fees, (_collect_params(_minted_token_id)) ),
-            IERC20(address(_token_a)),
-            _two_fundings( 100 ether, 100 ether )
-        );
-    }
-
-    function test_bondroute_quote_collect_computes_stake_from_one_unit_liquidity_value( )
-    external
-    {
-        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
-
-        BondConstraints memory constraints  =  _nft.BondRoute_quote_call(
-            abi.encodeCall( _nft.bonded_collect_fees, (_collect_params(_minted_token_id)) ),
-            IERC20(address(_token_a)),
-            new TokenAmount[](0)
-        );
-
-        assertEq( address(constraints.min_stake.token), address(_token_a), "collect quote should preserve preferred stake token." );
-        assertEq( constraints.min_stake.amount, 1, "collect quote should stake at least one wei for one unit of liquidity." );
-        assertEq( constraints.min_fundings.length, 0, "collect quote should require no fundings." );
-    }
-
     function test_bondroute_signing_info_hashes_position_params_readably( )
     external
     {
@@ -399,20 +369,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _assert_token_amount_offset( typed_string, token_amount_offset );
     }
 
-    function test_bondroute_signing_info_returns_collect_fees_offset( )
-    external
-    {
-        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
-
-        ( string memory typed_string, , uint256 token_amount_offset )  =  _nft.BondRoute_get_signing_info(
-            abi.encodeCall( _nft.bonded_collect_fees, (_collect_params(_minted_token_id)) )
-        );
-
-        assertEq( token_amount_offset, 214, "collect-fees signing info should return the TokenAmount type offset." );
-        _assert_token_amount_offset( typed_string, token_amount_offset );
-    }
-
-    function test_signing_descriptor_returns_all_nft_message_values( )
+    function test_signing_descriptor_returns_all_protected_nft_message_values( )
     external
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
@@ -427,23 +384,16 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         ( string[] memory remove_values, address[] memory remove_addresses )  =  descriptor.build_nft_signing_values(
             _nft, abi.encodeCall( _nft.bonded_remove_liquidity, (_remove_params(_minted_token_id, 1 ether)) )
         );
-        ( string[] memory collect_values, address[] memory collect_addresses )  =  descriptor.build_nft_signing_values(
-            _nft, abi.encodeCall( _nft.bonded_collect_fees, (_collect_params(_minted_token_id)) )
-        );
-
         assertEq( create_values.length, 7, "create display-value count mismatch." );
         assertEq( add_values.length, 6, "add display-value count mismatch." );
         assertEq( remove_values.length, 5, "remove display-value count mismatch." );
-        assertEq( collect_values.length, 4, "collect display-value count mismatch." );
         assertTrue( _contains( add_values[0], "LP #" ), "add Position value mismatch." );
         assertEq( remove_values[1], "1000000000000000000 liquidity", "remove Burn value mismatch." );
-        assertEq( collect_values[1], ">= 0 TKNB + 0 TKNA", "collect Receive value mismatch." );
         assertEq( create_values[5], "0.3% base fee | 50% rebate | tick spacing 60", "create Pool value mismatch." );
         assertEq( create_values[6], ">>  Check protocol and token addresses  <<", "create Warning value mismatch." );
         assertEq( create_addresses.length, 2, "create token-anchor count mismatch." );
         assertEq( add_addresses.length, 2, "add token-anchor count mismatch." );
         assertEq( remove_addresses.length, 2, "remove token-anchor count mismatch." );
-        assertEq( collect_addresses.length, 2, "collect token-anchor count mismatch." );
     }
 
     function test_bondroute_signing_info_reverts_for_unsupported_call( )
@@ -751,7 +701,13 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
         vm.expectRevert( abi.encodeWithSelector( PositionUnauthorized.selector, _minted_token_id, address(this), _USER ) );
-        _execute_collect_fees_as( address(this), _collect_params( _minted_token_id ), new TokenAmount[](0) );
+        _execute_collect_fees_as( address(this), _collect_params( _minted_token_id ) );
+
+        vm.prank( _USER );
+        _nft.approve( address(this), _minted_token_id );
+
+        _execute_collect_fees_as( address(this), _collect_params( _minted_token_id ) );
+        assertEq( _pool_manager.last_modify_liquidity_delta( ), 0, "approved token operator should collect fees directly." );
     }
 
     function test_collect_fees_uses_zero_liquidity_delta( )
@@ -759,21 +715,21 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
 
-        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ), new TokenAmount[](0) );
+        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ) );
 
         assertEq( _pool_manager.last_modify_liquidity_delta( ), 0, "collect fees should use zero liquidity delta." );
     }
 
-    function test_collect_fees_sends_tokens_directly_to_bond_context_user( )
+    function test_collect_fees_sends_tokens_directly_to_caller( )
     external
     {
         _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
         _pool_manager.set_next_modify_liquidity_delta( 1 ether, 2 ether );
 
-        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ), new TokenAmount[](0) );
+        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ) );
 
         assertEq( _pool_manager.take_call_count( ), 2, "collect fees should take both pool tokens." );
-        assertEq( _pool_manager.last_take_to( ), _USER, "collected fees should be sent to the BondRoute context user." );
+        assertEq( _pool_manager.last_take_to( ), _USER, "collected fees should be sent to the direct caller." );
     }
 
     function test_collect_fees_records_earned_fee_totals( )
@@ -785,7 +741,7 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _seed_position_info( pool_id, _minted_token_id,-120, 120, 2, 10 * FixedPoint128.Q128, 20 * FixedPoint128.Q128 );
         _seed_fee_growth_globals( pool_id, 15 * FixedPoint128.Q128, 27 * FixedPoint128.Q128 );
 
-        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ), new TokenAmount[](0) );
+        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ) );
 
         ( uint256 token0_fees, uint256 token1_fees )  =  _nft.get_lp_fee_totals( _minted_token_id );
 
@@ -809,15 +765,6 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
 
         assertEq( token0_fees, 10, "remove should record only token0 fees accrued before the touch." );
         assertEq( token1_fees, 14, "remove should record only token1 fees accrued before the touch." );
-    }
-
-    function test_collect_fees_reverts_when_funding_count_is_not_zero( )
-    external
-    {
-        _execute_create_position( _create_params(), _two_fundings( 100 ether, 100 ether ) );
-
-        vm.expectRevert( abi.encodeWithSelector( InvalidLiquidityModification.selector, _minted_token_id, int128(0), 2 ) );
-        _execute_collect_fees_as( _USER, _collect_params( _minted_token_id ), _two_fundings( 100 ether, 100 ether ) );
     }
 
     function test_get_lp_position_returns_stored_metadata_for_existing_token( )
@@ -935,12 +882,10 @@ contract SafeSwapNftTest is ChainConfigTestHelper, SafeSwapTestHelper {
         _execute_entry_point( call_data, context );
     }
 
-    function _execute_collect_fees_as( address user, CollectFeesParams memory params, TokenAmount[] memory fundings ) internal
+    function _execute_collect_fees_as( address user, CollectFeesParams memory params ) internal
     {
-        BondContext memory context  =  _context_for_user( user, fundings );
-        bytes memory call_data      =  abi.encodeCall( _nft.bonded_collect_fees, (params) );
-
-        _execute_entry_point( call_data, context );
+        vm.prank( user );
+        _nft.collect_fees( params );
     }
 
     function _execute_entry_point( bytes memory call_data, BondContext memory context ) internal

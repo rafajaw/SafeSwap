@@ -141,9 +141,8 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
     {
         ( , uint256 token_id )  =  _create( _USER );
 
-        BondStatus status  =  _collect( _USER, token_id );
+        _collect( _USER, token_id );
 
-        assertEq( uint256(status), uint256(BondStatus.EXECUTED), "collect bond should execute even with zero accrued fees." );
         assertEq( _position_liquidity( token_id ), 1 ether, "collect must not change position liquidity." );
     }
 
@@ -237,7 +236,7 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
         );
     }
 
-    function _collect( address user, uint256 token_id ) internal returns ( BondStatus status )
+    function _collect( address user, uint256 token_id ) internal
     {
         CollectFeesParams memory params  =  CollectFeesParams({
             token_id: token_id,
@@ -245,13 +244,8 @@ contract SafeSwapNftWorkflowTest is ISafeSwapNftWorkflowTests, SafeSwapRealEnv {
             minimum_received_b: TokenAmount({ token: IERC20(address(_token_b)), amount: 0 })
         });
 
-        ( status, )  =  _create_and_execute_bond(
-            user,
-            IBondRouteProtected( address(nft) ),
-            abi.encodeCall( nft.bonded_collect_fees, ( params ) ),
-            _stake_token0( 10 ether ),
-            new TokenAmount[](0)
-        );
+        vm.prank( user );
+        nft.collect_fees( params );
     }
 
     function _create_params( ) internal view returns ( CreatePositionParams memory )

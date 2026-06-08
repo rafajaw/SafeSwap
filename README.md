@@ -73,7 +73,7 @@ range `0%..90%`.
 | `bonded_create_position` | Open a new NFT-backed liquidity position (initializing the pool if needed) |
 | `bonded_add_liquidity` | Add liquidity to an existing position (by token id) |
 | `bonded_remove_liquidity` | Withdraw liquidity from a position (by token id) |
-| `bonded_collect_fees` | Collect accrued fees for a position (by token id) |
+| `collect_fees` | Directly collect accrued fees for a position (by token id; owner or approved operator) |
 | `donate` | Donate tokens to a pool's in-range liquidity providers |
 | `register_hook` / `get_hook` | Register a deployed config hook / resolve the hook for a rebate profile |
 | `withdraw_protocol_fees` | Treasury withdraws accumulated protocol fees |

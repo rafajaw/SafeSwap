@@ -25,7 +25,7 @@ SafeSwapRouter
   protocol-fee treasury
 
 SafeSwapNft
-  BondRoute-protected create/add/remove/collect lifecycle
+  BondRoute-protected create/add/remove lifecycle plus direct fee collection
   ERC721 ownership
   owns every V4 position; salt = tokenId
 
@@ -59,10 +59,10 @@ Measured runtime sizes:
 | --- | ---: | ---: |
 | Pre-signing `fe1d68f`, 25,000 runs | 24,462 bytes | +114 |
 | Pre-fix NFT, 10,000 runs | 33,018 bytes | -8,442 |
-| Current NFT, 10,000 runs | 24,075 bytes | +501 |
+| Current NFT, 10,000 runs | 24,191 bytes | +385 |
 | Pre-fix router, 25,000 runs | 24,369 bytes | +207 |
 | Current router, 25,000 runs | 19,471 bytes | +5,105 |
-| Current signing descriptor, 10,000 runs | 17,141 bytes | +7,435 |
+| Current signing descriptor, 10,000 runs | 16,631 bytes | +7,945 |
 | Current descriptor, 1,000 runs | 24,284 bytes | +292 |
 
 Existing router and NFT signing tests pass through the forwarding boundary and preserve typed strings, struct hashes,
@@ -70,14 +70,13 @@ offsets, token-metadata behavior, and unsupported-call reverts.
 
 ### Complete Signing Review
 
-Review all six protected actions:
+Review all five protected actions:
 
 - exact-input swap;
 - exact-output swap;
 - create position;
 - add liquidity;
-- remove liquidity;
-- collect fees.
+- remove liquidity.
 
 For each action, prove:
 
@@ -136,7 +135,7 @@ Against deployed canonical infrastructure:
 
 - verify BondRoute and ChainConfig runtime-bytecode parity with pinned dependencies;
 - execute ERC20 and native ETH swaps;
-- execute create/add/remove/collect position flows;
+- execute bonded create/add/remove and direct collect-fees position flows;
 - verify native escrow/refund behavior and timing limits;
 - verify router, NFT, descriptor, implementation, clone codehash, BCD profile, and V4 permissions;
 - verify protocol fees reach the router and treasury withdrawals work.
@@ -144,7 +143,7 @@ Against deployed canonical infrastructure:
 ### SDK
 
 - [x] Implement the BondRoute message-values path for REFERENCE_2.
-- [x] Test all six actions against on-chain `BondRoute_get_signing_info` and descriptor-exported values.
+- [x] Test all five protected actions against on-chain `BondRoute_get_signing_info` and descriptor-exported values.
 - Populate canonical router/NFT addresses only after deterministic deployment artifacts are final.
 - Update SDK docs for profile selection, NFT ownership, signing trust anchors, and target-chain support.
 

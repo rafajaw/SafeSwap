@@ -70,14 +70,14 @@
       sanitization, full-precision amount/price formatting, liquidity math, and V4 price reads into the protected contract
       runtimes. FIXED: added one immutable `contracts/Common/SafeSwapSigningDescriptor.sol` via
       `SAFESWAP_SIGNING_DESCRIPTOR_KEY`; both router and NFT forward one high-level call while the shared descriptor owns
-      all six action decoders and signing-info builders. Existing signing tests pass unchanged through both forwarding
-      boundaries. Current deploy sizes: NFT 24,075 bytes at 10,000 runs
-      (501-byte margin), router 19,471 bytes at 25,000 runs (5,105-byte margin), shared signing descriptor 17,141 bytes at
-      10,000 runs (7,435-byte margin).
+      all five protected-action decoders and signing-info builders. Existing signing tests pass unchanged through both forwarding
+      boundaries. Current deploy sizes: NFT 24,191 bytes at 10,000 runs
+      (385-byte margin), router 19,471 bytes at 25,000 runs (5,105-byte margin), shared signing descriptor 16,631 bytes at
+      10,000 runs (7,945-byte margin).
 - [x] **P0 - Review the complete bonded signing path** after the extraction: verify every
       `BondRoute_get_signing_info` typed string, struct hash, display value, and token-address anchor against the parameters
       that actually execute for both router swaps and all four NFT lifecycle calls. The shared descriptor now exports
-      ordered canonical message values for SDK/wallet use; Solidity tests cover all six value sets, and SDK golden vectors
+      ordered canonical message values for SDK/wallet use; Solidity tests cover all five protected value sets, and SDK golden vectors
       rebuild and compare the complete EIP-712 digest before display or signing.
 - [x] **P0 - Remove mutable PoolManager state from the add-liquidity signature.** `AddPositionLiquidityParams` now carries
       paired `maximum_deposit_a` / `minimum_deposit_a` and `maximum_deposit_b` / `minimum_deposit_b` fields. The signing
@@ -170,8 +170,8 @@
 
 Goal: render the gasless BondRoute envelope (`ExecuteBondAs`) so the wallet shows readable, *canonical-commitment* display
 strings generated on-chain by `BondRoute_get_signing_info`, hashed as `keccak256(bytes(value))` inside the SafeSwap action
-struct. Two frozen reference layouts exist (same structure, both cover all six actions: exact-in/out swap, create/add/remove
-liquidity, collect fees):
+struct. Two frozen reference layouts exist (same structure, both cover all five protected actions: exact-in/out swap and
+create/add/remove liquidity):
 - `SIGNING_UX_REFERENCE_1.md` - readable English prose values (`up to 1.25 WETH and 4,200 USDC`, `0.3% base fee, 50% rebate,
   tick spacing 60`).
 - `SIGNING_UX_REFERENCE_2.md` - terse symbolic values (`= 1.25 WETH`, `<= 1.25 WETH + 4,200 USDC`, `2,850 ~ 3,150 USDC/WETH`,
@@ -238,7 +238,7 @@ Decisions already baked into both references (see the docs for the why):
 ## Release readiness
 
 - [ ] Add deployed-address / target-chain-fork tests for canonical BondRoute + ChainConfig + V4 PoolManager, including native
-      ETH funding/escrow, swaps, create/add/remove/collect liquidity, bytecode parity, and timing enforcement.
+      ETH funding/escrow, swaps, bonded create/add/remove liquidity, direct fee collection, bytecode parity, and timing enforcement.
 - [ ] Produce the launch-chain and initial-pool policy: Cancun/transient-storage support, canonical infrastructure addresses,
       V4-compatible token behavior, pool depth, stake economics, supported profiles, and frontend/indexer rejection rules.
 - [ ] Refresh public and audit docs after the architecture is frozen. `README.md`, `AUDIT_REPORT.md`, and

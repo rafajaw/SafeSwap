@@ -11,7 +11,6 @@ import {
 } from "@SafeSwapCommon/ISafeSwapSigningDescriptor.sol";
 import {
     AddPositionLiquidityParams,
-    CollectFeesParams,
     CreatePositionParams,
     ModifyLiquidityLib,
     RemovePositionLiquidityParams
@@ -88,11 +87,6 @@ contract SafeSwapSigningDescriptor is ISafeSwapSigningDescriptor, PoolManagerInt
             RemovePositionLiquidityParams memory params  =  abi.decode( protected_call[ 4: ], (RemovePositionLiquidityParams) );
             return ModifyLiquidityLib.get_remove_liquidity_signing_info( params, safe_swap_nft.get_lp_position( params.token_id ) );
         }
-        else if(  call_selector == ISafeSwapNftActions.bonded_collect_fees.selector  )
-        {
-            CollectFeesParams memory params  =  abi.decode( protected_call[ 4: ], (CollectFeesParams) );
-            return ModifyLiquidityLib.get_collect_fees_signing_info( params, safe_swap_nft.get_lp_position( params.token_id ) );
-        }
         else
         {
             revert UnsupportedCall( );
@@ -140,11 +134,6 @@ contract SafeSwapSigningDescriptor is ISafeSwapSigningDescriptor, PoolManagerInt
         {
             RemovePositionLiquidityParams memory params  =  abi.decode( protected_call[ 4: ], (RemovePositionLiquidityParams) );
             return ModifyLiquidityLib.get_remove_liquidity_signing_values( params, safe_swap_nft.get_lp_position( params.token_id ) );
-        }
-        else if(  call_selector == ISafeSwapNftActions.bonded_collect_fees.selector  )
-        {
-            CollectFeesParams memory params  =  abi.decode( protected_call[ 4: ], (CollectFeesParams) );
-            return ModifyLiquidityLib.get_collect_fees_signing_values( params, safe_swap_nft.get_lp_position( params.token_id ) );
         }
         else
         {
