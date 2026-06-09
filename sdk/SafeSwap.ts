@@ -2130,9 +2130,11 @@ export class SafeSwapGasless {
      * 7702 authorization. The relayer drives the commit + execute phases as the user's EOA. The returned promise resolves
      * once the relayer has driven the bond to settlement.
      *
+     * @param opts.on_signed  Fired once the user's signatures are collected and just before the relayer round-trip begins, so
+     *                        a UI can advance from a "Sign" step to an "In progress" step at the real boundary.
      * @throws if the relayer is not configured.
      */
-    async relay( operation: PreparedSafeSwapOperation ): Promise<GaslessRelayResult>
+    async relay( operation: PreparedSafeSwapOperation, opts?: { on_signed?: () => void } ): Promise<GaslessRelayResult>
     {
         const relay     =  this.#require_relay();
         const chain_id  =  this.#ctx.bond_route.public_client.chain?.id ?? await this.#ctx.bond_route.public_client.getChainId();
@@ -2140,6 +2142,8 @@ export class SafeSwapGasless {
 
         const { intent, gasless_type_hash, action_struct_hash, signature }  =  await this.#sign_gasless_intent( operation, relay, chain_id, user );
         const authorization  =  await this.#authorization_if_needed( user, relay );
+
+        opts?.on_signed?.();
 
         const request: RelayRequest  =  {
             chain_id,
