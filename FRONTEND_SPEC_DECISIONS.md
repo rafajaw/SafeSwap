@@ -114,6 +114,13 @@ unit test of the type-string splice. The SDK reproduces the splice (`compute_gas
 delegation **persists** on the EOA until re-delegated/cleared (acceptable given the delegate's minimal scope; can be cleared
 in the same flow). **Fallback** when a wallet/chain lacks 7702: self-execute (`create_bond` + `execute_bond` from the user).
 
+**Operational guarantees.** (1) *No redundant signature* — because the delegation persists, the SDK signs a 7702 authorization
+**only when the EOA is not already delegated** to this delegate (it checks the EOA's code against the `0xef0100 ++ delegate`
+designator); otherwise `authorization` is `null` and the relayer submits without re-delegating. (2) *No stranded stake* — since
+the user stakes their **own** tokens at commit, the relayer **persists** each committed bond before waiting and **resumes** any
+committed-but-unexecuted bond on restart, so a crash between commit and execute can never leave the stake to expire and be
+liquidated.
+
 The relayer key is the system's only secret and is server-side by design. Phase-2 indexing/caching is separate, not part of `/relay`.
 
 ## Terminology: "Repricing rebate", not "Capture"

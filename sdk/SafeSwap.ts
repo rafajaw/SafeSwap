@@ -379,7 +379,8 @@ export type RelayRequest = {
     action_struct_hash: Hex;
     signature:          Hex;
     execution_data:     SerializedExecutionData;
-    authorization:      SafeSwapAuthorization;
+    /** The 7702 authorization, or `null` when the EOA is already delegated to this delegate (no re-delegation needed). */
+    authorization:      SafeSwapAuthorization | null;
 };
 
 /** JSON-safe `(token, amount)` pair (bigint amount rendered as a decimal string). */
@@ -2109,6 +2110,22 @@ export class SafeSwapGasless {
     }
 
     /**
+     * Sign a fresh 7702 authorization only when the EOA is NOT already delegated to this delegate — avoiding a redundant
+     * wallet prompt on every op (the 7702 delegation persists once set). A delegated EOA's code is the designator
+     * `0xef0100 ++ delegate_address`; if it already points at our delegate, no authorization is needed.
+     */
+    async #authorization_if_needed( user: Address, relay: RelayConfig ): Promise<SafeSwapAuthorization | null>
+    {
+        const designator  =  ( "0xef0100" + relay.delegate_address.slice( 2 ) ).toLowerCase();
+
+        const client     =  this.#ctx.bond_route.public_client as unknown as { getCode?: ( args: { address: Address } ) => Promise<Hex | undefined> };
+        const code        =  typeof client.getCode === "function"  ?  await client.getCode({ address: user })  :  undefined;
+        if(  code !== undefined  &&  code.toLowerCase() === designator  )  return null;
+
+        return await this.sign_authorization();
+    }
+
+    /**
      * Sign and relay a prepared operation gaslessly. The user signs only (off-chain): one `SafeSwapGaslessBond` intent and a
      * 7702 authorization. The relayer drives the commit + execute phases as the user's EOA. The returned promise resolves
      * once the relayer has driven the bond to settlement.
@@ -2122,7 +2139,7 @@ export class SafeSwapGasless {
         const user      =  typeof this.#ctx.account === "string"  ?  this.#ctx.account  :  this.#ctx.account.address;
 
         const { intent, gasless_type_hash, action_struct_hash, signature }  =  await this.#sign_gasless_intent( operation, relay, chain_id, user );
-        const authorization  =  await this.sign_authorization();
+        const authorization  =  await this.#authorization_if_needed( user, relay );
 
         const request: RelayRequest  =  {
             chain_id,

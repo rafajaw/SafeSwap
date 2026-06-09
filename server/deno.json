@@ -1,7 +1,7 @@
 {
   "tasks": {
-    "start": "deno run --allow-net --allow-read --allow-env relay_server.ts",
-    "dev": "deno run --watch --allow-net --allow-read --allow-env relay_server.ts",
+    "start": "deno run --allow-net --allow-read --allow-write --allow-env relay_server.ts",
+    "dev": "deno run --watch --allow-net --allow-read --allow-write --allow-env relay_server.ts",
     "check": "deno check relay_server.ts"
   },
   "imports": {

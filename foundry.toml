@@ -93,7 +93,8 @@ skip = [
     "contracts/Nft/SafeSwapPositionDescriptor.sol"
 ]
 
-# The 7702 relayer delegate depends only on lib code (BondRoute interfaces + Solady), so it isolates from every SafeSwap family.
+# The 7702 delegate depends on lib code (BondRoute interfaces + Solady + OZ + ChainConfig) plus the SafeSwapCommon constants
+# file (Definitions.sol, compiled as a dependency); it pulls in none of the SafeSwap family contracts, so it stays isolated.
 [profile.deploy_relayer]
 out = "out-deploy-relayer"
 optimizer_runs = 25_000

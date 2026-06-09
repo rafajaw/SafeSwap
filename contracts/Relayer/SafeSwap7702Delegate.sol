@@ -6,6 +6,8 @@ import { IERC20, TokenAmount, NATIVE_TOKEN, BONDROUTE_ADDRESS } from "@BondRoute
 import { SafeTransferLib } from "@Solady/utils/SafeTransferLib.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import { ChainConfig } from "@ChainConfig/IChainConfig.sol";
+import { CONFIG_SIGNER, SAFESWAP_ROUTER_KEY, SAFESWAP_NFT_KEY } from "@SafeSwapCommon/Definitions.sol";
 
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -47,10 +49,10 @@ struct SafeSwapGaslessBond {
 }
 
 
-// ━━━━  RELAYER  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━━  DELEGATE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * @title Relayer
+ * @title SafeSwap7702Delegate
  * @notice EIP-7702 delegate for gasless SafeSwap execution. A relayer pays the gas; the user only signs. The user's EOA
  *         delegates to this code (7702 style), so every line below runs *as the user's own account*: it stakes the user's
  *         own tokens, pays the relayer its signed fee, and drives the bond through BondRoute — all from the EOA, which is
@@ -74,7 +76,7 @@ struct SafeSwapGaslessBond {
  *         `isValidSignature`. The delegate also validates the protocol on-chain (router/NFT only) and that the submitter is
  *         the signed `relayer`.
  */
-contract Relayer is EIP712 {
+contract SafeSwap7702Delegate is EIP712 {
 
     using SafeTransferLib for address;
 
@@ -95,18 +97,19 @@ contract Relayer is EIP712 {
      *      value — the inequality is precisely what proves we are executing as a delegate rather than being called directly
      *      on the deployed artifact.
      */
-    address private immutable THIS_RELAYER_CONTRACT;
+    address private immutable THIS_DELEGATE;
 
-    /// @dev The only two protocols this delegate will drive, fixed at deploy. Checked on-chain against `execution_data.protocol`.
+    /// @dev The only two protocols this delegate will drive, resolved from ChainConfig at deploy (canonical SafeSwap source,
+    ///      same as the router/NFT read their own dependencies). Checked on-chain against `execution_data.protocol`.
     address public immutable SAFE_SWAP_ROUTER;
     address public immutable SAFE_SWAP_NFT;
 
-    constructor( address safe_swap_router, address safe_swap_nft )
+    constructor( )
     EIP712( "SafeSwap Gasless", "1" )
     {
-        THIS_RELAYER_CONTRACT  =  address(this);
-        SAFE_SWAP_ROUTER       =  safe_swap_router;
-        SAFE_SWAP_NFT          =  safe_swap_nft;
+        THIS_DELEGATE     =  address(this);
+        SAFE_SWAP_ROUTER  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_ROUTER_KEY );
+        SAFE_SWAP_NFT     =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_NFT_KEY );
     }
 
     /**
@@ -204,7 +207,7 @@ contract Relayer is EIP712 {
         bytes calldata signature
     ) private view
     {
-        if(  intent.helper != THIS_RELAYER_CONTRACT  )  revert WrongHelper({ provided: intent.helper, expected: THIS_RELAYER_CONTRACT });
+        if(  intent.helper != THIS_DELEGATE  )  revert WrongHelper({ provided: intent.helper, expected: THIS_DELEGATE });
         if(  msg.sender != intent.relayer  )            revert UnauthorizedRelayer({ caller: msg.sender, expected: intent.relayer });
 
         bytes32 digest     =  _hashTypedDataV4( _hash_gasless_intent( intent, gasless_type_hash, action_struct_hash ) );
@@ -268,10 +271,10 @@ contract Relayer is EIP712 {
         revert UnsupportedProtocol({ protocol: protocol, safe_swap_router: SAFE_SWAP_ROUTER, safe_swap_nft: SAFE_SWAP_NFT });
     }
 
-    /// @dev Revert unless running as a 7702-delegated EOA, not a direct call on the deployed artifact (see `THIS_RELAYER_CONTRACT`).
+    /// @dev Revert unless running as a 7702-delegated EOA, not a direct call on the deployed artifact (see `THIS_DELEGATE`).
     function _require_delegated_context( ) private view
     {
-        if(  address(this) == THIS_RELAYER_CONTRACT  )  revert OnlyDelegatedExecution({ called_on: address(this) });
+        if(  address(this) == THIS_DELEGATE  )  revert OnlyDelegatedExecution({ called_on: address(this) });
     }
 
     /// @dev The relayer attaches no value; native stake/fundings are paid from the EOA's own balance via `{ value: ... }`.
@@ -344,6 +347,7 @@ contract Relayer is EIP712 {
     {
         bytes memory protocol_typed_string_bytes  =  bytes( protocol_typed_string );
         bytes memory bondroute_prefix_bytes       =  bytes( BONDROUTE_SIGNING_PREFIX );
+        bytes memory gasless_prefix_bytes         =  bytes( SAFESWAP_GASLESS_PREFIX );
 
         bool has_valid_prefix  =  _starts_with( protocol_typed_string_bytes, bondroute_prefix_bytes );
 
@@ -355,15 +359,25 @@ contract Relayer is EIP712 {
             });
         }
 
-        uint256 tail_length  =  protocol_typed_string_bytes.length - bondroute_prefix_bytes.length;
-        bytes memory tail    =  new bytes( tail_length );
+        // Assemble `SAFESWAP_GASLESS_PREFIX ++ <action tail>` in one buffer: copy the gasless prefix to the front, then copy
+        // the protocol string's bytes that follow the BondRoute prefix straight after it — a single allocation and two MCOPYs,
+        // no per-char loop and no intermediate `string.concat`.
+        uint256 bondroute_prefix_length  =  bondroute_prefix_bytes.length;
+        uint256 gasless_prefix_length    =  gasless_prefix_bytes.length;
+        uint256 tail_length              =  protocol_typed_string_bytes.length - bondroute_prefix_length;
 
-        for(  uint256 i = 0  ;  i < tail_length  ;  i++  )
-        {
-            tail[ i ]  =  protocol_typed_string_bytes[ bondroute_prefix_bytes.length + i ];
+        bytes memory spliced  =  new bytes( gasless_prefix_length + tail_length );
+
+        assembly ("memory-safe") {
+            mcopy( add( spliced, 0x20 ), add( gasless_prefix_bytes, 0x20 ), gasless_prefix_length )
+            mcopy(
+                add( add( spliced, 0x20 ), gasless_prefix_length ),
+                add( add( protocol_typed_string_bytes, 0x20 ), bondroute_prefix_length ),
+                tail_length
+            )
         }
 
-        return keccak256( bytes( string.concat( SAFESWAP_GASLESS_PREFIX, string( tail ) ) ) );
+        return keccak256( spliced );
     }
 
     function _starts_with( bytes memory subject, bytes memory prefix ) private pure returns ( bool )

@@ -34,6 +34,7 @@ import {
     type SerializedGaslessIntent,
 } from "@safeswap/sdk";
 import { load_config, MAX_RELAY_COST_USD, type RelayerConfig } from "./config.ts";
+import { BondStore } from "./bond_store.ts";
 
 const BONDROUTE_BOND_INFO_ABI  =  [
     {
@@ -72,6 +73,9 @@ const ESTIMATED_EXECUTE_GAS  =  600_000n;
 /** Safety markup applied to the summed gas estimate before the USD ceiling check. */
 const GAS_MARKUP_PERCENT  =  10n;
 
+/** BondRoute's `BondStatus.ACTIVE` (Definitions.sol relies on it being 0): created, awaiting execution. */
+const BOND_STATUS_ACTIVE  =  0;
+
 /** Map BondRoute's `BondStatus` enum (Definitions.sol) to the gasless result discriminator. */
 const BOND_STATUS: Record<number, GaslessRelayResult["status"]>  =  {
     1: "executed",
@@ -107,8 +111,9 @@ export class Relayer {
     readonly #wallet_client:     WalletClient;
     readonly #bondroute_address: Address;
     readonly #allowed_protocols: Set<string>;
+    readonly #store:             BondStore;
 
-    private constructor( config: RelayerConfig, account: Account, public_client: PublicClient, wallet_client: WalletClient )
+    private constructor( config: RelayerConfig, account: Account, public_client: PublicClient, wallet_client: WalletClient, store: BondStore )
     {
         this.#config             =  config;
         this.#account            =  account;
@@ -116,6 +121,7 @@ export class Relayer {
         this.#wallet_client      =  wallet_client;
         this.#bondroute_address  =  config.bondroute_address ?? BONDROUTE_ADDRESS;
         this.#allowed_protocols  =  new Set([ config.router_address.toLowerCase(), config.nft_address.toLowerCase() ]);
+        this.#store              =  store;
     }
 
     static init(): Relayer
@@ -125,7 +131,7 @@ export class Relayer {
         const public_client  =  createPublicClient({ transport: http( config.rpc_url ) }) as PublicClient;
         const wallet_client  =  createWalletClient({ account, transport: http( config.rpc_url ) });
 
-        return new Relayer( config, account, public_client, wallet_client );
+        return new Relayer( config, account, public_client, wallet_client, new BondStore( config.state_file ) );
     }
 
     get config(): RelayerConfig
@@ -153,12 +159,52 @@ export class Relayer {
         // ── Commit: runs the delegate as the user's EOA, staking the user's own tokens and paying this relayer its fee. ──
         const create_tx_hash  =  await this.#submit_via_7702( request, "create_bond_from_user_stake", [ intent, request.gasless_type_hash, request.action_struct_hash, request.signature ] );
 
+        // Persist BEFORE waiting: from here the user's stake is locked on-chain, so a crash must leave a resumable record.
+        this.#store.put( intent.commitment_hash, { request, create_tx_hash, committed_at: Date.now() } );
+
         // ── Wait the reveal delay, then execute. ──
-        await this.#wait_for_reveal( intent );
-        const execute_tx_hash  =  await this.#submit_via_7702( request, "execute_bond_from_user", [ intent, request.gasless_type_hash, request.action_struct_hash, request.signature, execution_data ] );
+        const execute_tx_hash  =  await this.#wait_and_execute( request, intent, execution_data );
 
         const status  =  await this.#settled_status( intent );
+        this.#store.remove( intent.commitment_hash );
         return { status, commitment_hash: intent.commitment_hash, create_tx_hash, execute_tx_hash };
+    }
+
+    /**
+     * Finish any bonds that were committed but not executed before a previous process exited — so the user's locked stake is
+     * always carried through to execution rather than left to expire and be liquidated. Call once at startup.
+     */
+    async resume_pending(): Promise<void>
+    {
+        const pending  =  this.#store.pending();
+        if(  pending.length === 0  )  return;
+
+        console.warn( "Resuming %d committed bond(s) left in flight by a previous run.", pending.length );
+
+        for(  const entry of pending  )
+        {
+            const intent  =  deserialize_intent( entry.request.intent );
+            try
+            {
+                // Only ACTIVE bonds still need executing; anything already settled (executed/reverted/liquidated) is just cleared.
+                const info  =  await this.#bond_info( intent );
+                if(  info.status === BOND_STATUS_ACTIVE  )
+                {
+                    await this.#wait_and_execute( entry.request, intent, deserialize_execution_data( entry.request.execution_data ) );
+                }
+                this.#store.remove( intent.commitment_hash );
+            }
+            catch( error )
+            {
+                console.error( "Could not resume bond %s; leaving it persisted to retry on the next restart.", intent.commitment_hash, error );
+            }
+        }
+    }
+
+    async #wait_and_execute( request: RelayRequest, intent: GaslessIntent, execution_data: ExecutionData ): Promise<Hex>
+    {
+        await this.#wait_for_reveal( intent );
+        return await this.#submit_via_7702( request, "execute_bond_from_user", [ intent, request.gasless_type_hash, request.action_struct_hash, request.signature, execution_data ] );
     }
 
 
@@ -246,17 +292,21 @@ export class Relayer {
 
     async #submit_via_7702( request: RelayRequest, function_name: "create_bond_from_user_stake" | "execute_bond_from_user", args: readonly unknown[] ): Promise<Hex>
     {
-        // The tx `to` is the user's own EOA — now running the delegate's code via the supplied 7702 authorization. The relayer
-        // attaches no value: native stake/fundings are paid from the EOA's own balance by the delegate (`{ value: ... }`).
-        const hash  =  await this.#wallet_client.writeContract({
-            account:           this.#account,
-            chain:             null,
-            address:           request.user,
-            abi:               SAFESWAP_RELAYER_DELEGATE_ABI,
-            functionName:      function_name,
+        // The tx `to` is the user's own EOA — now running the delegate's code via the 7702 authorization. The relayer attaches
+        // no value: native stake/fundings are paid from the EOA's own balance by the delegate (`{ value: ... }`). The
+        // authorization is attached only when present; a `null` authorization means the EOA is already delegated (e.g. the
+        // commit applied it, so the execute needs no re-delegation), so the call dispatches to the existing delegate code.
+        const params  =  {
+            account:      this.#account,
+            chain:        null,
+            address:      request.user,
+            abi:          SAFESWAP_RELAYER_DELEGATE_ABI,
+            functionName: function_name,
             args,
-            authorizationList: [ request.authorization ],
-        } as Parameters<WalletClient["writeContract"]>[0] );
+            ...( request.authorization === null ? {} : { authorizationList: [ request.authorization ] } ),
+        };
+
+        const hash  =  await this.#wallet_client.writeContract( params as Parameters<WalletClient["writeContract"]>[0] );
 
         await this.#public_client.waitForTransactionReceipt({ hash });
         return hash;

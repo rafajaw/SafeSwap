@@ -237,7 +237,7 @@ Decisions already baked into both references (see the docs for the why):
 
 ## Gasless relayer (EIP-7702)
 
-- [x] Add the EIP-7702 relayer delegate (`contracts/Relayer/Relayer.sol`): the user's EOA delegates to it so it runs *as the
+- [x] Add the EIP-7702 relayer delegate (`contracts/Relayer/SafeSwap7702Delegate.sol`): the user's EOA delegates to it so it runs *as the
       user's account*. Two entrypoints — `create_bond_from_user_stake` (pay the relayer its signed fee, then `BondRoute.create_bond`
       staking the user's own tokens) and, past the reveal delay, `execute_bond_from_user` (approve funding tokens via Solady
       `safeApproveWithRetry`, then `BondRoute.execute_bond`) — plus a `receive()` for native released back to the EOA
@@ -247,15 +247,18 @@ Decisions already baked into both references (see the docs for the why):
       fundings/call via EIP-712 hashes while the commitment binds them via different plain hashes, leaving the commitment
       unsigned); this delegate instead signs the commitment hash and re-derives + equality-checks it from the revealed
       `ExecutionData` at execute, closing the griefing surface. It also pins the delegate (`helper`), the submitting relayer,
-      and an allowlisted protocol (router/NFT, immutable ctor args), guards delegated-context-only execution, and forbids the
-      relayer attaching native value (native stake/fundings are paid from the EOA's own balance). Full real-env tests +
-      manifest in `test/Relayer/`; rationale in `FRONTEND_SPEC_DECISIONS.md`.
+      and an allowlisted protocol (router/NFT, resolved from ChainConfig via a 0-arg ctor like the other contracts), guards
+      delegated-context-only execution, and forbids the relayer attaching native value (native stake/fundings are paid from
+      the EOA's own balance). Contract is `contracts/Relayer/SafeSwap7702Delegate.sol`; rationale in `FRONTEND_SPEC_DECISIONS.md`.
 - [x] Add the `deploy_relayer` `foundry.toml` profile (isolated artifact dir + size check, following the per-family pattern).
-      Current size: Relayer 7,454 bytes runtime at 25,000 runs (17,122-byte EIP-170 margin).
-- [x] Cover the **commit + execute path** (fee payment, user-stake commit, funding pull, swap output to the user) through the
-      SafeSwap real-env integration: the delegate is etched onto an EOA (7702 simulation) and driven against the real router /
-      NFT / pool / BondRoute, plus full revert coverage for every guard. `test/Relayer/Relayer.t.sol`.
-- [ ] Deploy the relayer delegate with its constructor args `(safe_swap_router, safe_swap_nft)` and **publish its address**
+      Current size: SafeSwap7702Delegate 7,454 bytes runtime at 25,000 runs (17,122-byte EIP-170 margin).
+- [ ] Implement the `SafeSwap7702Delegate` test suite per the interface in `test/Relayer/TestManifest.sol` (`IRelayerTests`):
+      real-env happy path (etch the delegate onto an EOA, drive create → wait → execute against the real router / NFT / pool /
+      BondRoute), relayer-fee accounting (paid once at commit; not paid if the commit reverts; native fee), native stake +
+      native funding from the EOA balance, and a revert for every guard (direct-call, native-value, helper, relayer, signature,
+      deadline, protocol, commitment / stake / gasless-type-hash / action-struct-hash mismatch) plus the type-string splice
+      (build + bad-prefix + malformed TokenAmount). A working draft existed against the real-env harness; finish + green it.
+- [ ] Deploy the delegate (0-arg ctor; reads `safeswap/router` + `safeswap/nft` from ChainConfig) and **publish its address**
       (the canonical 7702 delegation target the relayer backend and frontend point at); wire it into the deploy tooling
       alongside router / NFT / treasury / descriptors, and into the ChainConfig key publication checklist.
 

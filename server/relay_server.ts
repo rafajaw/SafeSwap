@@ -13,6 +13,10 @@ const config   =  relayer.config;
 
 console.log( `SafeSwap relayer ready on chain ${ config.chain_id }; serving ${ config.static_dir } on :${ config.port }.` );
 
+// Finish any bonds a previous run committed but did not execute, so a crash never strands the user's locked stake. Runs in
+// the background so serving starts immediately.
+relayer.resume_pending().catch(( error ) => console.error( "SafeSwap relayer resume pass failed:", error ) );
+
 Deno.serve({ port: config.port }, async ( request ) => {
     const url  =  new URL( request.url );
 

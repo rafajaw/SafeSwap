@@ -15,6 +15,9 @@ export const MAX_RELAY_COST_USD  =  1;
 const DEFAULT_REVEAL_DELAY_BLOCKS   =  4;
 const DEFAULT_REVEAL_DELAY_SECONDS  =  4;
 
+/** Where committed-but-unexecuted bonds are persisted so the relayer can resume them after a crash/restart. */
+const DEFAULT_STATE_FILE  =  "./relayer_state.json";
+
 function require_env( name: string ): string
 {
     const value  =  Deno.env.get( name );
@@ -43,6 +46,8 @@ export type RelayerConfig = {
     /** Reveal delay the relayer waits between the commit and execute transactions. */
     reveal_delay_blocks:      number;
     reveal_delay_seconds:     number;
+    /** File path where committed-but-unexecuted bonds are persisted so a restart can resume them. */
+    state_file:               string;
 };
 
 export function load_config(): RelayerConfig
@@ -62,5 +67,6 @@ export function load_config(): RelayerConfig
         native_usd_price:         native_usd_price_raw === undefined ? undefined : Number( native_usd_price_raw ),
         reveal_delay_blocks:      Number( optional_env( "RELAYER_REVEAL_DELAY_BLOCKS" )  ?? DEFAULT_REVEAL_DELAY_BLOCKS ),
         reveal_delay_seconds:     Number( optional_env( "RELAYER_REVEAL_DELAY_SECONDS" ) ?? DEFAULT_REVEAL_DELAY_SECONDS ),
+        state_file:               optional_env( "RELAYER_STATE_FILE" ) ?? DEFAULT_STATE_FILE,
     };
 }

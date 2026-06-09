@@ -46,6 +46,16 @@ output flows to the `user`.
 
 The response is a `GaslessRelayResult` (`status`, `commitment_hash`, `create_tx_hash`, `execute_tx_hash`).
 
+**Crash recovery.** Because the user stakes their *own* tokens at commit, a relayer crash between commit and execute would
+strand that stake until it expired and was liquidated. To prevent that, each committed bond is persisted to
+`RELAYER_STATE_FILE` (default `./relayer_state.json`) right after the commit and removed once it settles; on startup the
+relayer resumes any still-`ACTIVE` bond (waits the reveal delay, then executes). This needs `--allow-write` (already in the
+`deno task` definitions).
+
+**Authorizations.** The client only signs a 7702 authorization when the EOA is *not* already delegated to this delegate, so
+`request.authorization` may be `null`; the relayer then submits without an `authorizationList`, dispatching to the existing
+delegate code.
+
 > **Build-to-spec note.** SafeSwap is not yet deployed; the addresses above are placeholders. This server is complete to
 > spec but unverified end-to-end against a live chain — it needs deployed contracts and a funded relayer key on Unichain.
 > The two 7702 phases can't be live-`estimateGas`-d before delegation, so `relayer.ts` uses conservative static gas ceilings.
