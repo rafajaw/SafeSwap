@@ -74,7 +74,7 @@ function ConnectGate()
                 { ( status === "idle" || status === "error" ) && (
                     <>
                         <p className="card-title">Keep more when you trade.</p>
-                        <p className="card-sub">MEV protection for traders. Repricing revenue for LPs.</p>
+                        <p className="card-sub">MEV-protected pools. Repricing revenue for LPs.</p>
                         { error !== null && <div style={ { margin: "12px 0" } }><Notice tone="err">{ error }</Notice></div> }
                         <button className="btn btn-primary btn-block" onClick={ () => void connect() }>Connect wallet</button>
                     </>

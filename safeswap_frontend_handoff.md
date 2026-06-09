@@ -17,7 +17,7 @@ The interface must answer two questions immediately:
 Core positioning:
 
 ```text
-MEV protection for traders. Repricing revenue for LPs.
+MEV-protected pools. Repricing revenue for LPs.
 ```
 
 Supporting line:
@@ -295,7 +295,7 @@ SafeSwap
 Keep more when you trade.
 Earn more when you provide liquidity.
 
-MEV protection for traders. Repricing revenue for LPs.
+MEV-protected pools. Repricing revenue for LPs.
 
 [ Swap protected ]  [ Explore earnings ]
 ```

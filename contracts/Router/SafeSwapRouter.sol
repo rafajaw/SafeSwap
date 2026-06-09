@@ -9,7 +9,7 @@ pragma solidity ^0.8.30;
         ╚════██║██╔══██║██╔══╝  ██╔══╝  ╚════██║██║███╗██║██╔══██║██╔═══╝
         ███████║██║  ██║██║     ███████╗███████║╚███╔███╔╝██║  ██║██║
         ╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝
-        ━━━━━━━  MEV protection for traders. Repricing revenue for LPs.  ━━━━━━━
+        ━━━━━━━  MEV-protected pools. Repricing revenue for LPs.  ━━━━━━━
 
 */
 

@@ -1,7 +1,7 @@
 {
   "name": "@safeswap/sdk",
   "version": "0.0.1",
-  "description": "TypeScript SDK for SafeSwap — MEV protection for traders and repricing revenue for LPs.",
+  "description": "TypeScript SDK for SafeSwap — MEV-protected pools with repricing revenue for LPs.",
   "type": "module",
   "main": "./dist/SafeSwap.js",
   "module": "./dist/SafeSwap.js",

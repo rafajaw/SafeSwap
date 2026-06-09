@@ -1,6 +1,6 @@
 # SafeSwap
 
-**MEV protection for traders. Repricing revenue for LPs.**
+**MEV-protected pools. Repricing revenue for LPs.**
 
 SafeSwap enforces every swap and liquidity operation through [BondRoute](https://bondroute.xyz)'s commit-reveal bond
 mechanism, eliminating MEV extraction at the protocol level. On top of that, when a swap moves the pool price, SafeSwap

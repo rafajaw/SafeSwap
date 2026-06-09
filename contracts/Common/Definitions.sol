@@ -67,7 +67,7 @@ uint256 constant MAX_BOND_EXECUTION_DELAY_IN_SECONDS  =   1 hours;      // Caps 
 // ━━━━  STRINGS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 string constant SAFESWAP_PROTOCOL_NAME                              =  "SafeSwap";
-string constant SAFESWAP_PROTOCOL_DESCRIPTION                       =  "MEV protection for traders. Repricing revenue for LPs.";
+string constant SAFESWAP_PROTOCOL_DESCRIPTION                       =  "MEV-protected pools. Repricing revenue for LPs.";
 
 string constant SAFESWAP_POSITIONS_NAME                             =  "SafeSwap Positions";
 string constant SAFESWAP_POSITIONS_SYMBOL                           =  "SSLP";
