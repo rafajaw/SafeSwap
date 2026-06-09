@@ -452,15 +452,21 @@ library ModifyLiquidityLib {
 
     function _floor_to_spacing( int24 tick, int24 tick_spacing ) private pure returns ( int24 )
     {
-        int24 rounded  =  ( tick / tick_spacing ) * tick_spacing;    // truncates toward zero.
-        if(  tick < 0  &&  tick % tick_spacing != 0  )  rounded  =  rounded - tick_spacing;
+        int24 remainder  =  tick % tick_spacing;
+        int24 rounded    =  tick - remainder;    // truncates toward zero to a spacing multiple.
+
+        if(  tick < 0  &&  remainder != 0  )  rounded  =  rounded - tick_spacing;
+
         return rounded;
     }
 
     function _ceil_to_spacing( int24 tick, int24 tick_spacing ) private pure returns ( int24 )
     {
-        int24 rounded  =  ( tick / tick_spacing ) * tick_spacing;    // truncates toward zero.
-        if(  tick > 0  &&  tick % tick_spacing != 0  )  rounded  =  rounded + tick_spacing;
+        int24 remainder  =  tick % tick_spacing;
+        int24 rounded    =  tick - remainder;    // truncates toward zero to a spacing multiple.
+
+        if(  tick > 0  &&  remainder != 0  )  rounded  =  rounded + tick_spacing;
+
         return rounded;
     }
 
