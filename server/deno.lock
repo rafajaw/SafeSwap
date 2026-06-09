@@ -4,6 +4,7 @@
     "jsr:@std/internal@^1.0.14": "1.0.14",
     "jsr:@std/media-types@1": "1.1.0",
     "jsr:@std/path@1": "1.1.5",
+    "npm:postgres@^3.4.4": "3.4.9",
     "npm:viem@^2.50.4": "2.52.2"
   },
   "jsr": {
@@ -79,6 +80,9 @@
         "eventemitter3"
       ]
     },
+    "postgres@3.4.9": {
+      "integrity": "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="
+    },
     "viem@2.52.2": {
       "integrity": "sha512-HSU12p5aD/kAPZfrlbCUqdiP4P/c6hQ9AhfTS51VbLUQIjkWd1d5EjrCx/SCxZ0zhZVRn4Iv5X5WDqXPG8Ubew==",
       "dependencies": [
@@ -98,6 +102,7 @@
   },
   "workspace": {
     "dependencies": [
+      "npm:postgres@^3.4.4",
       "npm:viem@^2.50.4"
     ]
   }

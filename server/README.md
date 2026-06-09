@@ -38,23 +38,31 @@ server-side, by design. Load it however you prefer, e.g. `deno run --env-file=.e
 The relayer **validates before spending any gas**: right chain, the intent pins this relayer and its delegate, the protocol
 is the SafeSwap Router or NFT, the commit deadline is in the future, the `SafeSwapGaslessBond` signature recovers to `user`,
 and the estimated gas cost is under the `$1` ceiling (fail-closed if no native price is configured). Only then does it
-**commit** (`create_bond_from_user_stake`, staking the user's own tokens and paying this relayer its signed fee), **wait**
-the reveal delay, and **execute** (`execute_bond_from_user`) — two type-0x04 transactions that run the delegate as the
-user's EOA. The user stakes and funds from their own EOA balance; the relayer attaches no value and only sponsors gas.
-Native stake/fundings are paid from the EOA's balance via `{ value: ... }`, so native operations are supported. All on-chain
-output flows to the `user`.
+**commit** (`create_bond_from_user_stake`, staking the user's own tokens and paying this relayer its signed fee) and
+**return immediately** with a `GaslessCommit` (`id` = the commitment hash, `create_tx_hash`, `status: "committed"`,
+`target_executable_at`). The reveal-delay wait and **execute** (`execute_bond_from_user`) then happen in a background worker.
+The user stakes and funds from their own EOA balance; the relayer attaches no value and only sponsors gas. Native
+stake/fundings are paid from the EOA's balance via `{ value: ... }`, so native operations are supported. All output flows to
+the `user`.
 
-The response is a `GaslessRelayResult` (`status`, `commitment_hash`, `create_tx_hash`, `execute_tx_hash`).
+## Address-keyed activity (server-authoritative)
 
-**Crash recovery.** Because the user stakes their *own* tokens at commit, a relayer crash between commit and execute would
-strand that stake until it expired and was liquidated. To prevent that, each committed bond is persisted to
-`RELAYER_STATE_FILE` (default `./relayer_state.json`) right after the commit and removed once it settles; on startup the
-relayer resumes any still-`ACTIVE` bond (waits the reveal delay, then executes). This needs `--allow-write` (already in the
-`deno task` definitions).
+The relayer is the source of truth for a user's gasless ops, so the client never needs local storage:
+
+- `GET /activity/:address` → `{ in_progress, recent }` for that user (each in-progress carries `eta_seconds`).
+- `GET /status/:id` → a single bond's public state (`status`, tx hashes, timestamps, `eta_seconds`).
+
+The **worker** (`start_worker`) drains committed bonds to execution — the single mechanism for both fresh execution and
+**crash recovery**: a bond committed by *any* process (including one that died mid-flight) is picked up, so the user's locked
+stake is never stranded. The store is **postgres** when `DATABASE_URL` is set (durable; `SELECT … FOR UPDATE SKIP LOCKED` to
+claim, plus an **advisory-lock leader** so only one container submits at a time — keeping the single relayer EOA's nonces
+collision-free across green/blue), or an in-process **memory store** otherwise (local dev / tests). The `gasless_bond` table
+is auto-created on boot. *(The postgres path is unverified against a live DB until the docker deploy pass; the memory path is
+the one exercised locally.)*
 
 **Authorizations.** The client only signs a 7702 authorization when the EOA is *not* already delegated to this delegate, so
-`request.authorization` may be `null`; the relayer then submits without an `authorizationList`, dispatching to the existing
-delegate code.
+`request.authorization` may be `null`; the relayer then submits without an `authorizationList`. The execute always submits
+without one (the commit already delegated the EOA).
 
 > **Build-to-spec note.** SafeSwap is not yet deployed; the addresses above are placeholders. This server is complete to
 > spec but unverified end-to-end against a live chain — it needs deployed contracts and a funded relayer key on Unichain.

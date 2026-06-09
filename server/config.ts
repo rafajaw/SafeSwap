@@ -15,8 +15,8 @@ export const MAX_RELAY_COST_USD  =  1;
 const DEFAULT_REVEAL_DELAY_BLOCKS   =  4;
 const DEFAULT_REVEAL_DELAY_SECONDS  =  4;
 
-/** Where committed-but-unexecuted bonds are persisted so the relayer can resume them after a crash/restart. */
-const DEFAULT_STATE_FILE  =  "./relayer_state.json";
+/** How many settled bonds per address `/activity` returns under `recent`. */
+const DEFAULT_RECENT_LIMIT  =  20;
 
 function require_env( name: string ): string
 {
@@ -46,8 +46,10 @@ export type RelayerConfig = {
     /** Reveal delay the relayer waits between the commit and execute transactions. */
     reveal_delay_blocks:      number;
     reveal_delay_seconds:     number;
-    /** File path where committed-but-unexecuted bonds are persisted so a restart can resume them. */
-    state_file:               string;
+    /** Postgres connection string for the activity store; when unset the relayer uses an in-process memory store. */
+    database_url:             string | undefined;
+    /** How many settled bonds per address `/activity` returns under `recent`. */
+    recent_limit:             number;
 };
 
 export function load_config(): RelayerConfig
@@ -67,6 +69,7 @@ export function load_config(): RelayerConfig
         native_usd_price:         native_usd_price_raw === undefined ? undefined : Number( native_usd_price_raw ),
         reveal_delay_blocks:      Number( optional_env( "RELAYER_REVEAL_DELAY_BLOCKS" )  ?? DEFAULT_REVEAL_DELAY_BLOCKS ),
         reveal_delay_seconds:     Number( optional_env( "RELAYER_REVEAL_DELAY_SECONDS" ) ?? DEFAULT_REVEAL_DELAY_SECONDS ),
-        state_file:               optional_env( "RELAYER_STATE_FILE" ) ?? DEFAULT_STATE_FILE,
+        database_url:             optional_env( "DATABASE_URL" ),
+        recent_limit:             Number( optional_env( "RELAYER_RECENT_LIMIT" ) ?? DEFAULT_RECENT_LIMIT ),
     };
 }

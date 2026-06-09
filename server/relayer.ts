@@ -29,12 +29,15 @@ import { BONDROUTE_ADDRESS, type ExecutionData } from "@bondroute/sdk";
 import {
     SAFESWAP_RELAYER_DELEGATE_ABI,
     deserialize_execution_data,
-    type GaslessRelayResult,
+    type GaslessActivity,
+    type GaslessBondStatus,
+    type GaslessCommit,
+    type GaslessJob,
     type RelayRequest,
     type SerializedGaslessIntent,
 } from "@safeswap/sdk";
 import { load_config, MAX_RELAY_COST_USD, type RelayerConfig } from "./config.ts";
-import { BondStore } from "./bond_store.ts";
+import { create_store, type ActivityStore, type GaslessRecord } from "./store.ts";
 
 const BONDROUTE_BOND_INFO_ABI  =  [
     {
@@ -73,15 +76,18 @@ const ESTIMATED_EXECUTE_GAS  =  600_000n;
 /** Safety markup applied to the summed gas estimate before the USD ceiling check. */
 const GAS_MARKUP_PERCENT  =  10n;
 
+/** How often the background worker checks for due bonds to execute. */
+const WORKER_INTERVAL_MS  =  2_000;
+
 /** BondRoute's `BondStatus.ACTIVE` (Definitions.sol relies on it being 0): created, awaiting execution. */
 const BOND_STATUS_ACTIVE  =  0;
 
-/** Map BondRoute's `BondStatus` enum (Definitions.sol) to the gasless result discriminator. */
-const BOND_STATUS: Record<number, GaslessRelayResult["status"]>  =  {
+/** Map BondRoute's settled `BondStatus` (Definitions.sol) to the store's terminal vocabulary. */
+const BOND_STATUS: Record<number, GaslessBondStatus>  =  {
     1: "executed",
-    2: "invalid_bond",
+    2: "failed",             // INVALID_BOND
     3: "protocol_reverted",
-    4: "liquidated",
+    4: "failed",             // LIQUIDATED (expired then claimed by the collector)
 };
 
 type GaslessIntent = {
@@ -111,9 +117,9 @@ export class Relayer {
     readonly #wallet_client:     WalletClient;
     readonly #bondroute_address: Address;
     readonly #allowed_protocols: Set<string>;
-    readonly #store:             BondStore;
+    readonly #store:             ActivityStore;
 
-    private constructor( config: RelayerConfig, account: Account, public_client: PublicClient, wallet_client: WalletClient, store: BondStore )
+    private constructor( config: RelayerConfig, account: Account, public_client: PublicClient, wallet_client: WalletClient, store: ActivityStore )
     {
         this.#config             =  config;
         this.#account            =  account;
@@ -124,14 +130,15 @@ export class Relayer {
         this.#store              =  store;
     }
 
-    static init(): Relayer
+    static async init(): Promise<Relayer>
     {
         const config         =  load_config();
         const account        =  privateKeyToAccount( config.relayer_private_key );
         const public_client  =  createPublicClient({ transport: http( config.rpc_url ) }) as PublicClient;
         const wallet_client  =  createWalletClient({ account, transport: http( config.rpc_url ) });
+        const store          =  await create_store( config.database_url );
 
-        return new Relayer( config, account, public_client, wallet_client, new BondStore( config.state_file ) );
+        return new Relayer( config, account, public_client, wallet_client, store );
     }
 
     get config(): RelayerConfig
@@ -140,10 +147,12 @@ export class Relayer {
     }
 
     /**
-     * Validate, commit, wait, and execute one gasless operation. Resolves once the bond settles. Validation runs BEFORE any
-     * gas is spent; only a fully-valid, in-scope, correctly-signed operation reaches the commit transaction.
+     * Validate and COMMIT one gasless operation, then return immediately with a job handle. The reveal-delay wait and the
+     * execute happen in the background worker — so the HTTP request is short, and once committed the user's op is tracked
+     * server-side (durable in postgres), recoverable across crashes, and pollable via `activity`/`status`. Validation runs
+     * BEFORE any gas is spent.
      */
-    async relay( request: RelayRequest ): Promise<GaslessRelayResult>
+    async relay( request: RelayRequest ): Promise<GaslessCommit>
     {
         if(  request.chain_id !== this.#config.chain_id  )  throw new RelayRejected( `Wrong chain ${ request.chain_id }; relayer serves ${ this.#config.chain_id }.` );
 
@@ -157,54 +166,107 @@ export class Relayer {
         await this.#assert_affordable_gas();
 
         // ── Commit: runs the delegate as the user's EOA, staking the user's own tokens and paying this relayer its fee. ──
-        const create_tx_hash  =  await this.#submit_via_7702( request, "create_bond_from_user_stake", [ intent, request.gasless_type_hash, request.action_struct_hash, request.signature ] );
+        // Through the global submit lock so this commit never races the worker's executes on the relayer EOA's nonce.
+        const create_tx_hash  =  await this.#store.with_submit_lock( () =>
+            this.#submit_via_7702( request, "create_bond_from_user_stake", [ intent, request.gasless_type_hash, request.action_struct_hash, request.signature ], request.authorization )
+        );
 
-        // Persist BEFORE waiting: from here the user's stake is locked on-chain, so a crash must leave a resumable record.
-        this.#store.put( intent.commitment_hash, { request, create_tx_hash, committed_at: Date.now() } );
+        // Record BEFORE returning: the user's stake is now locked on-chain, so the worker (and crash-recovery) must see it.
+        const info                  =  await this.#bond_info( intent );
+        const target_executable_at  =  Number( info.creation_time ) + this.#config.reveal_delay_seconds;
+        const now                   =  Date.now();
+        await this.#store.record_committed({
+            id:                   intent.commitment_hash,
+            user:                 request.user,
+            summary:              request.summary ?? { kind: "gasless" },
+            status:               "committed",
+            request,
+            create_tx_hash,
+            committed_at:         now,
+            updated_at:           now,
+            target_executable_at,
+        });
 
-        // ── Wait the reveal delay, then execute. ──
-        const execute_tx_hash  =  await this.#wait_and_execute( request, intent, execution_data );
-
-        const status  =  await this.#settled_status( intent );
-        this.#store.remove( intent.commitment_hash );
-        return { status, commitment_hash: intent.commitment_hash, create_tx_hash, execute_tx_hash };
+        return { id: intent.commitment_hash, create_tx_hash, status: "committed", target_executable_at };
     }
 
-    /**
-     * Finish any bonds that were committed but not executed before a previous process exited — so the user's locked stake is
-     * always carried through to execution rather than left to expire and be liquidated. Call once at startup.
-     */
-    async resume_pending(): Promise<void>
+    /** A user's in-progress + recent gasless activity — the address-keyed view the client polls. */
+    async activity( user: Address ): Promise<GaslessActivity>
     {
-        const pending  =  this.#store.pending();
-        if(  pending.length === 0  )  return;
+        return await this.#store.activity( user, this.#config.recent_limit );
+    }
 
-        console.warn( "Resuming %d committed bond(s) left in flight by a previous run.", pending.length );
+    /** A single bond's public status, or null if this relayer has no record of it. */
+    async status( id: Hex ): Promise<GaslessJob | null>
+    {
+        return await this.#store.get( id );
+    }
 
-        for(  const entry of pending  )
+
+    // ━━━━  WORKER  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /**
+     * Start the background loop that drains committed bonds to execution. This is the single mechanism for both fresh execution
+     * and crash recovery: a committed bond persisted by *any* process (including one that died mid-flight) is picked up here.
+     */
+    start_worker(): void
+    {
+        const loop  =  async () => {
+            try        {  await this.#worker_tick();  }
+            catch( error )  {  console.error( "SafeSwap relayer worker tick failed:", error );  }
+            finally    {  setTimeout( loop, WORKER_INTERVAL_MS );  }
+        };
+        loop();
+    }
+
+    async #worker_tick(): Promise<void>
+    {
+        // Claim is multi-instance-safe (SKIP LOCKED); the per-tx submit lock (in `#execute_claimed`) serializes nonces.
+        for( ; ; )
         {
-            const intent  =  deserialize_intent( entry.request.intent );
-            try
-            {
-                // Only ACTIVE bonds still need executing; anything already settled (executed/reverted/liquidated) is just cleared.
-                const info  =  await this.#bond_info( intent );
-                if(  info.status === BOND_STATUS_ACTIVE  )
-                {
-                    await this.#wait_and_execute( entry.request, intent, deserialize_execution_data( entry.request.execution_data ) );
-                }
-                this.#store.remove( intent.commitment_hash );
-            }
-            catch( error )
-            {
-                console.error( "Could not resume bond %s; leaving it persisted to retry on the next restart.", intent.commitment_hash, error );
-            }
+            const record  =  await this.#store.claim_executable( Date.now() );
+            if(  record === null  )  return;
+            await this.#execute_claimed( record );
         }
     }
 
-    async #wait_and_execute( request: RelayRequest, intent: GaslessIntent, execution_data: ExecutionData ): Promise<Hex>
+    async #execute_claimed( record: GaslessRecord ): Promise<void>
     {
-        await this.#wait_for_reveal( intent );
-        return await this.#submit_via_7702( request, "execute_bond_from_user", [ intent, request.gasless_type_hash, request.action_struct_hash, request.signature, execution_data ] );
+        const intent  =  deserialize_intent( record.request.intent );
+        try
+        {
+            const info  =  await this.#bond_info( intent );
+
+            if(  info.status !== BOND_STATUS_ACTIVE  )
+            {
+                // Already settled on-chain (e.g. executed by a prior run just before a crash) — record the outcome and move on.
+                await this.#store.mark_settled( record.id, { status: BOND_STATUS[ info.status ] ?? "failed" } );
+                return;
+            }
+            if(  await this.#is_executable( info ) === false  )
+            {
+                await this.#store.release( record.id );    // Claimed a touch early; the reveal delay is not fully elapsed yet.
+                return;
+            }
+
+            const execution_data   =  deserialize_execution_data( record.request.execution_data );
+            const execute_tx_hash  =  await this.#store.with_submit_lock( () =>
+                this.#submit_via_7702(
+                    record.request,
+                    "execute_bond_from_user",
+                    [ intent, record.request.gasless_type_hash, record.request.action_struct_hash, record.request.signature, execution_data ],
+                    null,    // The EOA was delegated at commit; execute needs no re-delegation.
+                )
+            );
+
+            const settled  =  await this.#bond_info( intent );
+            await this.#store.mark_settled( record.id, { status: BOND_STATUS[ settled.status ] ?? "failed", execute_tx_hash } );
+        }
+        catch( error )
+        {
+            console.error( "Execute failed for bond %s; returning it to the queue to retry.", record.id, error );
+            await this.#store.release( record.id );
+        }
     }
 
 
@@ -290,12 +352,12 @@ export class Relayer {
 
     // ━━━━  TRANSACTIONS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    async #submit_via_7702( request: RelayRequest, function_name: "create_bond_from_user_stake" | "execute_bond_from_user", args: readonly unknown[] ): Promise<Hex>
+    async #submit_via_7702( request: RelayRequest, function_name: "create_bond_from_user_stake" | "execute_bond_from_user", args: readonly unknown[], authorization: RelayRequest[ "authorization" ] ): Promise<Hex>
     {
         // The tx `to` is the user's own EOA — now running the delegate's code via the 7702 authorization. The relayer attaches
         // no value: native stake/fundings are paid from the EOA's own balance by the delegate (`{ value: ... }`). The
-        // authorization is attached only when present; a `null` authorization means the EOA is already delegated (e.g. the
-        // commit applied it, so the execute needs no re-delegation), so the call dispatches to the existing delegate code.
+        // authorization is attached only when present; for the execute it is `null` because the commit already delegated the
+        // EOA (and `null` also covers an already-delegated EOA whose commit needed no re-delegation).
         const params  =  {
             account:      this.#account,
             chain:        null,
@@ -303,38 +365,26 @@ export class Relayer {
             abi:          SAFESWAP_RELAYER_DELEGATE_ABI,
             functionName: function_name,
             args,
-            ...( request.authorization === null ? {} : { authorizationList: [ request.authorization ] } ),
+            ...( authorization === null ? {} : { authorizationList: [ authorization ] } ),
         };
 
         const hash     =  await this.#wallet_client.writeContract( params as Parameters<WalletClient["writeContract"]>[0] );
         const receipt  =  await this.#public_client.waitForTransactionReceipt({ hash });
 
         // `waitForTransactionReceipt` does NOT throw on a reverted tx, so check explicitly — otherwise a reverted commit would
-        // be treated as success and persist a phantom bond that `resume_pending` retries forever. (A BondRoute *protocol*
-        // revert does not revert this tx; it settles with a non-EXECUTED status, surfaced by `#settled_status`.)
+        // be treated as success and persist a phantom bond. (A BondRoute *protocol* revert does not revert this tx; it settles
+        // with a non-EXECUTED status, read back from the bond info.)
         if(  receipt.status !== "success"  )  throw new Error( `${ function_name } transaction ${ hash } reverted on-chain.` );
 
         return hash;
     }
 
-    async #wait_for_reveal( intent: GaslessIntent ): Promise<void>
+    /** Whether the bond's reveal delay (both block and time floors) has fully elapsed, so execute won't revert as too-early. */
+    async #is_executable( info: { creation_time: bigint, creation_block: bigint } ): Promise<boolean>
     {
-        const info  =  await this.#bond_info( intent );
-        const target_block      =  info.creation_block + BigInt( this.#config.reveal_delay_blocks );
-        const target_timestamp  =  info.creation_time  + BigInt( this.#config.reveal_delay_seconds );
-
-        for( ; ; )
-        {
-            const block  =  await this.#public_client.getBlock();
-            if(  block.number >= target_block  &&  block.timestamp >= target_timestamp  )  return;
-            await new Promise(( resolve ) => setTimeout( resolve, 1_500 ));
-        }
-    }
-
-    async #settled_status( intent: GaslessIntent ): Promise<GaslessRelayResult["status"]>
-    {
-        const info  =  await this.#bond_info( intent );
-        return BOND_STATUS[ info.status ] ?? "invalid_bond";
+        const block  =  await this.#public_client.getBlock();
+        return block.number    >= info.creation_block + BigInt( this.#config.reveal_delay_blocks )
+            && block.timestamp >= info.creation_time  + BigInt( this.#config.reveal_delay_seconds );
     }
 
     async #bond_info( intent: GaslessIntent ): Promise<{ creation_time: bigint, creation_block: bigint, status: number }>

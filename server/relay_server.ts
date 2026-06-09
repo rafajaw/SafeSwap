@@ -5,6 +5,7 @@
 
 import { contentType } from "jsr:@std/media-types@^1.0.0";
 import { extname, join, normalize } from "jsr:@std/path@^1.0.0";
+import { getAddress, isAddress, type Hex } from "viem";
 import { Relayer, RelayRejected } from "./relayer.ts";
 import type { RelayRequest } from "@safeswap/sdk";
 
@@ -13,15 +14,17 @@ const config   =  relayer.config;
 
 console.log( `SafeSwap relayer ready on chain ${ config.chain_id }; serving ${ config.static_dir } on :${ config.port }.` );
 
-// Finish any bonds a previous run committed but did not execute, so a crash never strands the user's locked stake. Runs in
-// the background so serving starts immediately.
-relayer.resume_pending().catch(( error ) => console.error( "SafeSwap relayer resume pass failed:", error ) );
+// The worker drives committed bonds to execution — covering both fresh ops and any a previous run left in flight (so a crash
+// never strands the user's locked stake).
+relayer.start_worker();
 
 Deno.serve({ port: config.port }, async ( request ) => {
     const url  =  new URL( request.url );
 
-    if(  request.method === "OPTIONS"  )  return cors( new Response( null, { status: 204 } ) );
-    if(  url.pathname === "/relay"  )     return cors( await handle_relay( request ) );
+    if(  request.method === "OPTIONS"  )            return cors( new Response( null, { status: 204 } ) );
+    if(  url.pathname === "/relay"  )               return cors( await handle_relay( request ) );
+    if(  url.pathname.startsWith( "/activity/" )  ) return cors( await handle_activity( url.pathname ) );
+    if(  url.pathname.startsWith( "/status/" )  )   return cors( await handle_status( url.pathname ) );
 
     return await serve_static( url.pathname );
 });
@@ -51,6 +54,41 @@ async function handle_relay( request: Request ): Promise<Response>
 
         console.error( "Relay failed:", cause );
         return json({ error: cause instanceof Error ? cause.message : "Internal relayer error." }, 500);
+    }
+}
+
+/** A user's in-progress + recent gasless activity, keyed by their connected address. */
+async function handle_activity( pathname: string ): Promise<Response>
+{
+    const address  =  pathname.slice( "/activity/".length );
+    if(  isAddress( address ) === false  )  return json({ error: "Invalid address." }, 400);
+
+    try
+    {
+        return json( await relayer.activity( getAddress( address ) ) );
+    }
+    catch( cause )
+    {
+        console.error( "Activity failed:", cause );
+        return json({ error: "Internal relayer error." }, 500);
+    }
+}
+
+/** A single bond's public status by its commitment hash. */
+async function handle_status( pathname: string ): Promise<Response>
+{
+    const id  =  pathname.slice( "/status/".length );
+    if(  /^0x[0-9a-fA-F]{64}$/.test( id ) === false  )  return json({ error: "Invalid bond id." }, 400);
+
+    try
+    {
+        const job  =  await relayer.status( id as Hex );
+        return job === null ? json({ error: "No such bond." }, 404) : json( job );
+    }
+    catch( cause )
+    {
+        console.error( "Status failed:", cause );
+        return json({ error: "Internal relayer error." }, 500);
     }
 }
 
@@ -98,7 +136,7 @@ function json( body: unknown, status: number = 200 ): Response
 function cors( response: Response ): Response
 {
     response.headers.set( "access-control-allow-origin", "*" );
-    response.headers.set( "access-control-allow-methods", "POST, OPTIONS" );
+    response.headers.set( "access-control-allow-methods", "GET, POST, OPTIONS" );
     response.headers.set( "access-control-allow-headers", "content-type" );
     return response;
 }
