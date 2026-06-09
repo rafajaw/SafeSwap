@@ -1,0 +1,261 @@
+/*
+ * SafeSwap design system. The NFT card is the only fully-saturated surface; the app chrome is its desaturated grey twin
+ * (FRONTEND_SPEC_DECISIONS "Brand & design system"). Green (#37d6a3) is the ONLY saturated colour in the app — reserved for
+ * value retained / earned / collectible. Tokens lifted from nft-renders/reference10.svg.
+ */
+
+:root {
+    /* App chrome — desaturated echo of the card's teal/navy/warm diagonal over neutral greys. */
+    --app-bg-1: #1b1f24;
+    --app-bg-2: #0f1115;
+    --app-bg-3: #1c1a17;
+
+    --surface:        #161a1f;
+    --surface-2:      #1b2026;
+    --hairline:       rgba(255, 255, 255, 0.08);
+    --rule-strong:    rgba(255, 255, 255, 0.10);
+    --rule-faint:     rgba(255, 255, 255, 0.05);
+
+    /* The single accent. */
+    --green:      #37d6a3;
+    --green-dim:  rgba(55, 214, 163, 0.60);
+    --green-tint: rgba(55, 214, 163, 0.12);
+
+    --amber: #e0b54a;
+    --red:   #e0614a;
+
+    /* Text ramp (matches the card). */
+    --t-100: rgba(255, 255, 255, 1.00);
+    --t-90:  rgba(255, 255, 255, 0.90);
+    --t-60:  rgba(255, 255, 255, 0.60);
+    --t-50:  rgba(255, 255, 255, 0.50);
+    --t-40:  rgba(255, 255, 255, 0.40);
+
+    --radius:    18px;
+    --radius-sm: 12px;
+
+    --font-ui:   Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    color: var(--t-90);
+    font-family: var(--font-ui);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    min-width: 320px;
+    margin: 0;
+    overflow-x: hidden;
+    background:
+        linear-gradient(135deg, var(--app-bg-1) 0%, var(--app-bg-2) 48%, var(--app-bg-3) 100%) fixed;
+    background-color: var(--app-bg-2);
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
+a { color: var(--green); text-decoration: none; }
+
+.mono { font-family: var(--font-mono); }
+.val  { font-weight: 700; }
+.label {
+    color: var(--t-40);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+/* ── Layout shell ─────────────────────────────────────────────────────────── */
+.shell {
+    width: min(1180px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 20px 0 64px;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 8px 0 20px;
+}
+
+.wordmark { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.wordmark .safe { color: var(--t-90); }
+.wordmark .swap { color: var(--green); }
+
+.nav { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--surface); border: 1px solid var(--hairline); }
+.nav button {
+    border: 0; background: transparent; color: var(--t-60);
+    padding: 8px 18px; border-radius: 999px; font-weight: 600;
+    transition: color 140ms ease, background 140ms ease;
+}
+.nav button:hover { color: var(--t-90); }
+.nav button.active { color: var(--app-bg-2); background: var(--green); }
+
+.wallet-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 999px;
+    border: 1px solid var(--hairline); background: var(--surface);
+    color: var(--t-90); font-family: var(--font-mono); font-size: 13px; white-space: nowrap;
+}
+.wallet-chip .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--green); }
+
+/* ── Surfaces ─────────────────────────────────────────────────────────────── */
+.card {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 20px;
+}
+.card + .card { margin-top: 16px; }
+.card-title { margin: 0 0 4px; font-size: 18px; font-weight: 700; color: var(--t-100); }
+.card-sub   { margin: 0 0 16px; color: var(--t-60); font-size: 14px; line-height: 1.5; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.stack { display: grid; gap: 14px; }
+
+/* ── Fields ───────────────────────────────────────────────────────────────── */
+.field { display: grid; gap: 6px; }
+.field > span.label { margin-bottom: 2px; }
+.input, .select {
+    width: 100%; min-height: 46px;
+    border: 1px solid var(--hairline); border-radius: var(--radius-sm);
+    padding: 0 14px; background: var(--surface-2); color: var(--t-100);
+    outline: none; transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+.input:focus, .select:focus { border-color: var(--green-dim); box-shadow: 0 0 0 3px var(--green-tint); }
+.input.mono { font-family: var(--font-mono); }
+
+/* Token + amount row */
+.amount-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+    padding: 14px; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.amount-row input {
+    border: 0; background: transparent; outline: none;
+    font-family: var(--font-mono); font-size: 26px; font-weight: 700; color: var(--t-100); width: 100%;
+}
+.amount-row .sub { color: var(--t-50); font-size: 12px; margin-top: 4px; }
+.token-pick {
+    display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+    padding: 8px 12px; border-radius: 999px; border: 1px solid var(--hairline);
+    background: var(--surface); color: var(--t-100); font-weight: 600;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.btn {
+    min-height: 48px; padding: 0 18px; border-radius: var(--radius-sm);
+    border: 1px solid var(--hairline); background: var(--surface-2); color: var(--t-90); font-weight: 700;
+    transition: transform 120ms ease, background 140ms ease, border-color 140ms ease;
+}
+.btn:hover:not(:disabled) { border-color: var(--green-dim); }
+.btn-primary {
+    border: 0; background: var(--green); color: var(--app-bg-2);
+}
+.btn-primary:hover:not(:disabled) { transform: translateY(-1px); }
+.btn-ghost { background: transparent; border: 0; color: var(--green); min-height: 0; padding: 0; font-weight: 600; }
+.btn-block { width: 100%; }
+
+/* ── Pills / tags ─────────────────────────────────────────────────────────── */
+.pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 999px; background: rgba(0, 0, 0, 0.14);
+    color: var(--t-60); font-size: 12px; font-weight: 600;
+}
+.pill.green { color: var(--green); background: var(--green-tint); }
+.pill.amber { color: var(--amber); background: rgba(224, 181, 74, 0.12); }
+.pill.tech  { font-family: var(--font-mono); }
+
+/* ── Value (green) blocks ─────────────────────────────────────────────────── */
+.value-card {
+    display: grid; gap: 4px; padding: 16px;
+    border: 1px solid var(--green-tint); border-radius: var(--radius-sm); background: var(--green-tint);
+}
+.value-card .amount { color: var(--green); font-family: var(--font-mono); font-size: 30px; font-weight: 700; line-height: 1; }
+.value-card .delta  { color: var(--green-dim); font-size: 14px; font-weight: 600; }
+.value-card .method { color: var(--t-50); font-size: 12px; }
+.starred::after { content: " *"; color: var(--t-40); }
+
+/* ── Detail / quote rows ──────────────────────────────────────────────────── */
+.kv { display: grid; gap: 9px; }
+.kv .line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.kv .k { color: var(--t-60); font-size: 13px; }
+.kv .v { color: var(--t-90); font-family: var(--font-mono); font-size: 13px; text-align: right; overflow-wrap: anywhere; }
+.kv .v.green { color: var(--green); }
+.kv .v.red   { color: var(--red); }
+
+.disclosure {
+    margin-top: 12px; border-top: 1px solid var(--rule-faint); padding-top: 12px;
+}
+.disclosure > summary { cursor: pointer; color: var(--t-60); font-size: 13px; font-weight: 600; list-style: none; }
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure[open] > summary { color: var(--t-90); margin-bottom: 12px; }
+
+/* ── Segmented toggle ─────────────────────────────────────────────────────── */
+.segmented { display: inline-grid; grid-auto-flow: column; gap: 4px; padding: 4px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--hairline); }
+.segmented button { border: 0; background: transparent; color: var(--t-60); padding: 7px 16px; border-radius: 999px; font-weight: 600; }
+.segmented button.active { background: var(--green); color: var(--app-bg-2); }
+.segmented button:disabled.active { background: var(--surface); }
+
+/* ── Progress rail ────────────────────────────────────────────────────────── */
+.rail { display: flex; align-items: center; gap: 0; margin: 8px 0 20px; }
+.rail .step { display: flex; align-items: center; gap: 10px; flex: 1; }
+.rail .node { width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 700;
+    border: 1px solid var(--hairline); background: var(--surface-2); color: var(--t-50); flex: none; }
+.rail .step.done .node    { background: var(--green); color: var(--app-bg-2); border-color: var(--green); }
+.rail .step.active .node  { border-color: var(--green); color: var(--green); }
+.rail .step .name { font-size: 13px; color: var(--t-60); }
+.rail .step.active .name, .rail .step.done .name { color: var(--t-90); }
+.rail .bar { height: 1px; flex: 1; background: var(--hairline); margin: 0 8px; }
+.rail .bar.done { background: var(--green-dim); }
+
+/* ── NFT position card frame ──────────────────────────────────────────────── */
+.nft-frame { padding: 12px; border: 1px solid var(--hairline); border-radius: var(--radius); background: rgba(0,0,0,0.18); display: inline-block; }
+.nft-frame img, .nft-frame svg { display: block; width: 280px; height: auto; border-radius: 14px; }
+
+/* ── Notices / modal ──────────────────────────────────────────────────────── */
+.notice { border-radius: var(--radius-sm); padding: 12px 14px; line-height: 1.45; font-size: 14px; }
+.notice.err  { border: 1px solid rgba(224,97,74,0.4);  background: rgba(224,97,74,0.10);  color: #f3c4bb; }
+.notice.ok   { border: 1px solid var(--green-tint);     background: var(--green-tint);     color: var(--green); }
+.notice.warn { border: 1px solid rgba(224,181,74,0.4);  background: rgba(224,181,74,0.10); color: var(--amber); }
+
+.scrim { position: fixed; inset: 0; background: rgba(8,10,13,0.72); display: grid; place-items: center; z-index: 50; padding: 20px; }
+.modal { width: min(460px, 100%); }
+
+.info-hint { position: relative; display: inline-flex; cursor: help; color: var(--t-40); }
+.info-hint .bubble {
+    position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    width: 240px; padding: 10px 12px; border-radius: 10px; background: #0c0e11; border: 1px solid var(--hairline);
+    color: var(--t-90); font-size: 12px; line-height: 1.45; font-weight: 400; text-transform: none; letter-spacing: 0;
+    opacity: 0; pointer-events: none; transition: opacity 120ms ease; z-index: 5;
+}
+.info-hint:hover .bubble { opacity: 1; }
+
+.muted { color: var(--t-60); }
+.tiny  { font-size: 12px; }
+.center { text-align: center; }
+.empty {
+    border: 1px dashed var(--hairline); border-radius: var(--radius); padding: 32px; text-align: center; color: var(--t-60);
+}
+.spinner { width: 16px; height: 16px; border-radius: 999px; border: 2px solid var(--hairline); border-top-color: var(--green); animation: spin 700ms linear infinite; display: inline-block; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.pools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.positions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+
+.swap-layout { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 16px; align-items: start; }
+
+@media (max-width: 920px) {
+    .swap-layout { grid-template-columns: 1fr; }
+    .topbar { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

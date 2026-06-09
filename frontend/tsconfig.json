@@ -13,8 +13,8 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@safeswap/sdk/source": ["../sdk/dist/sdk/SafeSwap.d.ts"],
-      "@bondroute/sdk": ["../lib/BondRoute/sdk/dist/BondRoute.d.ts"],
+      "@safeswap/sdk/source": ["../sdk/SafeSwap.ts"],
+      "@bondroute/sdk": ["../lib/BondRoute/sdk/BondRoute.ts"],
       "viem": ["node_modules/viem"],
       "viem/*": ["node_modules/viem/*"]
     },
