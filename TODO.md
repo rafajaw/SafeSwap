@@ -252,12 +252,12 @@ Decisions already baked into both references (see the docs for the why):
       the EOA's own balance). Contract is `contracts/Relayer/SafeSwap7702Delegate.sol`; rationale in `FRONTEND_SPEC_DECISIONS.md`.
 - [x] Add the `deploy_relayer` `foundry.toml` profile (isolated artifact dir + size check, following the per-family pattern).
       Current size: SafeSwap7702Delegate 7,454 bytes runtime at 25,000 runs (17,122-byte EIP-170 margin).
-- [ ] Implement the `SafeSwap7702Delegate` test suite per the interface in `test/Relayer/TestManifest.sol` (`IRelayerTests`):
-      real-env happy path (etch the delegate onto an EOA, drive create → wait → execute against the real router / NFT / pool /
-      BondRoute), relayer-fee accounting (paid once at commit; not paid if the commit reverts; native fee), native stake +
-      native funding from the EOA balance, and a revert for every guard (direct-call, native-value, helper, relayer, signature,
-      deadline, protocol, commitment / stake / gasless-type-hash / action-struct-hash mismatch) plus the type-string splice
-      (build + bad-prefix + malformed TokenAmount). A working draft existed against the real-env harness; finish + green it.
+- [x] Implement the `SafeSwap7702Delegate` test suite per the interface in `test/Relayer/TestManifest.sol` (`IRelayerTests`):
+      22 tests, all green in `test/Relayer/Relayer.t.sol` — real-env happy path (etch the delegate onto an EOA, drive
+      create → wait → execute against the real router / NFT / pool / BondRoute), relayer-fee accounting (paid once at commit;
+      not paid if the commit reverts; native fee), native stake + native-input funding from the EOA balance, a revert for
+      every guard (direct-call, native-value, helper, relayer, signature, deadline, protocol, commitment / stake /
+      gasless-type-hash / action-struct-hash mismatch), and the type-string splice (build + bad-prefix + malformed TokenAmount).
 - [ ] Deploy the delegate (0-arg ctor; reads `safeswap/router` + `safeswap/nft` from ChainConfig) and **publish its address**
       (the canonical 7702 delegation target the relayer backend and frontend point at); wire it into the deploy tooling
       alongside router / NFT / treasury / descriptors, and into the ChainConfig key publication checklist.
