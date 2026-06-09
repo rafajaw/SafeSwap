@@ -120,9 +120,11 @@ interface IUserSwapTests {
     function test_quote_exact_output_required_input_matches_execution() external;
     function test_quote_reverts_for_unregistered_hook_config() external;
 
-    // ─── Pool Id View ──────────────────────────────────────────────────────────
+    // ─── Pool Id / Pool State Views ────────────────────────────────────────────
     function test_off_chain_get_pool_id_matches_dynamic_fee_pool_key() external;
     function test_off_chain_get_pool_id_reverts_for_unregistered_config() external;
+    function test_off_chain_get_pool_state_reports_initialized_pool_price() external;
+    function test_off_chain_get_pool_state_reports_uninitialized_pool() external;
 
     // ─── BondRoute Integration ─────────────────────────────────────────────────
     function test_bondroute_selectors_are_only_swap_functions() external;

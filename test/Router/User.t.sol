@@ -742,6 +742,43 @@ contract UserSwapTier2Test is IUserSwapTests, SafeSwapRealEnv {
         _mock_router.__OFF_CHAIN__get_pool_id( IERC20(address(_token0)), IERC20(address(_token1)), _unregistered_pool_info( ) );
     }
 
+    function test_off_chain_get_pool_state_reports_initialized_pool_price( )
+    external
+    {
+        _set_up_real_quote_env( );
+
+        ( PoolId pool_id, uint160 sqrt_price_x96, int24 tick, bool initialized )  =  router.__OFF_CHAIN__get_pool_state(
+            IERC20(address(_real_token_a)),
+            IERC20(address(_real_token_b)),
+            _pool_info( )
+        );
+
+        PoolId expected_pool_id  =  router.__OFF_CHAIN__get_pool_id( IERC20(address(_real_token_a)), IERC20(address(_real_token_b)), _pool_info( ) );
+
+        assertTrue( initialized, "a pool with a created position should report initialized." );
+        assertEq( PoolId.unwrap(pool_id), PoolId.unwrap(expected_pool_id), "pool state id should match the pool id view." );
+        assertEq( sqrt_price_x96, _SQRT_PRICE_1_1, "an unswapped 1:1 position should report the 1:1 price." );
+        assertEq( tick, int24(0), "the 1:1 price should report tick zero." );
+    }
+
+    function test_off_chain_get_pool_state_reports_uninitialized_pool( )
+    external
+    {
+        _set_up_real_quote_env( );
+
+        TestERC20 fresh_token_a  =  _new_token( "Fresh Token A", "FTKA" );
+        TestERC20 fresh_token_b  =  _new_token( "Fresh Token B", "FTKB" );
+
+        ( , uint160 sqrt_price_x96, , bool initialized )  =  router.__OFF_CHAIN__get_pool_state(
+            IERC20(address(fresh_token_a)),
+            IERC20(address(fresh_token_b)),
+            _pool_info( )
+        );
+
+        assertFalse( initialized, "a pair with no created position should report uninitialized." );
+        assertEq( sqrt_price_x96, 0, "an uninitialized pool should report a zero price." );
+    }
+
 
     // ━━━━  BONDROUTE INTEGRATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

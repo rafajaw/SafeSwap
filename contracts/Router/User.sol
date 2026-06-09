@@ -10,8 +10,10 @@ import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";
 import { PoolKey } from "@UniswapV4Core/types/PoolKey.sol";
 import { PoolId, PoolIdLibrary } from "@UniswapV4Core/types/PoolId.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
+import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 
 using PoolIdLibrary for PoolKey;
+using StateLibrary for IPoolManager;
 
 
 /**
@@ -78,6 +80,29 @@ abstract contract User is Orchestrator, HookRegistry, BondRouteProtected {
         PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token_a, token_b, LPFeeLibrary.DYNAMIC_FEE_FLAG, pool_info.tick_spacing, hook );
 
         pool_id  =  pool_key.toId( );
+    }
+
+    /**
+     * @notice Read the live Uniswap V4 state of a SafeSwap pool: its id, current price, current tick, and whether it exists yet.
+     * @return pool_id The Uniswap V4 pool id for this `(token pair, base fee, capture, tick spacing)`.
+     * @return sqrt_price_x96 The current pool price (Q64.96), or zero when the pool has not been initialized.
+     * @return tick The current pool tick, or zero when the pool has not been initialized.
+     * @return initialized True once the pool has a price (a position has been created in it), false otherwise.
+     *
+     * @dev Lets a frontend show live price / range occupancy for the Earn explorer and decide whether a Create call will
+     *      initialize a new pool or join an existing one, without needing the PoolManager address or slot derivation client-side.
+     *      An uninitialized pool reports `sqrt_price_x96 == 0` from slot0, so that doubles as the existence flag.
+     */
+    function __OFF_CHAIN__get_pool_state( IERC20 token_a, IERC20 token_b, PoolInfo calldata pool_info )
+    external  view returns ( PoolId pool_id, uint160 sqrt_price_x96, int24 tick, bool initialized )
+    {
+        address hook  =  _resolve_hook( pool_info.base_fee_bps, pool_info.rebate_percent );
+
+        PoolKey memory pool_key  =  SafeSwapCommon.build_pool_key( token_a, token_b, LPFeeLibrary.DYNAMIC_FEE_FLAG, pool_info.tick_spacing, hook );
+        pool_id  =  pool_key.toId( );
+
+        ( sqrt_price_x96, tick, , )  =  PoolManager.getSlot0( pool_id );
+        initialized  =  sqrt_price_x96 != 0;
     }
 
     /**
