@@ -9,7 +9,7 @@ pragma solidity ^0.8.30;
         ╚════██║██╔══██║██╔══╝  ██╔══╝  ╚════██║██║███╗██║██╔══██║██╔═══╝
         ███████║██║  ██║██║     ███████╗███████║╚███╔███╔╝██║  ██║██║
         ╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝
-        ━━━━━━━  MEV-protected pools. Repricing revenue for LPs.  ━━━━━━━
+        ━━  Uniswap V4 hook: MEV-protected pools, LVR rebated to LPs.  ━━
 
 */
 
