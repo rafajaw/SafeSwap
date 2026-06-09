@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-read --allow-env relay_server.ts",
+    "dev": "deno run --watch --allow-net --allow-read --allow-env relay_server.ts",
+    "check": "deno check relay_server.ts"
+  },
+  "imports": {
+    "viem": "npm:viem@^2.50.4",
+    "viem/accounts": "npm:viem@^2.50.4/accounts",
+    "@bondroute/sdk": "../lib/BondRoute/sdk/BondRoute.ts",
+    "@safeswap/sdk": "../sdk/SafeSwap.ts"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window", "dom"]
+  }
+}

@@ -31,7 +31,9 @@ import {
     encodeFunctionData,
     formatUnits,
     hashTypedData,
+    keccak256,
     parseAbi,
+    toHex,
     type Address,
     type Hex,
     type Log,
@@ -60,6 +62,8 @@ import {
 export const SAFESWAP_ROUTER_ADDRESS  =  "0x0000000000000000000000000000000000000000" as const;
 /** Canonical SafeSwap NFT position-manager address (same across all chains). ***TODO*** Set before release. */
 export const SAFESWAP_NFT_ADDRESS     =  "0x0000000000000000000000000000000000000000" as const;
+/** Canonical SafeSwap EIP-7702 relayer delegate (the EOA's gasless delegation target). ***TODO*** Set before release. */
+export const SAFESWAP_RELAYER_DELEGATE_ADDRESS  =  "0x0000000000000000000000000000000000000000" as const;
 
 const ZERO_ADDRESS  =  "0x0000000000000000000000000000000000000000" as const;
 
@@ -100,6 +104,11 @@ export type PreparedSafeSwapOperation = Bond & {
     render_description: ( opts?: RenderDescriptionOpts ) => Promise<string>;
     get_signing_preview: () => Promise<SafeSwapSigningPreview>;
     sign_verified_execution: () => Promise<Hex>;
+    /**
+     * True when any inbound funding is the native token. Retained for UI/diagnostics; it no longer gates gasless — the 7702
+     * delegate pays native stake/fundings from the user's own EOA balance via `{ value: ... }`, so native is supported.
+     */
+    has_native_funding: () => boolean;
 };
 
 export type SafeSwapSigningField = {
@@ -304,6 +313,107 @@ export type PositionState = {
     fee_growth_inside_1_last_x128: bigint;
 };
 
+/** A deployed SafeSwap `(base fee, capture)` profile, discovered from the router's `HookRegistered` logs. */
+export type SafeSwapProfile = {
+    hook:           Address;
+    base_fee_bps:   number;
+    rebate_percent: number;
+};
+
+/** Live Uniswap V4 pool state for a SafeSwap pool, read through the router's off-chain getter. */
+export type PoolState = {
+    pool_id:        Hex;
+    /** Current price (Q64.96). Zero when the pool has not been initialized yet. */
+    sqrt_price_x96: bigint;
+    /** Current tick. Zero when the pool has not been initialized yet. */
+    tick:           number;
+    /** True once a position has been created in the pool (it then has a live price). */
+    initialized:    boolean;
+};
+
+/**
+ * Bounded block-range options for log discovery. Some wallet RPCs cap `eth_getLogs` spans, so discovery queries fixed
+ * windows from `from_block` to `to_block` in chunks of `max_block_range`.
+ */
+export type LogQueryRange = {
+    from_block?:      bigint;
+    to_block?:        bigint;
+    max_block_range?: bigint;
+};
+
+/**
+ * The on-chain NFT position card, decoded from the `tokenURI` `data:application/json;base64,...` payload. `attributes`
+ * is the descriptor's trait map keyed by `trait_type` (e.g. "Pair", "Base Fee", "LP Rebate", "Claimable Fees",
+ * "Lifetime Fees", "Annualized Fee Yield Estimate", "Status", "Pool Id", "Hook"); `image` is the position's SVG data URI.
+ */
+export type SafeSwapPositionCard = {
+    token_id:    bigint;
+    name:        string;
+    description: string;
+    image:       string;
+    attributes:  Record<string, string>;
+};
+
+/** An EIP-7702 authorization signed by the user's wallet, delegating their EOA to the SafeSwap relayer delegate. */
+export type SafeSwapAuthorization = {
+    chainId:         number;
+    address:         Address;
+    nonce:           number;
+    r:               Hex;
+    s:               Hex;
+    yParity:         number;
+};
+
+/**
+ * The gasless relay request the client POSTs to the relayer `/relay` endpoint. Amounts are serialized as decimal strings
+ * because JSON has no bigint. The relayer rehydrates it, re-verifies the user's `SafeSwapGaslessBond` signature, then drives
+ * the two delegate phases (commit then, past the reveal delay, execute) as the user's 7702-delegated EOA. The user stakes
+ * and funds from their own EOA balance; the relayer only sponsors gas and is paid `intent.relayer_fee` on-chain at commit.
+ */
+export type RelayRequest = {
+    chain_id:           number;
+    /** The user's EOA — the 7702 delegation target and the EIP-712 domain `verifyingContract`. */
+    user:               Address;
+    intent:             SerializedGaslessIntent;
+    gasless_type_hash:  Hex;
+    action_struct_hash: Hex;
+    signature:          Hex;
+    execution_data:     SerializedExecutionData;
+    authorization:      SafeSwapAuthorization;
+};
+
+/** JSON-safe `(token, amount)` pair (bigint amount rendered as a decimal string). */
+export type SerializedTokenAmount = { token: Address, amount: string };
+
+/** JSON-safe form of the `SafeSwapGaslessBond` intent the user signs. */
+export type SerializedGaslessIntent = {
+    helper:          Address;
+    relayer:         Address;
+    relayer_fee:     SerializedTokenAmount;
+    stake:           SerializedTokenAmount;
+    create_deadline: string;
+    commitment_hash: Hex;
+};
+
+/** JSON-safe form of `ExecutionData` (bigints rendered as decimal strings). */
+export type SerializedExecutionData = {
+    fundings: SerializedTokenAmount[];
+    stake:    SerializedTokenAmount;
+    salt:     string;
+    protocol: Address;
+    call:     Hex;
+};
+
+/** Outcome of a gasless relay round-trip. `status` mirrors the BondRoute settlement discriminator. */
+export type GaslessRelayResult = {
+    status:          "executed" | "protocol_reverted" | "invalid_bond" | "liquidated";
+    commitment_hash?: Hex;
+    create_tx_hash?:  Hex;
+    execute_tx_hash?: Hex;
+    revert_output?:   Hex;
+    error?:           string;
+};
+
 export type ParsedSafeSwapRevert =
     | {
         kind:             "slippage_exceeded";
@@ -424,6 +534,23 @@ export type SafeSwapOpts = {
     /** Override the BondRoute contract address (advanced — for forks and testnets). */
     bondroute_address?: Address;
     /**
+     * Gasless EIP-7702 relayer configuration. When present, `safeswap.gasless` is usable: the user signs one
+     * `SafeSwapGaslessBond` intent plus a 7702 authorization, and the relayer sponsors the commit + execute gas. The user
+     * stakes and funds from their own EOA balance and pays the relayer `relayer_fee` on-chain. Omit to force self-execute.
+     */
+    relay?: {
+        /** The relayer's `POST /relay` endpoint. */
+        url:               string;
+        /** The SafeSwap relayer delegate the user's EOA delegates to (7702 target). Defaults to the canonical address. */
+        delegate_address?: Address;
+        /** The relayer's address — it submits the sponsored transactions and receives `relayer_fee`. */
+        relayer_address:   Address;
+        /** The on-chain fee the user agrees to pay the relayer at commit. Defaults to zero (native sentinel, amount 0). */
+        relayer_fee?:      { token: Address, amount: bigint };
+        /** Seconds the signed commit stays valid. Defaults to 3600. */
+        create_deadline_seconds?: number;
+    };
+    /**
      * Required. Invoked once per unfinished bond discovered in storage at init (across both swap and position surfaces).
      * Pass `(bond) => bond.resume()` to auto-resume, or keep a reference for later.
      */
@@ -455,7 +582,10 @@ export const SAFESWAP_ROUTER_ABI  =  parseAbi([
 
     "function get_hook_address(uint16 base_fee_bps, uint8 rebate_percent) external view returns (address hook)",
 
+    "event HookRegistered(address indexed hook, uint16 indexed base_fee_bps, uint8 indexed rebate_percent)",
+
     "function __OFF_CHAIN__get_pool_id(address token_a, address token_b, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) external view returns (bytes32 pool_id)",
+    "function __OFF_CHAIN__get_pool_state(address token_a, address token_b, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info) external view returns (bytes32 pool_id, uint160 sqrt_price_x96, int24 tick, bool initialized)",
     "function __OFF_CHAIN__quote_swap_exact_input(address token_in, address token_out, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info, uint256 amount_in) external view returns (uint256 expected_net_output, uint24 total_fee_pips, uint256 movement_bps)",
     "function __OFF_CHAIN__quote_swap_exact_output(address token_in, address token_out, (uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing) pool_info, uint256 exact_output_amount) external view returns (uint256 required_input, uint24 total_fee_pips, uint256 movement_bps)",
 ]);
@@ -470,8 +600,48 @@ export const SAFESWAP_NFT_ABI  =  parseAbi([
     "function get_lp_position(uint256 token_id) external view returns ((address hook, address token0, address token1, uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing, int24 tick_lower, int24 tick_upper) position_info)",
     "function get_position_info(bytes32 pool_id, uint256 token_id, int24 tick_lower, int24 tick_upper) external view returns (uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128)",
 
+    "function ownerOf(uint256 token_id) external view returns (address owner)",
+    "function balanceOf(address owner) external view returns (uint256 balance)",
+    "function tokenURI(uint256 token_id) external view returns (string uri)",
+
     "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 ]);
+
+/**
+ * The two gasless EIP-7702 delegate entrypoints the relayer invokes as the user's delegated EOA: the hidden commit (which
+ * stakes the user's own tokens and pays the relayer its signed fee) and, past BondRoute's reveal delay, the reveal+execute.
+ */
+export const SAFESWAP_RELAYER_DELEGATE_ABI  =  parseAbi([
+    "function create_bond_from_user_stake((address helper, address relayer, (address token, uint256 amount) relayer_fee, (address token, uint256 amount) stake, uint256 create_deadline, bytes32 commitment_hash) intent, bytes32 gasless_type_hash, bytes32 action_struct_hash, bytes signature) external payable",
+    "function execute_bond_from_user((address helper, address relayer, (address token, uint256 amount) relayer_fee, (address token, uint256 amount) stake, uint256 create_deadline, bytes32 commitment_hash) intent, bytes32 gasless_type_hash, bytes32 action_struct_hash, bytes signature, ((address token, uint256 amount)[] fundings, (address token, uint256 amount) stake, uint256 salt, address protocol, bytes call) execution_data) external payable returns (uint8 status, bytes output)",
+]);
+
+/** Read-only view every BondRoute-protected SafeSwap protocol exposes, used to re-derive the EIP-712 signing surface. */
+const BONDROUTE_PROTECTED_SIGNING_ABI  =  parseAbi([
+    "function BondRoute_get_signing_info(bytes call) external view returns (string typed_string, bytes32 struct_hash, uint256 token_amount_offset)",
+]);
+
+/** The leading run of BondRoute's `ExecuteBondAs` type string, stripped before re-parenting the protocol action tail. */
+const BONDROUTE_SIGNING_PREFIX  =  "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,";
+
+/** The delegate's own leading struct fields, spliced in front of the action tail to form the `SafeSwapGaslessBond` type. */
+const SAFESWAP_GASLESS_PREFIX  =
+    "SafeSwapGaslessBond(address helper,address relayer,TokenAmount relayer_fee,TokenAmount stake,uint256 create_deadline,bytes32 commitment_hash,";
+
+/**
+ * Reproduce the delegate's `_calculate_gasless_type_hash` off-chain: strip BondRoute's `ExecuteBondAs` prefix and re-parent
+ * the protocol action tail under the SafeSwap gasless struct prefix. The on-chain delegate re-derives and equality-checks
+ * this, so a mismatch fails closed rather than mis-binding.
+ */
+export function compute_gasless_type_hash( protocol_typed_string: string ): Hex
+{
+    if(  protocol_typed_string.startsWith( BONDROUTE_SIGNING_PREFIX ) === false  )
+    {
+        throw new Error( "Protocol signing type string does not start with the expected BondRoute ExecuteBondAs prefix." );
+    }
+    const tail  =  protocol_typed_string.slice( BONDROUTE_SIGNING_PREFIX.length );
+    return keccak256( toHex( SAFESWAP_GASLESS_PREFIX + tail ) );
+}
 
 const SAFESWAP_SIGNING_PROTOCOL_ABI  =  parseAbi([
     "function SigningDescriptor() external view returns (address)",
@@ -751,6 +921,16 @@ type SafeSwapContext = {
     wallet_client:        WalletClient;
     account:              Account | Address;
     token_metadata_cache: Map<string, Promise<TokenDisplayMetadata>>;
+    relay:                RelayConfig | null;
+};
+
+/** Resolved gasless relayer configuration (defaults applied) shared via the context. */
+type RelayConfig = {
+    url:                     string;
+    delegate_address:        Address;
+    relayer_address:         Address;
+    relayer_fee:             { token: Address, amount: bigint };
+    create_deadline_seconds: number;
 };
 
 function is_native_token( token: Address ): boolean
@@ -812,12 +992,14 @@ function attach_operation_description(
 {
     const get_signing_preview      =  async () => await build_signing_preview( ctx, bond, kind );
     const sign_verified_execution  =  async (): Promise<Hex> => await sign_signing_preview( ctx, await get_signing_preview() );
+    const has_native_funding       =  (): boolean => bond.execution_data.fundings.some(( funding ) => is_native_token( funding.token ) );
     return Object.assign( bond, {
         kind,
         render_description,
         get_signing_preview,
         sign_verified_execution,
         sign_execution: sign_verified_execution,
+        has_native_funding,
     });
 }
 
@@ -1023,6 +1205,93 @@ async function prepare_with_auto_stake_token(
     return token0_bond;
 }
 
+/** Default `eth_getLogs` window. Some wallet RPCs cap the block span, so discovery walks fixed windows of this size. */
+const DEFAULT_LOG_BLOCK_RANGE  =  50_000n;
+
+/**
+ * Read event logs in bounded block windows so wallet RPCs that cap `eth_getLogs` spans don't reject the query. Defaults to
+ * the full chain history (`from_block` 0 → latest) walked in `DEFAULT_LOG_BLOCK_RANGE` chunks.
+ */
+async function get_logs_in_ranges(
+    public_client: PublicClient,
+    filter: { address: Address, abi: typeof SAFESWAP_ROUTER_ABI | typeof SAFESWAP_NFT_ABI, event_name: string, args?: Record<string, unknown> },
+    range?: LogQueryRange
+): Promise<Log[]>
+{
+    const event           =  ( filter.abi as readonly { type: string, name?: string }[] ).find(( item ) => item.type === "event" && item.name === filter.event_name );
+    if(  event === undefined  )  throw new Error( `SafeSwap ABI is missing event ${ filter.event_name }.` );
+
+    const from_block      =  range?.from_block ?? 0n;
+    const to_block        =  range?.to_block   ?? await public_client.getBlockNumber();
+    const max_block_range =  range?.max_block_range ?? DEFAULT_LOG_BLOCK_RANGE;
+
+    const logs: Log[]  =  [];
+    for(  let start = from_block  ;  start <= to_block  ;  start = start + max_block_range  )
+    {
+        const end  =  start + max_block_range - 1n < to_block  ?  start + max_block_range - 1n  :  to_block;
+        const window_logs  =  await public_client.getLogs({
+            address:   filter.address,
+            event:     event as any,
+            args:      filter.args as any,
+            fromBlock: start,
+            toBlock:   end,
+        });
+        logs.push( ...window_logs as Log[] );
+    }
+    return logs;
+}
+
+/** Decode a single log against an ABI, returning the args or null if it is not the expected event. */
+function decode_log_safely( abi: typeof SAFESWAP_ROUTER_ABI | typeof SAFESWAP_NFT_ABI, log: Log, event_name: string ): Record<string, unknown> | null
+{
+    try
+    {
+        const decoded  =  decodeEventLog({ abi, data: log.data, topics: log.topics }) as { eventName: string, args: Record<string, unknown> };
+        if(  decoded.eventName !== event_name  )  return null;
+        return decoded.args;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+/** Decode a base64 string in browsers (atob), Deno, or Node (Buffer) without a runtime dependency. */
+function decode_base64( value: string ): string
+{
+    const global_atob  =  ( globalThis as { atob?: ( input: string ) => string } ).atob;
+    if(  typeof global_atob === "function"  )  return decodeURIComponent( escape( global_atob( value ) ) );
+
+    const node_buffer  =  ( globalThis as { Buffer?: { from: ( input: string, encoding: string ) => { toString: ( encoding: string ) => string } } } ).Buffer;
+    if(  node_buffer !== undefined  )  return node_buffer.from( value, "base64" ).toString( "utf-8" );
+
+    throw new Error( "No base64 decoder available in this runtime." );
+}
+
+/** Serialize `ExecutionData` into the JSON-safe shape the relayer `/relay` endpoint accepts. */
+export function serialize_execution_data( execution_data: ExecutionData ): SerializedExecutionData
+{
+    return {
+        fundings: execution_data.fundings.map(( funding ) => ({ token: funding.token, amount: funding.amount.toString() })),
+        stake:    { token: execution_data.stake.token, amount: execution_data.stake.amount.toString() },
+        salt:     execution_data.salt.toString(),
+        protocol: execution_data.protocol,
+        call:     execution_data.call,
+    };
+}
+
+/** Rehydrate a `SerializedExecutionData` back into `ExecutionData` (relayer side). */
+export function deserialize_execution_data( data: SerializedExecutionData ): ExecutionData
+{
+    return {
+        fundings: data.fundings.map(( funding ) => ({ token: funding.token, amount: BigInt( funding.amount ) })),
+        stake:    { token: data.stake.token, amount: BigInt( data.stake.amount ) },
+        salt:     BigInt( data.salt ),
+        protocol: data.protocol,
+        call:     data.call,
+    };
+}
+
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SWAPS  (SafeSwap SwapRouter)
@@ -1204,6 +1473,53 @@ export class SafeSwapSwaps {
             functionName: "get_hook_address",
             args:         [ base_fee_bps, rebate_percent ],
         }) as Address;
+    }
+
+    /**
+     * Discover every deployed `(base_fee_bps, rebate_percent)` profile by reading the router's `HookRegistered` logs. All
+     * three event fields are indexed, so the query is cheap. Returns one entry per currently-registered config hook, sorted
+     * by base fee then rebate. No indexer required — this powers the Create profile selector and the Earn profile axis.
+     *
+     * Queries in bounded block windows (`max_block_range`, default 50,000) to stay under wallet-RPC `eth_getLogs` caps.
+     */
+    async discover_profiles( range?: LogQueryRange ): Promise<SafeSwapProfile[]>
+    {
+        const logs  =  await get_logs_in_ranges( this.#ctx.bond_route.public_client, {
+            address: this.router_address,
+            abi:     SAFESWAP_ROUTER_ABI,
+            event_name: "HookRegistered",
+        }, range );
+
+        const by_config  =  new Map<string, SafeSwapProfile>();
+        for(  const log of logs  )
+        {
+            const decoded  =  decode_log_safely( SAFESWAP_ROUTER_ABI, log, "HookRegistered" ) as { hook: Address, base_fee_bps: number | bigint, rebate_percent: number | bigint } | null;
+            if(  decoded === null  )  continue;
+
+            const profile  =  { hook: decoded.hook, base_fee_bps: Number( decoded.base_fee_bps ), rebate_percent: Number( decoded.rebate_percent ) };
+            by_config.set( `${ profile.base_fee_bps }:${ profile.rebate_percent }`, profile );
+        }
+
+        return [ ...by_config.values() ].sort(( a, b ) => a.base_fee_bps - b.base_fee_bps || a.rebate_percent - b.rebate_percent );
+    }
+
+    /**
+     * Read the live Uniswap V4 state of a SafeSwap pool: its id, current price/tick, and whether it has been initialized.
+     * An uninitialized pool reports `sqrt_price_x96 === 0n` and `initialized === false`. Tokens may be passed in any order.
+     */
+    async get_pool_state( token_a: Address, token_b: Address, pool_info: PoolInfo ): Promise<PoolState>
+    {
+        assert_distinct_tokens( token_a, token_b, "pool" );
+        assert_pool_info( pool_info );
+
+        const [ pool_id, sqrt_price_x96, tick, initialized ]  =  await this.#ctx.bond_route.public_client.readContract({
+            address:      this.router_address,
+            abi:          SAFESWAP_ROUTER_ABI,
+            functionName: "__OFF_CHAIN__get_pool_state",
+            args:         [ token_a, token_b, this.#encode_pool_info( pool_info ) ],
+        }) as [ Hex, bigint, number, boolean ];
+
+        return { pool_id, sqrt_price_x96, tick: Number( tick ), initialized };
     }
 
     #encode_pool_info( pool_info: PoolInfo ): { base_fee_bps: number, rebate_percent: number, tick_spacing: number }
@@ -1476,9 +1792,439 @@ export class SafeSwapPositions {
         return null;
     }
 
+    /**
+     * Discover the NFT-backed positions currently owned by `owner`, with no indexer. Reads the ERC-721 `Transfer` logs that
+     * delivered a token to `owner` (the `to` topic is indexed), then confirms each is still owned via `ownerOf` (filtering
+     * out positions since transferred away or burned). Queries in bounded windows to respect wallet-RPC `eth_getLogs` caps.
+     */
+    async discover_owned_positions( owner: Address, range?: LogQueryRange ): Promise<bigint[]>
+    {
+        const logs  =  await get_logs_in_ranges( this.#ctx.bond_route.public_client, {
+            address:    this.nft_address,
+            abi:        SAFESWAP_NFT_ABI,
+            event_name: "Transfer",
+            args:       { to: owner },
+        }, range );
+
+        const candidate_ids  =  new Set<bigint>();
+        for(  const log of logs  )
+        {
+            const decoded  =  decode_log_safely( SAFESWAP_NFT_ABI, log, "Transfer" ) as { tokenId: bigint } | null;
+            if(  decoded !== null  )  candidate_ids.add( decoded.tokenId );
+        }
+
+        const ownership_checks  =  await Promise.all( [ ...candidate_ids ].map( async ( token_id ) => ({ token_id, owned: await this.#is_owned_by( token_id, owner ) }) ) );
+        return ownership_checks.filter(( check ) => check.owned ).map(( check ) => check.token_id ).sort(( a, b ) => ( a < b ? -1 : a > b ? 1 : 0 ) );
+    }
+
+    async #is_owned_by( token_id: bigint, owner: Address ): Promise<boolean>
+    {
+        try
+        {
+            const current_owner  =  await this.#ctx.bond_route.public_client.readContract({
+                address:      this.nft_address,
+                abi:          SAFESWAP_NFT_ABI,
+                functionName: "ownerOf",
+                args:         [ token_id ],
+            }) as Address;
+            return current_owner.toLowerCase() === owner.toLowerCase();
+        }
+        catch
+        {
+            return false;   // burned or non-existent token id — ownerOf reverts.
+        }
+    }
+
+    /**
+     * Read and decode a position's on-chain `tokenURI` into a typed card: the SVG `image` data URI (the position's visual
+     * identity) and the descriptor's attribute map (Pair, Base Fee, LP Rebate, Current Position, Claimable Fees, Lifetime
+     * Fees, Annualized Fee Yield Estimate, Status, Pool Id, Hook, …). Do not fabricate position metrics — these are the
+     * on-chain truth. The base/repricing fee split is intentionally absent (no indexer); use the combined figures.
+     */
+    async get_position_card( token_id: bigint ): Promise<SafeSwapPositionCard>
+    {
+        const uri  =  await this.#ctx.bond_route.public_client.readContract({
+            address:      this.nft_address,
+            abi:          SAFESWAP_NFT_ABI,
+            functionName: "tokenURI",
+            args:         [ token_id ],
+        }) as string;
+
+        return decode_position_token_uri( token_id, uri );
+    }
+
     #encode_pool_info( pool_info: PoolInfo ): { base_fee_bps: number, rebate_percent: number, tick_spacing: number }
     {
         return { base_fee_bps: pool_info.base_fee_bps, rebate_percent: pool_info.rebate_percent, tick_spacing: pool_info.tick_spacing };
+    }
+}
+
+/** Decode a SafeSwap `data:application/json;base64,...` `tokenURI` into a typed position card. */
+export function decode_position_token_uri( token_id: bigint, uri: string ): SafeSwapPositionCard
+{
+    const base64_prefix  =  "data:application/json;base64,";
+    if(  uri.startsWith( base64_prefix ) === false  )  throw new Error( "SafeSwap tokenURI is not a base64 JSON data URI." );
+
+    const json     =  JSON.parse( decode_base64( uri.slice( base64_prefix.length ) ) ) as {
+        name?: string, description?: string, image?: string, attributes?: { trait_type: string, value: unknown }[],
+    };
+
+    const attributes: Record<string, string>  =  {};
+    for(  const attribute of json.attributes ?? []  )  attributes[ attribute.trait_type ]  =  String( attribute.value );
+
+    return {
+        token_id,
+        name:        json.name ?? "",
+        description: json.description ?? "",
+        image:       json.image ?? "",
+        attributes,
+    };
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// LIQUIDITY & PRICE MATH  (human inputs ⇄ raw Uniswap V4 sqrt-price / tick / liquidity)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// Per the spec, human→display conversions already exist on-chain (`SigningLib.render_*`); the inverse a UI needs when the
+// user types prices and amounts (price→tick→sqrt-price and amounts→liquidity) is stock Uniswap math and lives here so the
+// signed `liquidity` / `sqrt_price` inputs can be derived client-side. The raw integers stay in Advanced, never primary inputs.
+
+/** 2^96 — the Uniswap Q64.96 fixed-point scale for sqrt prices. */
+export const Q96  =  2n ** 96n;
+/** Lowest tick a Uniswap V4 pool supports. */
+export const MIN_TICK  =  -887272;
+/** Highest tick a Uniswap V4 pool supports. */
+export const MAX_TICK  =  887272;
+
+/** Snap a tick to the nearest multiple of `tick_spacing` (clamped to the usable range). The signed range bounds must be spaced. */
+export function nearest_usable_tick( tick: number, tick_spacing: number ): number
+{
+    if(  tick_spacing <= 0  )  throw new Error( "tick_spacing must be greater than zero." );
+
+    const rounded  =  Math.round( tick / tick_spacing ) * tick_spacing;
+    if(  rounded < MIN_TICK  )  return MIN_TICK + ( ( MIN_TICK % tick_spacing + tick_spacing ) % tick_spacing === 0 ? 0 : tick_spacing - ( ( MIN_TICK % tick_spacing ) + tick_spacing ) % tick_spacing );
+    if(  rounded > MAX_TICK  )  return MAX_TICK - ( MAX_TICK % tick_spacing );
+    return rounded;
+}
+
+/**
+ * Exact Uniswap V4 `TickMath.getSqrtRatioAtTick`: the sqrt price (Q64.96) at a tick. Ported integer-for-integer so the
+ * client-derived `sqrt_price_lower/upper` match the values the contract computes from the same ticks.
+ */
+export function get_sqrt_ratio_at_tick( tick: number ): bigint
+{
+    if(  Number.isInteger( tick ) === false || tick < MIN_TICK || tick > MAX_TICK  )  throw new Error( `tick must be an integer within [${ MIN_TICK }, ${ MAX_TICK }].` );
+
+    const abs_tick  =  BigInt( tick < 0 ? -tick : tick );
+    let ratio  =  ( abs_tick & 0x1n ) !== 0n  ?  0xfffcb933bd6fad37aa2d162d1a594001n  :  0x100000000000000000000000000000000n;
+
+    const factors: [ bigint, bigint ][]  =  [
+        [ 0x2n,     0xfff97272373d413259a46990580e213an ],
+        [ 0x4n,     0xfff2e50f5f656932ef12357cf3c7fdccn ],
+        [ 0x8n,     0xffe5caca7e10e4e61c3624eaa0941cd0n ],
+        [ 0x10n,    0xffcb9843d60f6159c9db58835c926644n ],
+        [ 0x20n,    0xff973b41fa98c081472e6896dfb254c0n ],
+        [ 0x40n,    0xff2ea16466c96a3843ec78b326b52861n ],
+        [ 0x80n,    0xfe5dee046a99a2a811c461f1969c3053n ],
+        [ 0x100n,   0xfcbe86c7900a88aedcffc83b479aa3a4n ],
+        [ 0x200n,   0xf987a7253ac413176f2b074cf7815e54n ],
+        [ 0x400n,   0xf3392b0822b70005940c7a398e4b70f3n ],
+        [ 0x800n,   0xe7159475a2c29b7443b29c7fa6e889d9n ],
+        [ 0x1000n,  0xd097f3bdfd2022b8845ad8f792aa5825n ],
+        [ 0x2000n,  0xa9f746462d870fdf8a65dc1f90e061e5n ],
+        [ 0x4000n,  0x70d869a156d2a1b890bb3df62baf32f7n ],
+        [ 0x8000n,  0x31be135f97d08fd981231505542fcfa6n ],
+        [ 0x10000n, 0x9aa508b5b7a84e1c677de54f3e99bc9n ],
+        [ 0x20000n, 0x5d6af8dedb81196699c329225ee604n ],
+        [ 0x40000n, 0x2216e584f5fa1ea926041bedfe98n ],
+        [ 0x80000n, 0x48a170391f7dc42444e8fa2n ],
+    ];
+    for(  const [ bit, factor ] of factors  )
+    {
+        if(  ( abs_tick & bit ) !== 0n  )  ratio  =  ( ratio * factor ) >> 128n;
+    }
+
+    if(  tick > 0  )  ratio  =  ( ( 2n ** 256n ) - 1n ) / ratio;
+
+    // Round up to a Q64.96 from the Q128.128 `ratio`.
+    return ( ratio >> 32n ) + ( ratio % ( 1n << 32n ) === 0n ? 0n : 1n );
+}
+
+/** Display: the human price (token1 per token0, decimal-adjusted) at a sqrt price (Q64.96). Returns `0` for an uninitialized pool. */
+export function sqrt_price_x96_to_price( sqrt_price_x96: bigint, decimals0: number, decimals1: number ): number
+{
+    if(  sqrt_price_x96 === 0n  )  return 0;
+
+    const ratio      =  Number( sqrt_price_x96 ) / Number( Q96 );
+    const price_raw  =  ratio * ratio;
+    return price_raw * 10 ** ( decimals0 - decimals1 );
+}
+
+/** The tick closest to a human price (token1 per token0, decimal-adjusted). Used to derive signed range bounds and a new-pool initial price. */
+export function price_to_closest_tick( price: number, decimals0: number, decimals1: number ): number
+{
+    if(  price <= 0  )  throw new Error( "price must be greater than zero." );
+
+    const price_raw  =  price * 10 ** ( decimals1 - decimals0 );
+    const tick       =  Math.round( Math.log( price_raw ) / Math.log( 1.0001 ) );
+    return tick < MIN_TICK ? MIN_TICK : tick > MAX_TICK ? MAX_TICK : tick;
+}
+
+/** Convenience: the sqrt price (Q64.96) at a human price, via the closest tick. New-pool initial price is advisory, so tick-rounding is acceptable. */
+export function price_to_sqrt_price_x96( price: number, decimals0: number, decimals1: number ): bigint
+{
+    return get_sqrt_ratio_at_tick( price_to_closest_tick( price, decimals0, decimals1 ) );
+}
+
+function _ordered( sqrt_a: bigint, sqrt_b: bigint ): [ bigint, bigint ]
+{
+    return sqrt_a > sqrt_b  ?  [ sqrt_b, sqrt_a ]  :  [ sqrt_a, sqrt_b ];
+}
+
+function _liquidity_for_amount0( sqrt_a: bigint, sqrt_b: bigint, amount0: bigint ): bigint
+{
+    const [ lower, upper ]  =  _ordered( sqrt_a, sqrt_b );
+    const intermediate      =  ( lower * upper ) / Q96;
+    return ( amount0 * intermediate ) / ( upper - lower );
+}
+
+function _liquidity_for_amount1( sqrt_a: bigint, sqrt_b: bigint, amount1: bigint ): bigint
+{
+    const [ lower, upper ]  =  _ordered( sqrt_a, sqrt_b );
+    return ( amount1 * Q96 ) / ( upper - lower );
+}
+
+/**
+ * Stock Uniswap `getLiquidityForAmounts`: the maximum liquidity supported by `amount0`/`amount1` at the current price within
+ * `[sqrt_lower, sqrt_upper]`. This is the only client-side piece a UI needs when the user types amounts — the signed
+ * `liquidity` is otherwise a caller-supplied input.
+ */
+export function get_liquidity_for_amounts( sqrt_price_x96: bigint, sqrt_lower_x96: bigint, sqrt_upper_x96: bigint, amount0: bigint, amount1: bigint ): bigint
+{
+    const [ lower, upper ]  =  _ordered( sqrt_lower_x96, sqrt_upper_x96 );
+
+    if(  sqrt_price_x96 <= lower  )  return _liquidity_for_amount0( lower, upper, amount0 );
+    if(  sqrt_price_x96 < upper  )
+    {
+        const liquidity0  =  _liquidity_for_amount0( sqrt_price_x96, upper, amount0 );
+        const liquidity1  =  _liquidity_for_amount1( lower, sqrt_price_x96, amount1 );
+        return liquidity0 < liquidity1  ?  liquidity0  :  liquidity1;
+    }
+    return _liquidity_for_amount1( lower, upper, amount1 );
+}
+
+/** Stock Uniswap `getAmountsForLiquidity`: the token amounts a `liquidity` occupies at the current price within `[sqrt_lower, sqrt_upper]`. */
+export function get_amounts_for_liquidity( sqrt_price_x96: bigint, sqrt_lower_x96: bigint, sqrt_upper_x96: bigint, liquidity: bigint ): { amount0: bigint, amount1: bigint }
+{
+    const [ lower, upper ]  =  _ordered( sqrt_lower_x96, sqrt_upper_x96 );
+
+    let amount0  =  0n;
+    let amount1  =  0n;
+    if(  sqrt_price_x96 <= lower  )
+    {
+        amount0  =  ( ( ( liquidity << 96n ) * ( upper - lower ) ) / upper ) / lower;
+    }
+    else if(  sqrt_price_x96 < upper  )
+    {
+        amount0  =  ( ( ( liquidity << 96n ) * ( upper - sqrt_price_x96 ) ) / upper ) / sqrt_price_x96;
+        amount1  =  ( liquidity * ( sqrt_price_x96 - lower ) ) / Q96;
+    }
+    else
+    {
+        amount1  =  ( liquidity * ( upper - lower ) ) / Q96;
+    }
+    return { amount0, amount1 };
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// GASLESS  (EIP-7702 relayer)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** Sign EIP-712 typed data with the connected wallet (local account or JSON-RPC), mirroring the BondRoute SDK's path. */
+async function sign_safeswap_typed_data(
+    ctx: SafeSwapContext,
+    typed_data: { domain: Record<string, unknown>, types: Record<string, { name: string, type: string }[]>, primaryType: string, message: Record<string, unknown> }
+): Promise<Hex>
+{
+    const sign  =  ( ctx.wallet_client as unknown as { signTypedData?: ( args: unknown ) => Promise<Hex> } ).signTypedData;
+    if(  typeof sign === "function"  )  return await sign.call( ctx.wallet_client, { account: ctx.account, ...typed_data } );
+
+    const account  =  ctx.wallet_client.account as unknown as { signTypedData?: ( args: unknown ) => Promise<Hex> } | undefined;
+    if(  account !== undefined && typeof account.signTypedData === "function"  )  return await account.signTypedData( typed_data );
+
+    throw new Error( "Connected wallet cannot sign EIP-712 typed data; gasless execution is unavailable." );
+}
+
+/**
+ * Gasless execution surface (EIP-7702). The user sends ZERO on-chain txns: they sign one `SafeSwapGaslessBond` intent plus a
+ * 7702 authorization delegating their EOA to the SafeSwap relayer delegate, and the relayer sponsors the commit + execute
+ * gas. The user stakes and funds from their own EOA balance and pays the relayer `relayer_fee` on-chain at commit. See
+ * `FRONTEND_SPEC_DECISIONS.md` for the full protocol.
+ *
+ * Gasless is unavailable only when no relayer is configured; native inbound funding is supported (paid from the EOA's own
+ * balance), so the old native-funding restriction no longer applies.
+ */
+export class SafeSwapGasless {
+
+    readonly #ctx: SafeSwapContext;
+
+    constructor( ctx: SafeSwapContext )
+    {
+        this.#ctx  =  ctx;
+    }
+
+    /** Whether the relayer is configured at all (independent of any particular operation). */
+    get is_configured(): boolean
+    {
+        return this.#ctx.relay !== null;
+    }
+
+    /**
+     * Whether this operation can be relayed gaslessly. With the EIP-7702 delegate the user's own EOA stakes and funds the
+     * bond — native inbound funding is paid from the EOA's balance via `{ value: ... }`, so unlike the old `execute_bond_as`
+     * relay there is no native restriction; configuration is the only requirement.
+     */
+    is_available( _operation: PreparedSafeSwapOperation ): boolean
+    {
+        return this.is_configured;
+    }
+
+    /**
+     * Sign the EIP-7702 authorization delegating the user's EOA to the SafeSwap relayer delegate. The relayer (not the user)
+     * submits the type-0x04 transaction, so this is a sponsored authorization; viem fills the authority's current nonce.
+     */
+    async sign_authorization(): Promise<SafeSwapAuthorization>
+    {
+        const relay  =  this.#require_relay();
+
+        const wallet_client  =  this.#ctx.wallet_client as unknown as {
+            signAuthorization: ( args: { account: Account | Address, contractAddress: Address } ) => Promise<{ chainId: number, address: Address, nonce: number, r: Hex, s: Hex, yParity: number }>,
+        };
+        if(  typeof wallet_client.signAuthorization !== "function"  )  throw new Error( "Connected wallet cannot sign EIP-7702 authorizations; use self-execute instead." );
+
+        const signed  =  await wallet_client.signAuthorization({ account: this.#ctx.account, contractAddress: relay.delegate_address });
+        return { chainId: signed.chainId, address: signed.address, nonce: signed.nonce, r: signed.r, s: signed.s, yParity: signed.yParity };
+    }
+
+    /**
+     * Sign and relay a prepared operation gaslessly. The user signs only (off-chain): one `SafeSwapGaslessBond` intent and a
+     * 7702 authorization. The relayer drives the commit + execute phases as the user's EOA. The returned promise resolves
+     * once the relayer has driven the bond to settlement.
+     *
+     * @throws if the relayer is not configured.
+     */
+    async relay( operation: PreparedSafeSwapOperation ): Promise<GaslessRelayResult>
+    {
+        const relay     =  this.#require_relay();
+        const chain_id  =  this.#ctx.bond_route.public_client.chain?.id ?? await this.#ctx.bond_route.public_client.getChainId();
+        const user      =  typeof this.#ctx.account === "string"  ?  this.#ctx.account  :  this.#ctx.account.address;
+
+        const { intent, gasless_type_hash, action_struct_hash, signature }  =  await this.#sign_gasless_intent( operation, relay, chain_id, user );
+        const authorization  =  await this.sign_authorization();
+
+        const request: RelayRequest  =  {
+            chain_id,
+            user,
+            intent,
+            gasless_type_hash,
+            action_struct_hash,
+            signature,
+            execution_data: serialize_execution_data( operation.execution_data ),
+            authorization,
+        };
+
+        const response  =  await fetch( relay.url, {
+            method:  "POST",
+            headers: { "content-type": "application/json" },
+            body:    JSON.stringify( request ),
+        });
+        if(  response.ok === false  )  throw new Error( `SafeSwap relayer returned ${ response.status }: ${ await response.text() }` );
+
+        return await response.json() as GaslessRelayResult;
+    }
+
+    /**
+     * Build and sign the user's `SafeSwapGaslessBond` intent. The delegate re-parents the protocol's `ExecuteBondAs` action
+     * tail under the gasless struct, so the wallet still renders the human-readable action; the binding to the BondRoute
+     * execution is carried by `commitment_hash` (re-derived and equality-checked on-chain at execute).
+     */
+    async #sign_gasless_intent(
+        operation: PreparedSafeSwapOperation,
+        relay: RelayConfig,
+        chain_id: number,
+        user: Address
+    ): Promise<{ intent: SerializedGaslessIntent, gasless_type_hash: Hex, action_struct_hash: Hex, signature: Hex }>
+    {
+        const execution_data  =  operation.execution_data;
+
+        const [ typed_string, action_struct_hash ]  =  await this.#ctx.bond_route.public_client.readContract({
+            address:      execution_data.protocol,
+            abi:          BONDROUTE_PROTECTED_SIGNING_ABI,
+            functionName: "BondRoute_get_signing_info",
+            args:         [ execution_data.call ],
+        }) as [ string, Hex, bigint ];
+
+        const gasless_type_hash  =  compute_gasless_type_hash( typed_string );
+        const commitment_hash    =  this.#ctx.bond_route.calc_commitment_hash({ execution_data, user });
+        const create_deadline    =  BigInt( Math.floor( Date.now() / 1000 ) + relay.create_deadline_seconds );
+
+        // Re-parent the decoded action from BondRoute's `ExecuteBondAs` typed data so the wallet renders the same action.
+        const bondroute_typed     =  await operation.build_execution_typed_data();
+        const execute_bond_fields  =  bondroute_typed.types.ExecuteBondAs;
+        if(  execute_bond_fields === undefined  )  throw new Error( "BondRoute signing type is missing ExecuteBondAs." );
+
+        const reserved      =  new Set([ "fundings", "stake", "salt", "protocol", "calldata_hash" ]);
+        const action_field  =  execute_bond_fields.find(( field ) => reserved.has( field.name ) === false );
+        if(  action_field === undefined  )  throw new Error( "SafeSwap protocol signing type is missing its action struct field." );
+
+        const gasless_types: Record<string, { name: string, type: string }[]>  =  {};
+        for(  const [ name, fields ] of Object.entries( bondroute_typed.types )  )
+        {
+            if(  name !== "ExecuteBondAs"  )  gasless_types[ name ]  =  fields;
+        }
+        gasless_types.SafeSwapGaslessBond  =  [
+            { name: "helper",            type: "address" },
+            { name: "relayer",           type: "address" },
+            { name: "relayer_fee",       type: "TokenAmount" },
+            { name: "stake",             type: "TokenAmount" },
+            { name: "create_deadline",   type: "uint256" },
+            { name: "commitment_hash",   type: "bytes32" },
+            { name: action_field.name,   type: action_field.type },
+        ];
+
+        const signature  =  await sign_safeswap_typed_data( this.#ctx, {
+            domain:      { name: "SafeSwap Gasless", version: "1", chainId: BigInt( chain_id ), verifyingContract: user },
+            types:       gasless_types,
+            primaryType: "SafeSwapGaslessBond",
+            message:     {
+                helper:                 relay.delegate_address,
+                relayer:                relay.relayer_address,
+                relayer_fee:            relay.relayer_fee,
+                stake:                  execution_data.stake,
+                create_deadline,
+                commitment_hash,
+                [ action_field.name ]:  bondroute_typed.message[ action_field.name ],
+            },
+        });
+
+        const intent: SerializedGaslessIntent  =  {
+            helper:          relay.delegate_address,
+            relayer:         relay.relayer_address,
+            relayer_fee:     { token: relay.relayer_fee.token, amount: relay.relayer_fee.amount.toString() },
+            stake:           { token: execution_data.stake.token, amount: execution_data.stake.amount.toString() },
+            create_deadline: create_deadline.toString(),
+            commitment_hash,
+        };
+
+        return { intent, gasless_type_hash, action_struct_hash, signature };
+    }
+
+    #require_relay(): RelayConfig
+    {
+        if(  this.#ctx.relay === null  )  throw new Error( "No SafeSwap relayer is configured; gasless execution is unavailable." );
+        return this.#ctx.relay;
     }
 }
 
@@ -1517,6 +2263,7 @@ export class SafeSwap {
     readonly #ctx: SafeSwapContext;
     readonly swaps: SafeSwapSwaps;
     readonly positions: SafeSwapPositions;
+    readonly gasless: SafeSwapGasless;
     readonly router_address: Address;
     readonly nft_address: Address;
 
@@ -1527,6 +2274,7 @@ export class SafeSwap {
         this.nft_address     =  nft_address;
         this.swaps           =  new SafeSwapSwaps( ctx, router_address );
         this.positions       =  new SafeSwapPositions( ctx, nft_address );
+        this.gasless         =  new SafeSwapGasless( ctx );
     }
 
     /**
@@ -1553,11 +2301,22 @@ export class SafeSwap {
             min_confirmations_to_forget: opts.min_confirmations_to_forget,
         });
 
+        const relay: RelayConfig | null  =  opts.relay === undefined
+            ?  null
+            :  {
+                url:                     opts.relay.url,
+                delegate_address:        opts.relay.delegate_address ?? SAFESWAP_RELAYER_DELEGATE_ADDRESS,
+                relayer_address:         opts.relay.relayer_address,
+                relayer_fee:             opts.relay.relayer_fee ?? { token: NATIVE_TOKEN, amount: 0n },
+                create_deadline_seconds: opts.relay.create_deadline_seconds ?? 3600,
+            };
+
         const ctx: SafeSwapContext  =  {
             bond_route,
             wallet_client: opts.wallet_client,
             account: opts.account,
-            token_metadata_cache: new Map()
+            token_metadata_cache: new Map(),
+            relay,
         };
         return new SafeSwap( ctx, router_address, nft_address );
     }

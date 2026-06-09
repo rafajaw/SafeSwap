@@ -52,99 +52,67 @@ The funded relayer key lives **server-side only**. Demo runs the relayer on **on
 ### Gasless execution via EIP-7702 (confirmed live on Unichain)
 
 The user sends **zero on-chain txns — including first-touch token approval** — by sponsoring everything through the relayer.
-The user signs only, **off-chain**: the `ExecuteBondAs` envelope **and** a **7702 authorization** delegating their **EOA** to
-an immutable SafeSwap **execution helper**. The user pays the relayer **off-chain, up front** — a trust relation, but because
-the relayer is prepaid and controls execution it **cannot be on-chain-griefed** (reverts, allowance revocation, etc.); the
-relayer never seeks on-chain profit, so all on-chain value flows to the user.
+The user signs only, **off-chain**: one **`SafeSwapGaslessBond`** intent **and** a **7702 authorization** delegating their
+**EOA** to an immutable SafeSwap **delegate**. The user stakes and funds the bond from their **own EOA balance** and pays the
+relayer an **on-chain `relayer_fee`** at commit; the relayer fronts **only gas** and never holds or fronts the user's funds,
+so all on-chain value flows to the user.
 
 Flow:
-1. User signs `ExecuteBondAs` + the 7702 authorization (EOA → helper); client
-   `POST /relay { chain_id, execution_data, user, signature, is_eip1271, authorization }`.
-2. Relayer **validates before spending anything**: (a) valid signature; (b) valid/well-formed execution matching the signed
-   digest; (c) targets the canonical **BondRoute**; (d) **no native fundings**; (e) protocol is the **SafeSwap Router or NFT**
-   (no arbitrary protocols relayed); (f) estimated total gas of both txns **< $1 USD** (named threshold const).
-3. **Commit:** the bond is created (`create_bond`). *(Stake sourcing is the open item below.)*
-4. Wait the execution delay. If the EOA lacks funding-token **balance**, the relayer **transfers the missing token(s) to the
-   EOA in a single tx** beforehand (balance only — allowance is handled in step 5 by the helper).
-5. **Execute:** relayer submits the **7702 type-0x04 tx** → the EOA (running helper code) **approves the funding tokens to
-   BondRoute**, then calls **`execute_bond_as(execution_data, user, signature, is_eip1271)`**. `transferFrom(user=EOA)` now
-   succeeds; **stake, refunds, and protocol output all flow to the `user`**. Relayer pays all gas.
+1. User signs the `SafeSwapGaslessBond` intent + the 7702 authorization (EOA → delegate); client
+   `POST /relay { chain_id, user, intent, gasless_type_hash, action_struct_hash, signature, execution_data, authorization }`.
+2. Relayer **validates before spending any gas**: (a) right chain; (b) intent pins this relayer and its delegate (`helper`);
+   (c) protocol is the **SafeSwap Router or NFT**; (d) commit deadline is in the future; (e) the `SafeSwapGaslessBond`
+   signature recovers to `user`; (f) estimated total gas of both txns **< $1 USD** (fail-closed if no native price is set).
+3. **Commit:** relayer submits a **7702 type-0x04 tx** → `create_bond_from_user_stake`, which pays the relayer its signed fee
+   and calls `BondRoute.create_bond` staking the **user's own** tokens (the delegate sets the BondRoute allowance in-flight).
+4. **Wait** the reveal delay.
+5. **Execute:** relayer submits a second **7702 tx** → `execute_bond_from_user`, which approves the funding tokens to BondRoute
+   and calls `BondRoute.execute_bond`. **Stake, refunds, and protocol output all flow to the `user`.** Relayer pays all gas.
 
-**Why `execute_bond_as`, never `execute_bond` (intentional):** even though the 7702-delegated EOA *could* self-execute, we
-route through `execute_bond_as` so execution stays **gated on the user's explicit `ExecuteBondAs` signature**
-(authorization-for-execution) — not merely on the 7702 delegation.
+**Why `create_bond` / `execute_bond` (msg.sender-owned), never `execute_bond_as`:** the delegate runs *as the user's EOA*, so
+the EOA **is** the bond owner — the plain self-owned BondRoute path is correct, and authorization comes from the
+`SafeSwapGaslessBond` signature the delegate verifies (see below), not from `execute_bond_as`.
 
 **The 7702 delegate contract — the one new immutable artifact (audit-grade, minimal).** `BondRoute` is **deployed immutable;
-nothing is added to it.** This separate contract is the EOA's 7702 delegation target, so its code runs *as the user's EOA*.
-It exposes **only one entrypoint** and **no** arbitrary call surface:
+nothing is added to it.** This separate contract (`contracts/Relayer/Relayer.sol`, ctor args `(safe_swap_router,
+safe_swap_nft)`) is the EOA's 7702 delegation target, so its code runs *as the user's EOA*. It exposes **two entrypoints** and
+**no** arbitrary call surface:
 
-- **`approve_fundings_and_execute_bond_as_user`** — approve the funding tokens → `BondRoute.execute_bond_as(...)`. BondRoute
-  itself verifies the user's signature here, so nobody can *execute* on the user's behalf without their signed message.
+- **`create_bond_from_user_stake`** — pay the relayer its fee → `BondRoute.create_bond` with the user's own stake.
+- **`execute_bond_from_user`** — approve funding tokens → `BondRoute.execute_bond`; re-derives and equality-checks the revealed
+  `ExecutionData` against the signed intent before executing.
 
-Plus a bare **`receive()`** (no payable `fallback()`). A gasless op can *release* native back to the user's EOA mid-execution
-— a native-output swap, a remove/collect that pays out ETH, or a stake/refund return at settlement — arriving as an
-empty-calldata value transfer; without `receive()` that payout (and the whole `execute_bond_as`) reverts, and the delegated
-account would also bounce ordinary ETH while the 7702 delegation persists. The native-funding *rule* only blocks native
-*inbound* funding (the relayer can't attach the user's value), so it doesn't cover released/outbound native — hence `receive()`.
+Plus a bare **`receive()`** (no payable `fallback()`) for native *released* back to the EOA mid-execution (native-output swap,
+remove/collect payout, stake/refund return). Both entrypoints **forbid the relayer attaching native value** and require a
+**delegated context** (revert if called directly on the deployed artifact). The signature is recovered via **ECDSA against the
+EOA, never EIP-1271** — only an EOA can author a 7702 authorization, and an EIP-1271 callback would re-enter this delegate,
+which exposes no `isValidSignature`.
 
-**No create entrypoint on the delegate (resolved security decision).** The relayer fronts and creates the bond itself from
-inventory (a normal `create_bond` from the relayer's own key — see *Stake sourcing* below), so the delegate **never stakes
-the user's funds**. We deliberately do **not** add an `approve_stake_and_create_bond_as_user` that stakes the user's own
-tokens from opaque commitment data: it could not be safely gated by the reused `execute_bond_as` signature. That signature
-binds `fundings`/`call` through their **EIP-712 hashes** (`hash_fundings_for_eip712`, the protocol struct hash), while the
-BondRoute **commitment** binds them through *different* (plain) hashes (`hash_fundings`, `keccak(call)`). At commit time, with
-only hashes on hand, those two pairs are **independent calldata** and nothing on-chain proves they share the same `fundings`/
-`call` preimage — so the signature leaves the commitment's hashes **unsigned**. A griefer (anyone, while the EOA stays
-delegated) could pair the user's real EIP-712 hashes (signature passes) with garbage commitment hashes and lock the user's
-stake into a fresh, **unexecutable** bond that gets liquidated → user loss. (This is a *delegate* invariant, not a BondRoute
-bug: BondRoute's own `create_bond` is self-funded — you stake your own tokens — and `execute_bond_as` always has the full
-`ExecutionData`, so its two hash pairs are derived from one source and can't desync.) Fronting the stake from relayer
-inventory removes the user-fund griefing surface entirely.
+**Commitment-bound create entrypoint (resolved security decision).** A *user-staking* create is safe here because it does
+**not** reuse BondRoute's `execute_bond_as` signature. The `SafeSwapGaslessBond` intent is signed over the **`commitment_hash`
+itself**; at execute, `execute_bond_from_user` recomputes the commitment from the revealed `ExecutionData` (via
+`__OFF_CHAIN__calc_commitment_hash`) and asserts equality, and likewise re-derives the protocol's `gasless_type_hash` /
+`action_struct_hash` and checks them. So the full execution is provably the signed commitment's preimage — closing the
+griefing surface that *did* doom a delegate reusing the execute signature (that signature binds fundings/call via EIP-712
+hashes while the commitment binds them via different plain hashes, leaving the commitment unsigned and a griefer free to lock
+the user's stake into an unexecutable bond). The wallet still renders the human-readable action: the delegate strips
+BondRoute's `ExecuteBondAs` prefix from the protocol's type string and re-parents the action tail under the
+`SafeSwapGaslessBond` struct.
 
-Implemented at **`contracts/Relayer/Relayer.sol`**, verified by **`test/Relayer/Relayer.t.sol`**: the BondRoute approval uses
-Solady `safeApproveWithRetry` (auto reset-to-zero) and is covered (zero→infinite, idempotent, USDT reset-first, native-skip).
-Deferred to the SafeSwap real-env integration: the execute-path funding pull (native/ERC20) — needs a real protocol that
-consumes fundings plus a signed execution.
+**The relayer is paid on-chain.** `intent.relayer_fee` is paid to the relayer inside `create_bond_from_user_stake` (from the
+user's EOA balance), and the intent pins the submitting `relayer` so only it can drive the bond. No off-chain prepayment, no
+relayer stake inventory, no funding top-up — the user is solvent for their own stake/fundings/fee.
 
-Shared approval loop (handles non-standard tokens like USDT that require resetting to zero before a new allowance):
-
-```solidity
-uint256 constant INFINITE_TOKEN_AMOUNT = type(uint256).max;   // named const, not raw type(uint256).max
-
-// for each funding token (execute) or the stake token (create):
-uint256 allowance = token.allowance(address(this) /* = EOA */, BONDROUTE);
-if (allowance > 0 && allowance < INFINITE_TOKEN_AMOUNT) {
-    token.approve(BONDROUTE, 0);                  // some tokens require resetting first (USDT-style)
-}
-if (allowance < INFINITE_TOKEN_AMOUNT) {
-    token.approve(BONDROUTE, INFINITE_TOKEN_AMOUNT);
-}
-```
-
-Infinite approval is to **BondRoute only** (the trusted canonical contract), so the one-time dance means future actions need
-no re-approval; the delegate never approves any other spender. The entrypoint is invoked by a relayer-sponsored 7702
-type-0x04 tx; the user only signs (the 7702 authorization + the `ExecuteBondAs` envelope).
+Implemented at **`contracts/Relayer/Relayer.sol`**, verified end-to-end by **`test/Relayer/Relayer.t.sol`**: the delegate is
+etched onto an EOA (7702 simulation) and driven `create → wait → execute` against the **real** router / NFT / pool / BondRoute
+(fee paid, swap output to the user), with full revert coverage for every guard (delegated-context, native-value, helper,
+relayer, signature, deadline, protocol allowlist, commitment / stake / type-hash / action-hash mismatch) and a direct
+unit test of the type-string splice. The SDK reproduces the splice (`compute_gasless_type_hash`, unit-tested in
+`sdk/test/safeswap.test.ts`) and signs the `SafeSwapGaslessBond` typed data; the relayer is in `server/relayer.ts`.
 
 **Caveats:** 7702 is **confirmed live on Unichain**; the connected wallet must support signing 7702 authorizations; the 7702
-delegation **persists** on the EOA until re-delegated/cleared (acceptable given the helper's minimal scope; can be cleared in
-the same flow). **Fallback** when a wallet/chain lacks 7702: one-time user `approve(BondRoute)` then relayer-executed
-`execute_bond_as` (or self-execute).
-
-### Stake sourcing for the commit (`create_bond`)
-
-**The relayer fronts a small stake from inventory** (a normal `create_bond` from the relayer's own key). Sized to the
-normalized ~1–2% of committed value (+~2% drift margin so the post-delay execute can't revert), **never the full amount** —
-the fronted stake is at liquidation risk if a bond ever expired unexecuted, so keep the relayer's exposure tiny. Stake is
-refunded to the `user` at settlement (the relayer is already made whole off-chain). No contract change, and the user's funds
-are never staked — so there is no user-fund griefing surface at commit (see *No create entrypoint* above for why a
-user-staking `create` delegate was rejected).
-
-**Rejected:** a user-staking `approve_stake_and_create_bond_as_user` delegate for the case where the stake token is one only
-the user holds (an exotic token the relayer can't front). Staking the user's own tokens from opaque commitment data can't be
-safely gated by the reused `execute_bond_as` signature (the signature binds fundings/call via EIP-712 hashes; the commitment
-binds them via different plain hashes; the two are independent calldata at commit, so the commitment stays unsigned and a
-griefer can lock the user's stake into an unexecutable bond). If an exotic-stake path is ever needed, it must gate on a
-dedicated commit-authorization signature **over the commitment hash itself**, not the execute signature.
+delegation **persists** on the EOA until re-delegated/cleared (acceptable given the delegate's minimal scope; can be cleared
+in the same flow). **Fallback** when a wallet/chain lacks 7702: self-execute (`create_bond` + `execute_bond` from the user).
 
 The relayer key is the system's only secret and is server-side by design. Phase-2 indexing/caching is separate, not part of `/relay`.
 
@@ -170,27 +138,28 @@ PoolManager `slot0` for initialized pools.)
 ### Two execution modes per protected op
 Every BondRoute-protected operation (swap, create position, add liquidity, remove liquidity) runs in one of two modes:
 
-- **Gasless (default)** — user signs an `ExecuteBondAs` envelope **+ a 7702 authorization**; the **relayer** sponsors the
-  whole lifecycle and the user sends **zero on-chain txns** (including approval). See "Gasless execution via EIP-7702" below.
+- **Gasless (default)** — user signs one `SafeSwapGaslessBond` intent **+ a 7702 authorization**; the **relayer** sponsors the
+  commit + execute gas and the user sends **zero on-chain txns** (including approval). See "Gasless execution via EIP-7702" below.
 - **Self-execute (fallback)** — user sends the bond txns themselves (`create_bond` + `execute_bond`) and pays the gas;
-  used when a wallet/chain lacks 7702, or when forced by the native-funding rule.
+  used when a wallet/chain lacks 7702.
 
-This **corrects handoff §5**, which wrongly states there is no Direct/Relayer mode. The SDK already exposes both
-(`op.dispatch()` self-drives; `op.sign_verified_execution()` + a relayer `execute_as` is gasless). **Collect fees** is
-single-mode — a plain direct call, no bond, no mode choice. Gasless is **native day 0**; a relayer backend is assumed
-present. If a chain has no relayer configured, Gasless is unavailable (disabled, same treatment as the native rule).
+This **corrects handoff §5**, which wrongly states there is no Direct/Relayer mode. The SDK exposes both
+(`op.dispatch()` self-drives; `safeswap.gasless.relay(op)` is gasless). **Collect fees** is single-mode — a plain direct call,
+no bond, no mode choice. Gasless is **native day 0**; a relayer backend is assumed present. If a chain has no relayer
+configured, Gasless is unavailable (disabled).
 
 ### Lifecycle facts
-- **Gasless (7702):** user sends **zero on-chain txns** — signs the `ExecuteBondAs` envelope + a 7702 authorization
-  (off-chain) and pays the relayer off-chain. The relayer sponsors commit + execute and the helper sets the funding
-  allowance in-flight. (Stake sourcing for the commit is the open item in the architecture section.)
+- **Gasless (7702):** user sends **zero on-chain txns** — signs the `SafeSwapGaslessBond` intent + a 7702 authorization
+  (off-chain). The relayer sponsors commit + execute as the user's EOA; the user stakes and funds from their own EOA balance
+  and pays the relayer `relayer_fee` on-chain at commit, and the delegate sets the BondRoute allowance in-flight.
 - **Self-execute (fallback):** user sends `create_bond` (posts the user's own stake, refunded to the user) + the post-delay
   `execute_bond`, plus any one-time `approve(BondRoute)`.
 
-### Native-funding rule
-If any **inbound funding** is the native token, **disable Gasless and force Self-execute** — a relayer cannot attach the
-user's native value to `execute_bond_as`. Applies to native-input swaps and create/add where a deposit leg is native.
-Remove and collect take no fundings, so they are unaffected. Disabled-radio hover copy: `Native swap not supported via relayer`.
+### Native funding (supported)
+Native inbound funding **is** supported gaslessly: the delegate runs as the user's EOA, so it pays native stake/fundings from
+the **EOA's own balance** via `{ value: ... }` (the relayer attaches no value — it only sponsors gas). The old "disable Gasless
+on native funding" rule no longer applies; `safeswap.gasless.is_available` gates only on whether a relayer is configured.
+Remove and collect take no inbound funding regardless.
 
 ---
 
@@ -207,10 +176,11 @@ Remove and collect take no fundings, so they are unaffected. Disabled-radio hove
 
 ## Screen 2 — Swap progress
 
-- **No in-app Review step.** In gasless, the wallet's typed-data signing screen **is** the review — the REFERENCE_2 fields
-  are named for exactly that. The page shows **"Pending signature"** and opens the wallet automatically.
-- Rail (gasless/7702): **Sign → In progress → Done** — user signs the `ExecuteBondAs` envelope + 7702 authorization (no
-  user commit tx), then the relayer sponsors the whole lifecycle. Self-execute fallback rail: **Commit → Active → Execute →
+- **No in-app Review step.** In gasless, the wallet's typed-data signing screen **is** the review — the `SafeSwapGaslessBond`
+  intent re-parents the protocol action so the wallet renders the same readable fields. The page shows **"Pending signature"**
+  and opens the wallet automatically.
+- Rail (gasless/7702): **Sign → In progress → Done** — user signs the `SafeSwapGaslessBond` intent + 7702 authorization (no
+  user commit tx), then the relayer sponsors commit + execute. Self-execute fallback rail: **Commit → Active → Execute →
   Done.** Status copy is **"in progress / pending"**, never "close this page"; it is safe to leave and return.
 - **Resume on reopen:** the SDK surfaces the active pending bond (`on_pending_bond`), so reopening the app lands the user
   back on this progress page at the correct sub-state (aligns handoff §17 persistence requirement).
@@ -295,7 +265,7 @@ drift, and minimizes post-delay reverts. Phase-2 refinement: scale the default b
 Inputs: Pair · Profile (Base fee + Repricing rebate, **selectors offer only deployed profiles** from `HookRegistered`) ·
 Range (presets + custom) · Price (editable for a new pool; live but advisory for an existing one — the deposit band is the guard) · Deposit (type one amount,
 derive the other from range+price) · `Maximum to deposit` + `Minimum deposited` (direct, per the minimum-bound model) ·
-Execution mode (native rule). Preview rows = the signed receipt (`Deposit · Minimum · Liquidity · Range · Price · Pool`);
+Execution mode. Preview rows = the signed receipt (`Deposit · Minimum · Liquidity · Range · Price · Pool`);
 raw `Liquidity` stays in the wallet/Advanced. A deep-link to an unregistered profile shows handoff §11's "not deployed"
 message and disables Create. No projected-earnings block in Phase 1 (no truthful projection without an indexer).
 
@@ -303,14 +273,14 @@ message and disables Create. No projected-earnings block in Phase 1 (no truthful
 
 Reached from Portfolio → position → Add. Range and profile are fixed by the position (read-only). Inputs: Add deposit
 (type one, derive other at live price within the fixed range; if out of range, only the single active token) ·
-`Maximum to deposit` + `Minimum deposited` · Execution mode (native rule). Signed receipt = `Position · Deposit · Minimum ·
+`Maximum to deposit` + `Minimum deposited` · Execution mode. Signed receipt = `Position · Deposit · Minimum ·
 Liquidity · Pool` (no Range/Price). Reuses Screen 2's progress machine.
 
 ## Screen 6 — Remove / Collect (two different things)
 
 **Remove** is BondRoute-protected: Amount-to-remove presets + custom · `Minimum received` for both tokens (direct, with the
-core no-bots statement) · Execution mode. **Remove takes no inbound funding** (tokens flow out), so the native rule does not
-fire — **Gasless is available even when ETH is released.** Signed receipt built from `render_burn_value` + minimums.
+core no-bots statement) · Execution mode. **Remove takes no inbound funding** (tokens flow out) — **Gasless is available even
+when ETH is released** (the delegate's `receive()` accepts the payout). Signed receipt built from `render_burn_value` + minimums.
 
 **Collect** is a plain **direct call** — no bond, no stake/delay/signing, no protection language, no "value protected"
 estimate (handoff §12; collection is realized, not MEV-sensitive). Single tx. Shows `Available to collect` (on-chain

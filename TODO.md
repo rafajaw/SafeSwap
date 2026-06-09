@@ -238,21 +238,26 @@ Decisions already baked into both references (see the docs for the why):
 ## Gasless relayer (EIP-7702)
 
 - [x] Add the EIP-7702 relayer delegate (`contracts/Relayer/Relayer.sol`): the user's EOA delegates to it so it runs *as the
-      user's account*. Single entrypoint `approve_fundings_and_execute_bond_as_user` (approve funding tokens via Solady
-      `safeApproveWithRetry`, then `BondRoute.execute_bond_as`, which verifies the user's signature) plus a `receive()` for
-      native released back to the EOA mid-execution. **Execute-only by design:** a user-fund-staking `create` delegate was
-      rejected because it can't be gated by the reused `execute_bond_as` signature (the signature binds fundings/call via
-      EIP-712 hashes; the commitment binds them via different plain hashes; at commit, opaquely, the two are independent, so a
-      griefer could lock the user's stake into an unexecutable bond). The relayer instead fronts and creates the bond from its
-      own inventory (`create_bond` from the relayer key), so user funds are never staked. Tests + manifest in `test/Relayer/`;
-      full rationale in `FRONTEND_SPEC_DECISIONS.md`.
+      user's account*. Two entrypoints — `create_bond_from_user_stake` (pay the relayer its signed fee, then `BondRoute.create_bond`
+      staking the user's own tokens) and, past the reveal delay, `execute_bond_from_user` (approve funding tokens via Solady
+      `safeApproveWithRetry`, then `BondRoute.execute_bond`) — plus a `receive()` for native released back to the EOA
+      mid-execution. Both gate on ONE off-chain `SafeSwapGaslessBond` EIP-712 signature taken over the **`commitment_hash`
+      itself** (recovered via ECDSA against the EOA, never EIP-1271, which would re-enter the delegate). **A user-fund-staking
+      `create` is safe here** — the rejected earlier design reused BondRoute's `execute_bond_as` signature (which binds
+      fundings/call via EIP-712 hashes while the commitment binds them via different plain hashes, leaving the commitment
+      unsigned); this delegate instead signs the commitment hash and re-derives + equality-checks it from the revealed
+      `ExecutionData` at execute, closing the griefing surface. It also pins the delegate (`helper`), the submitting relayer,
+      and an allowlisted protocol (router/NFT, immutable ctor args), guards delegated-context-only execution, and forbids the
+      relayer attaching native value (native stake/fundings are paid from the EOA's own balance). Full real-env tests +
+      manifest in `test/Relayer/`; rationale in `FRONTEND_SPEC_DECISIONS.md`.
 - [x] Add the `deploy_relayer` `foundry.toml` profile (isolated artifact dir + size check, following the per-family pattern).
-      Current size: Relayer 1,709 bytes runtime at 25,000 runs (22,867-byte EIP-170 margin).
-- [ ] Deploy the relayer delegate and **publish its address** (the canonical 7702 delegation target the relayer backend and
-      frontend point at); wire it into the deploy tooling alongside router / NFT / treasury / descriptors, and into the
-      ChainConfig key publication checklist.
-- [ ] Cover the **execute-path funding pull** (native + ERC20) through the SafeSwap real-env integration: a real protocol that
-      consumes fundings plus a signed execution end-to-end. Deferred from the Relayer unit suite (noted in its manifest).
+      Current size: Relayer 7,454 bytes runtime at 25,000 runs (17,122-byte EIP-170 margin).
+- [x] Cover the **commit + execute path** (fee payment, user-stake commit, funding pull, swap output to the user) through the
+      SafeSwap real-env integration: the delegate is etched onto an EOA (7702 simulation) and driven against the real router /
+      NFT / pool / BondRoute, plus full revert coverage for every guard. `test/Relayer/Relayer.t.sol`.
+- [ ] Deploy the relayer delegate with its constructor args `(safe_swap_router, safe_swap_nft)` and **publish its address**
+      (the canonical 7702 delegation target the relayer backend and frontend point at); wire it into the deploy tooling
+      alongside router / NFT / treasury / descriptors, and into the ChainConfig key publication checklist.
 
 ## Release readiness
 

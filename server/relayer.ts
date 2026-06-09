@@ -1,18 +1,23 @@
 // SPDX-License-Identifier: MIT
 //
-// SafeSwap gasless relayer — the server-side half of the EIP-7702 flow. The user signs only (off-chain): an `ExecuteBondAs`
-// envelope and a 7702 authorization delegating their EOA to the SafeSwap relayer delegate. This relayer validates that
-// signed intent, fronts a small stake from its OWN inventory to commit the bond, waits the execution delay, tops up the
-// user's funding-token balance if needed, and finally submits the type-0x04 transaction that runs the delegate code AS the
-// user's EOA (approve fundings → BondRoute.execute_bond_as). The relayer pays all gas; all on-chain value flows to the user.
+// SafeSwap gasless relayer — the server-side half of the EIP-7702 flow. The user signs only (off-chain): one
+// `SafeSwapGaslessBond` intent and a 7702 authorization delegating their EOA to the SafeSwap relayer delegate. This relayer
+// validates that signed intent, then submits two sponsored type-0x04 transactions against the user's EOA — first
+// `create_bond_from_user_stake` (hidden commit, which stakes the user's OWN tokens and pays this relayer its signed fee),
+// then, past BondRoute's reveal delay, `execute_bond_from_user`. The relayer pays only gas; the stake, fundings, and fee all
+// come from the user's EOA balance, and all on-chain output flows back to the user.
 //
-// See FRONTEND_SPEC_DECISIONS.md "Gasless execution via EIP-7702" for the binding protocol this implements.
+// See FRONTEND_SPEC_DECISIONS.md "Gasless execution via EIP-7702" and contracts/Relayer/Relayer.sol for the binding protocol.
 
 import {
+    concatHex,
     createPublicClient,
     createWalletClient,
+    encodeAbiParameters,
     http,
-    parseAbi,
+    keccak256,
+    recoverAddress,
+    toHex,
     type Account,
     type Address,
     type Hex,
@@ -20,38 +25,69 @@ import {
     type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { BONDROUTE_ADDRESS, NATIVE_TOKEN, type Bond, type BondRoute as BondRouteType, type ExecutionData } from "@bondroute/sdk";
-import { BondRoute } from "@bondroute/sdk";
+import { BONDROUTE_ADDRESS, type ExecutionData } from "@bondroute/sdk";
 import {
     SAFESWAP_RELAYER_DELEGATE_ABI,
     deserialize_execution_data,
     type GaslessRelayResult,
     type RelayRequest,
+    type SerializedGaslessIntent,
 } from "@safeswap/sdk";
 import { load_config, MAX_RELAY_COST_USD, type RelayerConfig } from "./config.ts";
 
-const ERC20_ABI  =  parseAbi([
-    "function balanceOf(address account) view returns (uint256)",
-    "function allowance(address owner, address spender) view returns (uint256)",
-    "function approve(address spender, uint256 amount) returns (bool)",
-    "function transfer(address to, uint256 amount) returns (bool)",
-]);
+const BONDROUTE_BOND_INFO_ABI  =  [
+    {
+        type:            "function",
+        name:            "__OFF_CHAIN__get_bond_info",
+        stateMutability: "view",
+        inputs:  [
+            { name: "commitment_hash", type: "bytes32" },
+            { name: "stake", type: "tuple", components: [ { name: "token", type: "address" }, { name: "amount", type: "uint256" } ] },
+        ],
+        outputs: [ {
+            name: "bond_info", type: "tuple",
+            components: [
+                { name: "creation_time", type: "uint256" },
+                { name: "creation_block", type: "uint256" },
+                { name: "stake_amount_received", type: "uint256" },
+                { name: "status", type: "uint8" },
+            ],
+        } ],
+    },
+] as const;
 
-const BONDROUTE_CREATE_ABI  =  parseAbi([
-    "function create_bond(bytes32 commitment_hash, (address token, uint256 amount) stake) external payable",
-]);
+// EIP-712 constants mirroring contracts/Relayer/Relayer.sol so the relayer can re-verify the user's signature before
+// spending any gas. The delegate's domain is rebuilt with `verifyingContract == the user's EOA` when it runs delegated.
+const EIP712_DOMAIN_TYPE_HASH  =  keccak256( toHex( "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)" ) );
+const TOKEN_AMOUNT_TYPE_HASH   =  keccak256( toHex( "TokenAmount(address token,uint256 amount)" ) );
+const GASLESS_DOMAIN_NAME_HASH     =  keccak256( toHex( "SafeSwap Gasless" ) );
+const GASLESS_DOMAIN_VERSION_HASH  =  keccak256( toHex( "1" ) );
 
-const INFINITE_TOKEN_AMOUNT  =  ( 2n ** 256n ) - 1n;
-
-// *NOTE*  -  The commit (`create_bond`) is estimated live (`estimateContractGas`) at guard time. These statics are fallbacks:
-//            ESTIMATED_CREATE_GAS only when live estimation can't run (e.g. before the relayer's one-time stake approval lands),
-//            ESTIMATED_EXECUTE_GAS always — the execute leg runs the 7702 delegate AS the user's EOA and cannot be simulated
-//            until the bond exists and its delay has elapsed. Both intentionally overstate so the guard never under-counts.
-const ESTIMATED_CREATE_GAS   =  350_000n;
-const ESTIMATED_EXECUTE_GAS  =  450_000n;
+// *NOTE*  -  The two phases run the delegate AS the user's EOA via a 7702 authorization, so they cannot be live `estimateGas`-d
+//            before the delegation is applied. These conservative static ceilings intentionally overstate real usage so the
+//            cost guard never under-counts; the execute leg drives the protocol action through BondRoute + V4, so it is heavier.
+const ESTIMATED_CREATE_GAS   =  400_000n;
+const ESTIMATED_EXECUTE_GAS  =  600_000n;
 
 /** Safety markup applied to the summed gas estimate before the USD ceiling check. */
 const GAS_MARKUP_PERCENT  =  10n;
+
+/** Map BondRoute's `BondStatus` enum (Definitions.sol) to the gasless result discriminator. */
+const BOND_STATUS: Record<number, GaslessRelayResult["status"]>  =  {
+    1: "executed",
+    2: "invalid_bond",
+    3: "protocol_reverted",
+    4: "liquidated",
+};
+
+type GaslessIntent = {
+    helper:          Address;
+    relayer:         Address;
+    relayer_fee:     { token: Address, amount: bigint };
+    stake:           { token: Address, amount: bigint };
+    create_deadline: bigint;
+    commitment_hash: Hex;
+};
 
 /** A relay rejection the caller should surface as a 4xx (bad/forbidden request), distinct from an internal failure. */
 export class RelayRejected extends Error {
@@ -65,42 +101,31 @@ export class RelayRejected extends Error {
 
 export class Relayer {
 
-    readonly #config:        RelayerConfig;
-    readonly #account:       Account;
-    readonly #public_client: PublicClient;
-    readonly #wallet_client: WalletClient;
-    readonly #bond_route:    BondRouteType;
+    readonly #config:            RelayerConfig;
+    readonly #account:           Account;
+    readonly #public_client:     PublicClient;
+    readonly #wallet_client:     WalletClient;
     readonly #bondroute_address: Address;
     readonly #allowed_protocols: Set<string>;
 
-    private constructor( config: RelayerConfig, account: Account, public_client: PublicClient, wallet_client: WalletClient, bond_route: BondRouteType )
+    private constructor( config: RelayerConfig, account: Account, public_client: PublicClient, wallet_client: WalletClient )
     {
-        this.#config            =  config;
-        this.#account           =  account;
-        this.#public_client     =  public_client;
-        this.#wallet_client     =  wallet_client;
-        this.#bond_route        =  bond_route;
+        this.#config             =  config;
+        this.#account            =  account;
+        this.#public_client      =  public_client;
+        this.#wallet_client      =  wallet_client;
         this.#bondroute_address  =  config.bondroute_address ?? BONDROUTE_ADDRESS;
         this.#allowed_protocols  =  new Set([ config.router_address.toLowerCase(), config.nft_address.toLowerCase() ]);
     }
 
-    static async init(): Promise<Relayer>
+    static init(): Relayer
     {
         const config         =  load_config();
         const account        =  privateKeyToAccount( config.relayer_private_key );
         const public_client  =  createPublicClient({ transport: http( config.rpc_url ) }) as PublicClient;
         const wallet_client  =  createWalletClient({ account, transport: http( config.rpc_url ) });
 
-        const bond_route  =  await BondRoute.init({
-            public_client,
-            wallet_client,
-            account,
-            bondroute_address: config.bondroute_address,
-            on_pending_bond:   () => { /* the relayer drives each bond inline within one request — no recovery pass. */ },
-            storage:           "memory",
-        });
-
-        return new Relayer( config, account, public_client, wallet_client, bond_route );
+        return new Relayer( config, account, public_client, wallet_client );
     }
 
     get config(): RelayerConfig
@@ -109,49 +134,46 @@ export class Relayer {
     }
 
     /**
-     * Validate, commit, wait, top-up, and execute one gasless operation. Resolves once the bond settles. Validation runs
-     * BEFORE any value is spent; only a fully-valid, affordable, in-scope operation reaches the commit step.
+     * Validate, commit, wait, and execute one gasless operation. Resolves once the bond settles. Validation runs BEFORE any
+     * gas is spent; only a fully-valid, in-scope, correctly-signed operation reaches the commit transaction.
      */
     async relay( request: RelayRequest ): Promise<GaslessRelayResult>
     {
         if(  request.chain_id !== this.#config.chain_id  )  throw new RelayRejected( `Wrong chain ${ request.chain_id }; relayer serves ${ this.#config.chain_id }.` );
 
+        const intent          =  deserialize_intent( request.intent );
         const execution_data  =  deserialize_execution_data( request.execution_data );
-        const bond            =  this.#bond_route.bond( execution_data );
 
-        this.#assert_no_native_fundings( execution_data );
+        this.#assert_intent_addresses( intent );
         this.#assert_protocol_in_scope( execution_data );
-        await this.#assert_valid_signature( bond, request );
-        await this.#assert_affordable_gas( bond );
+        this.#assert_deadline( intent );
+        await this.#assert_valid_signature( request, intent );
+        await this.#assert_affordable_gas();
 
-        // ── Commit: the relayer fronts the stake from its own inventory (never the user's funds). ──
-        await this.#ensure_stake_ready( execution_data.stake );
-        await bond.create();
+        // ── Commit: runs the delegate as the user's EOA, staking the user's own tokens and paying this relayer its fee. ──
+        const create_tx_hash  =  await this.#submit_via_7702( request, "create_bond_from_user_stake", [ intent, request.gasless_type_hash, request.action_struct_hash, request.signature ] );
 
-        // ── Wait the execution delay, then make the user's EOA solvent for the funding pull the delegate performs. ──
-        await bond.wait_until_executable();
-        await this.#top_up_user_fundings( request.user, execution_data.fundings );
+        // ── Wait the reveal delay, then execute. ──
+        await this.#wait_for_reveal( intent );
+        const execute_tx_hash  =  await this.#submit_via_7702( request, "execute_bond_from_user", [ intent, request.gasless_type_hash, request.action_struct_hash, request.signature, execution_data ] );
 
-        // ── Execute: the 7702 type-0x04 tx runs the delegate AS the user's EOA. ──
-        const execute_tx_hash  =  await this.#execute_via_7702( request, execution_data );
-
-        await bond.refresh();
-        return {
-            status:          bond.status,
-            commitment_hash: bond.commitment_hash,
-            create_tx_hash:  bond.create_tx_hash,
-            execute_tx_hash,
-            revert_output:   bond.revert_output === "0x" ? undefined : bond.revert_output,
-        };
+        const status  =  await this.#settled_status( intent );
+        return { status, commitment_hash: intent.commitment_hash, create_tx_hash, execute_tx_hash };
     }
 
 
     // ━━━━  VALIDATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    #assert_no_native_fundings( execution_data: ExecutionData ): void
+    #assert_intent_addresses( intent: GaslessIntent ): void
     {
-        const has_native  =  execution_data.fundings.some(( funding ) => funding.token.toLowerCase() === NATIVE_TOKEN.toLowerCase() );
-        if(  has_native  )  throw new RelayRejected( "Native-input operations cannot be relayed; the relayer cannot attach the user's native value." );
+        if(  intent.helper.toLowerCase() !== this.#config.relayer_delegate_address.toLowerCase()  )
+        {
+            throw new RelayRejected( `Intent helper ${ intent.helper } is not this relayer's delegate.` );
+        }
+        if(  intent.relayer.toLowerCase() !== this.#account.address.toLowerCase()  )
+        {
+            throw new RelayRejected( `Intent relayer ${ intent.relayer } is not this relayer (${ this.#account.address }).` );
+        }
     }
 
     #assert_protocol_in_scope( execution_data: ExecutionData ): void
@@ -162,24 +184,48 @@ export class Relayer {
         }
     }
 
-    async #assert_valid_signature( bond: Bond, request: RelayRequest ): Promise<void>
+    #assert_deadline( intent: GaslessIntent ): void
     {
-        // The bond's `ExecuteBondAs` typed data is independent of who created it; verify the user signed exactly this execution.
-        const typed_data  =  await bond.build_execution_typed_data();
-
-        const valid  =  await this.#public_client.verifyTypedData({
-            address:     request.user,
-            domain:      typed_data.domain,
-            types:       typed_data.types,
-            primaryType: typed_data.primaryType,
-            message:     typed_data.message,
-            signature:   request.signature,
-        } as Parameters<PublicClient["verifyTypedData"]>[0] );
-
-        if(  valid === false  )  throw new RelayRejected( "ExecuteBondAs signature does not match the supplied user and execution data." );
+        const now  =  BigInt( Math.floor( Date.now() / 1000 ) );
+        if(  now > intent.create_deadline  )  throw new RelayRejected( `Commit deadline ${ intent.create_deadline } already passed.` );
     }
 
-    async #assert_affordable_gas( bond: Bond ): Promise<void>
+    /**
+     * Re-verify the user's `SafeSwapGaslessBond` signature off-chain (mirrors the delegate's `_hash_gasless_intent` and the
+     * EIP-712 domain it rebuilds with `verifyingContract == user`), so a forged or stale signature is rejected before any
+     * gas is spent rather than reverting the commit on-chain.
+     */
+    async #assert_valid_signature( request: RelayRequest, intent: GaslessIntent ): Promise<void>
+    {
+        const domain_separator  =  keccak256( encodeAbiParameters(
+            [ { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint256" }, { type: "address" } ],
+            [ EIP712_DOMAIN_TYPE_HASH, GASLESS_DOMAIN_NAME_HASH, GASLESS_DOMAIN_VERSION_HASH, BigInt( request.chain_id ), request.user ]
+        ) );
+
+        const struct_hash  =  keccak256( encodeAbiParameters(
+            [ { type: "bytes32" }, { type: "address" }, { type: "address" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint256" }, { type: "bytes32" }, { type: "bytes32" } ],
+            [
+                request.gasless_type_hash,
+                intent.helper,
+                intent.relayer,
+                hash_token_amount( intent.relayer_fee ),
+                hash_token_amount( intent.stake ),
+                intent.create_deadline,
+                intent.commitment_hash,
+                request.action_struct_hash,
+            ]
+        ) );
+
+        const digest     =  keccak256( concatHex([ "0x1901", domain_separator, struct_hash ]) );
+        const recovered  =  await recoverAddress({ hash: digest, signature: request.signature });
+
+        if(  recovered.toLowerCase() !== request.user.toLowerCase()  )
+        {
+            throw new RelayRejected( `SafeSwapGaslessBond signature recovers to ${ recovered }, not the claimed user ${ request.user }.` );
+        }
+    }
+
+    async #assert_affordable_gas(): Promise<void>
     {
         // Fail-closed: without a native USD price the ceiling is unverifiable, so refuse rather than sponsor blind.
         if(  this.#config.native_usd_price === undefined  )
@@ -187,86 +233,28 @@ export class Relayer {
             throw new RelayRejected( "Relayer gas-cost ceiling is unverifiable (RELAYER_NATIVE_USD_PRICE unset); refusing to sponsor." );
         }
 
-        const create_gas   =  await this.#estimate_create_gas( bond );
-        const total_gas    =  ( ( create_gas + ESTIMATED_EXECUTE_GAS ) * ( 100n + GAS_MARKUP_PERCENT ) ) / 100n;
         const gas_price    =  await this.#public_client.getGasPrice();
+        const total_gas    =  ( ( ESTIMATED_CREATE_GAS + ESTIMATED_EXECUTE_GAS ) * ( 100n + GAS_MARKUP_PERCENT ) ) / 100n;
         const cost_native  =  Number( total_gas * gas_price ) / 1e18;
         const cost_usd     =  cost_native * this.#config.native_usd_price;
 
         if(  cost_usd > MAX_RELAY_COST_USD  )  throw new RelayRejected( `Estimated gas cost $${ cost_usd.toFixed(4) } exceeds the $${ MAX_RELAY_COST_USD } relay ceiling.` );
     }
 
-    // The commit is fully determined pre-commit, so estimate it live. Falls back to the static ceiling if estimation reverts
-    // (e.g. before the relayer's one-time stake approval lands) — the safe, higher-or-equal direction for an under-count guard.
-    async #estimate_create_gas( bond: Bond ): Promise<bigint>
+
+    // ━━━━  TRANSACTIONS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async #submit_via_7702( request: RelayRequest, function_name: "create_bond_from_user_stake" | "execute_bond_from_user", args: readonly unknown[] ): Promise<Hex>
     {
-        try
-        {
-            return await this.#public_client.estimateContractGas({
-                account:      this.#account,
-                address:      this.#bondroute_address,
-                abi:          BONDROUTE_CREATE_ABI,
-                functionName: "create_bond",
-                args:         [ bond.commitment_hash, bond.execution_data.stake ],
-                value:        bond.get_native_value_for_create(),
-            } as unknown as Parameters<PublicClient["estimateContractGas"]>[0] );
-        }
-        catch( error )
-        {
-            console.warn( "create_bond gas estimation failed; using the static create ceiling.", error );
-            return ESTIMATED_CREATE_GAS;
-        }
-    }
-
-
-    // ━━━━  COMMIT / EXECUTE HELPERS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    async #ensure_stake_ready( stake: ExecutionData["stake"] ): Promise<void>
-    {
-        if(  stake.token.toLowerCase() === NATIVE_TOKEN.toLowerCase()  )
-        {
-            const balance  =  await this.#public_client.getBalance({ address: this.#account.address });
-            if(  balance < stake.amount  )  throw new RelayRejected( `Relayer holds insufficient native stake (${ balance } < ${ stake.amount }).` );
-            return;
-        }
-
-        const balance  =  await this.#read_erc20( stake.token, "balanceOf", [ this.#account.address ] );
-        if(  balance < stake.amount  )  throw new RelayRejected( `Relayer holds insufficient ${ stake.token } stake inventory (${ balance } < ${ stake.amount }).` );
-
-        const allowance  =  await this.#read_erc20( stake.token, "allowance", [ this.#account.address, this.#bondroute_address ] );
-        if(  allowance < stake.amount  )  await this.#approve_max( stake.token );
-    }
-
-    async #top_up_user_fundings( user: Address, fundings: ExecutionData["fundings"] ): Promise<void>
-    {
-        for(  const funding of fundings  )
-        {
-            const balance  =  await this.#read_erc20( funding.token, "balanceOf", [ user ] );
-            if(  balance >= funding.amount  )  continue;
-
-            const shortfall  =  funding.amount - balance;
-            const hash       =  await this.#wallet_client.writeContract({
-                account:      this.#account,
-                chain:        null,
-                address:      funding.token,
-                abi:          ERC20_ABI,
-                functionName: "transfer",
-                args:         [ user, shortfall ],
-            });
-            await this.#public_client.waitForTransactionReceipt({ hash });
-        }
-    }
-
-    async #execute_via_7702( request: RelayRequest, execution_data: ExecutionData ): Promise<Hex>
-    {
-        // The tx `to` is the user's own EOA — now running the delegate's code via the supplied 7702 authorization.
+        // The tx `to` is the user's own EOA — now running the delegate's code via the supplied 7702 authorization. The relayer
+        // attaches no value: native stake/fundings are paid from the EOA's own balance by the delegate (`{ value: ... }`).
         const hash  =  await this.#wallet_client.writeContract({
             account:           this.#account,
             chain:             null,
             address:           request.user,
             abi:               SAFESWAP_RELAYER_DELEGATE_ABI,
-            functionName:      "approve_fundings_and_execute_bond_as_user",
-            args:              [ execution_data, request.user, request.signature, request.is_eip1271 ],
+            functionName:      function_name,
+            args,
             authorizationList: [ request.authorization ],
         } as Parameters<WalletClient["writeContract"]>[0] );
 
@@ -274,21 +262,57 @@ export class Relayer {
         return hash;
     }
 
-    async #approve_max( token: Address ): Promise<void>
+    async #wait_for_reveal( intent: GaslessIntent ): Promise<void>
     {
-        const hash  =  await this.#wallet_client.writeContract({
-            account:      this.#account,
-            chain:        null,
-            address:      token,
-            abi:          ERC20_ABI,
-            functionName: "approve",
-            args:         [ this.#bondroute_address, INFINITE_TOKEN_AMOUNT ],
-        });
-        await this.#public_client.waitForTransactionReceipt({ hash });
+        const info  =  await this.#bond_info( intent );
+        const target_block      =  info.creation_block + BigInt( this.#config.reveal_delay_blocks );
+        const target_timestamp  =  info.creation_time  + BigInt( this.#config.reveal_delay_seconds );
+
+        for( ; ; )
+        {
+            const block  =  await this.#public_client.getBlock();
+            if(  block.number >= target_block  &&  block.timestamp >= target_timestamp  )  return;
+            await new Promise(( resolve ) => setTimeout( resolve, 1_500 ));
+        }
     }
 
-    async #read_erc20( token: Address, fn: "balanceOf" | "allowance", args: readonly Address[] ): Promise<bigint>
+    async #settled_status( intent: GaslessIntent ): Promise<GaslessRelayResult["status"]>
     {
-        return await this.#public_client.readContract({ address: token, abi: ERC20_ABI, functionName: fn, args }) as bigint;
+        const info  =  await this.#bond_info( intent );
+        return BOND_STATUS[ info.status ] ?? "invalid_bond";
     }
+
+    async #bond_info( intent: GaslessIntent ): Promise<{ creation_time: bigint, creation_block: bigint, status: number }>
+    {
+        const info  =  await this.#public_client.readContract({
+            address:      this.#bondroute_address,
+            abi:          BONDROUTE_BOND_INFO_ABI,
+            functionName: "__OFF_CHAIN__get_bond_info",
+            args:         [ intent.commitment_hash, intent.stake ],
+        });
+        return { creation_time: info.creation_time, creation_block: info.creation_block, status: Number( info.status ) };
+    }
+}
+
+
+// ━━━━  SERIALIZATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function deserialize_intent( intent: SerializedGaslessIntent ): GaslessIntent
+{
+    return {
+        helper:          intent.helper,
+        relayer:         intent.relayer,
+        relayer_fee:     { token: intent.relayer_fee.token, amount: BigInt( intent.relayer_fee.amount ) },
+        stake:           { token: intent.stake.token, amount: BigInt( intent.stake.amount ) },
+        create_deadline: BigInt( intent.create_deadline ),
+        commitment_hash: intent.commitment_hash,
+    };
+}
+
+function hash_token_amount( token_amount: { token: Address, amount: bigint } ): Hex
+{
+    return keccak256( encodeAbiParameters(
+        [ { type: "bytes32" }, { type: "address" }, { type: "uint256" } ],
+        [ TOKEN_AMOUNT_TYPE_HASH, token_amount.token, token_amount.amount ]
+    ) );
 }

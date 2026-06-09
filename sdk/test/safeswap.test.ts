@@ -10,6 +10,7 @@ import {
     SafeSwap,
     SafeSwapSwaps,
     SafeSwapPositions,
+    compute_gasless_type_hash,
     explain_safeswap_revert,
     parse_safeswap_revert,
 } from "../SafeSwap";
@@ -760,5 +761,27 @@ describe( "explain_safeswap_revert", () => {
 
     test( "returns a generic explanation for unknown revert data", () => {
         expect( explain_safeswap_revert( "0xdeadbeef" ) ).toBe( "SafeSwap reverted with an unknown error." );
+    });
+});
+
+
+// ━━━━  GASLESS TYPE-HASH SPLICE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+describe( "compute_gasless_type_hash (the SafeSwapGaslessBond splice)", () => {
+
+    const BONDROUTE_PREFIX  =  "ExecuteBondAs(TokenAmount[] fundings,TokenAmount stake,uint256 salt,address protocol,";
+
+    test( "re-parents the protocol action tail under the SafeSwapGaslessBond prefix (matches the on-chain delegate)", () => {
+        const protocol_string  =  `${ BONDROUTE_PREFIX }Foo bar)Foo(uint256 x)TokenAmount(address token,uint256 amount)`;
+
+        const expected  =  keccak256( toBytes(
+            "SafeSwapGaslessBond(address helper,address relayer,TokenAmount relayer_fee,TokenAmount stake,uint256 create_deadline,bytes32 commitment_hash,Foo bar)Foo(uint256 x)TokenAmount(address token,uint256 amount)"
+        ) );
+
+        expect( compute_gasless_type_hash( protocol_string ) ).toBe( expected );
+    });
+
+    test( "throws when the protocol string lacks the BondRoute ExecuteBondAs prefix", () => {
+        expect( () => compute_gasless_type_hash( "WrongRoot(uint256 x)" ) ).toThrow( /ExecuteBondAs prefix/ );
     });
 });
