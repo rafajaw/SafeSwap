@@ -36,6 +36,7 @@ fs_permissions = [
     { access = "read", path = "./out-deploy-nft" },
     { access = "read", path = "./out-deploy-descriptor" },
     { access = "read", path = "./out-deploy-signing-descriptor" },
+    { access = "read", path = "./out-deploy-relayer" },
 ]
 
 # Deployment profiles compile one deployable contract family per artifact dir, so each deployed bytecode can use the
@@ -90,6 +91,19 @@ skip = [
     "contracts/Hook/**",
     "contracts/Nft/SafeSwapNft.sol",
     "contracts/Nft/SafeSwapPositionDescriptor.sol"
+]
+
+# The 7702 relayer delegate depends only on lib code (BondRoute interfaces + Solady), so it isolates from every SafeSwap family.
+[profile.deploy_relayer]
+out = "out-deploy-relayer"
+optimizer_runs = 25_000
+skip = [
+    "test/**",
+    "script/**",
+    "contracts/Router/**",
+    "contracts/Hook/**",
+    "contracts/Nft/**",
+    "contracts/Common/**"
 ]
 
 [invariant]

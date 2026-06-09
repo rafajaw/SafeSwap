@@ -235,6 +235,25 @@ Decisions already baked into both references (see the docs for the why):
       wrapper), registered in `TestManifest.sol`. NOTE for the signing path: render `Action` amounts with `FULL_PRECISION`,
       never the card helpers; the raw `uint256` typed envelope field stays the hard anchor.
 
+## Gasless relayer (EIP-7702)
+
+- [x] Add the EIP-7702 relayer delegate (`contracts/Relayer/Relayer.sol`): the user's EOA delegates to it so it runs *as the
+      user's account*. Single entrypoint `approve_fundings_and_execute_bond_as_user` (approve funding tokens via Solady
+      `safeApproveWithRetry`, then `BondRoute.execute_bond_as`, which verifies the user's signature) plus a `receive()` for
+      native released back to the EOA mid-execution. **Execute-only by design:** a user-fund-staking `create` delegate was
+      rejected because it can't be gated by the reused `execute_bond_as` signature (the signature binds fundings/call via
+      EIP-712 hashes; the commitment binds them via different plain hashes; at commit, opaquely, the two are independent, so a
+      griefer could lock the user's stake into an unexecutable bond). The relayer instead fronts and creates the bond from its
+      own inventory (`create_bond` from the relayer key), so user funds are never staked. Tests + manifest in `test/Relayer/`;
+      full rationale in `FRONTEND_SPEC_DECISIONS.md`.
+- [x] Add the `deploy_relayer` `foundry.toml` profile (isolated artifact dir + size check, following the per-family pattern).
+      Current size: Relayer 1,709 bytes runtime at 25,000 runs (22,867-byte EIP-170 margin).
+- [ ] Deploy the relayer delegate and **publish its address** (the canonical 7702 delegation target the relayer backend and
+      frontend point at); wire it into the deploy tooling alongside router / NFT / treasury / descriptors, and into the
+      ChainConfig key publication checklist.
+- [ ] Cover the **execute-path funding pull** (native + ERC20) through the SafeSwap real-env integration: a real protocol that
+      consumes fundings plus a signed execution end-to-end. Deferred from the Relayer unit suite (noted in its manifest).
+
 ## Release readiness
 
 - [ ] Add deployed-address / target-chain-fork tests for canonical BondRoute + ChainConfig + V4 PoolManager, including native
