@@ -381,7 +381,12 @@ export type RelayRequest = {
     execution_data:     SerializedExecutionData;
     /** The 7702 authorization, or `null` when the EOA is already delegated to this delegate (no re-delegation needed). */
     authorization:      SafeSwapAuthorization | null;
+    /** Optional human summary (what / how much) the relayer stores so it can echo it back in activity. */
+    summary?:           GaslessSummary;
 };
+
+/** Human summary the client signs for, surfaced in activity without decoding calldata server-side. */
+export type GaslessSummary  =  { kind: string, pay?: string, receive?: string };
 
 /** JSON-safe `(token, amount)` pair (bigint amount rendered as a decimal string). */
 export type SerializedTokenAmount = { token: Address, amount: string };
@@ -405,15 +410,32 @@ export type SerializedExecutionData = {
     call:     Hex;
 };
 
-/** Outcome of a gasless relay round-trip. `status` mirrors the BondRoute settlement discriminator. */
-export type GaslessRelayResult = {
-    status:          "executed" | "protocol_reverted" | "invalid_bond" | "liquidated";
-    commitment_hash?: Hex;
-    create_tx_hash?:  Hex;
+/** Lifecycle of a gasless bond the relayer tracks (address-keyed, server-authoritative). */
+export type GaslessBondStatus  =  "committed" | "executing" | "executed" | "protocol_reverted" | "failed";
+
+/** What `POST /relay` returns once the bond is committed on-chain — the long reveal+execute then runs server-side. */
+export type GaslessCommit = {
+    id:                   Hex;        // the BondRoute commitment hash — poll `status(id)` / find it in `activity`.
+    create_tx_hash:       Hex;
+    status:               GaslessBondStatus;
+    target_executable_at: number;     // sec epoch the reveal delay elapses.
+};
+
+/** A single bond's public state (no signature/payload), as returned by `GET /status/:id` and within activity. */
+export type GaslessJob = {
+    id:               Hex;
+    summary:          GaslessSummary;
+    status:           GaslessBondStatus;
+    create_tx_hash:   Hex;
     execute_tx_hash?: Hex;
     revert_output?:   Hex;
-    error?:           string;
+    committed_at:     number;
+    settled_at?:      number;
+    eta_seconds:      number;
 };
+
+/** A user's gasless activity, keyed by their connected address. */
+export type GaslessActivity  =  { in_progress: GaslessJob[], recent: GaslessJob[] };
 
 export type ParsedSafeSwapRevert =
     | {
@@ -2043,6 +2065,12 @@ export function get_amounts_for_liquidity( sqrt_price_x96: bigint, sqrt_lower_x9
 // GASLESS  (EIP-7702 relayer)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/** Derive the relayer's base origin from its `/relay` endpoint, so the sibling `/status` and `/activity` URLs can be built. */
+function relay_base( relay_url: string ): string
+{
+    return relay_url.replace( /\/relay\/?$/, "" );
+}
+
 /** Sign EIP-712 typed data with the connected wallet (local account or JSON-RPC), mirroring the BondRoute SDK's path. */
 async function sign_safeswap_typed_data(
     ctx: SafeSwapContext,
@@ -2127,14 +2155,16 @@ export class SafeSwapGasless {
 
     /**
      * Sign and relay a prepared operation gaslessly. The user signs only (off-chain): one `SafeSwapGaslessBond` intent and a
-     * 7702 authorization. The relayer drives the commit + execute phases as the user's EOA. The returned promise resolves
-     * once the relayer has driven the bond to settlement.
+     * 7702 authorization. The relayer commits the bond and **returns immediately** with a `GaslessCommit` handle; the reveal
+     * delay and execute run server-side. Poll `status(id)` / `await_settlement(id)`, or list `activity(address)` — because the
+     * bond is server-tracked, the caller can drop the promise (close the tab) and re-derive state later.
      *
      * @param opts.on_signed  Fired once the user's signatures are collected and just before the relayer round-trip begins, so
      *                        a UI can advance from a "Sign" step to an "In progress" step at the real boundary.
+     * @param opts.summary    A human "what / how much" the relayer stores and echoes back in activity.
      * @throws if the relayer is not configured.
      */
-    async relay( operation: PreparedSafeSwapOperation, opts?: { on_signed?: () => void } ): Promise<GaslessRelayResult>
+    async relay( operation: PreparedSafeSwapOperation, opts?: { on_signed?: () => void, summary?: GaslessSummary } ): Promise<GaslessCommit>
     {
         const relay     =  this.#require_relay();
         const chain_id  =  this.#ctx.bond_route.public_client.chain?.id ?? await this.#ctx.bond_route.public_client.getChainId();
@@ -2154,6 +2184,7 @@ export class SafeSwapGasless {
             signature,
             execution_data: serialize_execution_data( operation.execution_data ),
             authorization,
+            summary: opts?.summary,
         };
 
         const response  =  await fetch( relay.url, {
@@ -2163,7 +2194,49 @@ export class SafeSwapGasless {
         });
         if(  response.ok === false  )  throw new Error( `SafeSwap relayer returned ${ response.status }: ${ await response.text() }` );
 
-        return await response.json() as GaslessRelayResult;
+        return await response.json() as GaslessCommit;
+    }
+
+    /** A single gasless bond's current status by its `GaslessCommit.id`, or `null` if the relayer has no record of it. */
+    async status( id: Hex ): Promise<GaslessJob | null>
+    {
+        const relay     =  this.#require_relay();
+        const response  =  await fetch( `${ relay_base( relay.url ) }/status/${ id }` );
+        if(  response.status === 404  )  return null;
+        if(  response.ok === false  )    throw new Error( `SafeSwap relayer returned ${ response.status }: ${ await response.text() }` );
+        return await response.json() as GaslessJob;
+    }
+
+    /** The connected user's in-progress + recent gasless activity (defaults to the SDK account's address). */
+    async activity( address?: Address ): Promise<GaslessActivity>
+    {
+        const relay     =  this.#require_relay();
+        const user      =  address ?? ( typeof this.#ctx.account === "string"  ?  this.#ctx.account  :  this.#ctx.account.address );
+        const response  =  await fetch( `${ relay_base( relay.url ) }/activity/${ user }` );
+        if(  response.ok === false  )  throw new Error( `SafeSwap relayer returned ${ response.status }: ${ await response.text() }` );
+        return await response.json() as GaslessActivity;
+    }
+
+    /**
+     * Poll a committed bond until it settles (executed / protocol_reverted / failed) and return the terminal job. Dropping
+     * this promise is safe — the relayer drives the bond to settlement regardless, and `status`/`activity` re-derive it.
+     */
+    async await_settlement( id: Hex, opts?: { on_update?: ( job: GaslessJob ) => void, interval_ms?: number, timeout_ms?: number } ): Promise<GaslessJob>
+    {
+        const interval  =  opts?.interval_ms ?? 2_000;
+        const deadline  =  Date.now() + ( opts?.timeout_ms ?? 600_000 );
+
+        for( ; ; )
+        {
+            const job  =  await this.status( id );
+            if(  job !== null  )
+            {
+                opts?.on_update?.( job );
+                if(  job.status === "executed" || job.status === "protocol_reverted" || job.status === "failed"  )  return job;
+            }
+            if(  Date.now() > deadline  )  throw new Error( `Timed out awaiting settlement of bond ${ id }.` );
+            await new Promise(( resolve ) => setTimeout( resolve, interval ));
+        }
     }
 
     /**
