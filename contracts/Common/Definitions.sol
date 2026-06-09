@@ -4,10 +4,11 @@ pragma solidity ^0.8.30;
 
 // ━━━━  EXTERNAL AUTHORITIES  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// *PLACEHOLDER*  -  Replace with the canonical SafeSwap protocol config-signer address before mainnet deploy.
-// Keyspace under which the PoolManager (and other chain-scoped) entries must be signed in ChainConfig.
-// Decoupled from the operational protocol treasury so each role can rotate independently.
-address constant CONFIG_SIGNER  =  0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF;  // ***TODO*** - Fix before deployment!
+// The canonical SafeSwap protocol config signer. Every contract reads its ChainConfig entries from this address's namespace,
+// so it is baked into all bytecode at construction. The signer attests (EIP-712) each chain's PoolManager / treasury / router
+// / NFT / descriptor / hook-codehash entries via `ChainConfig.write_config_as`. Decoupled from the operational treasury so
+// each role can rotate independently.
+address constant CONFIG_SIGNER                         =  0xE4973e186163aAaa7970272356eaB773d23E6916;
 bytes32 constant POOL_MANAGER_KEY                      =  bytes32("uniswap_v4/pool_manager");
 bytes32 constant INITIAL_TREASURY_KEY                  =  bytes32("safeswap/initial_treasury");
 bytes32 constant SAFESWAP_ROUTER_KEY                   =  bytes32("safeswap/router");
