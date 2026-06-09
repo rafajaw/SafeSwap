@@ -306,9 +306,14 @@ export class Relayer {
             ...( request.authorization === null ? {} : { authorizationList: [ request.authorization ] } ),
         };
 
-        const hash  =  await this.#wallet_client.writeContract( params as Parameters<WalletClient["writeContract"]>[0] );
+        const hash     =  await this.#wallet_client.writeContract( params as Parameters<WalletClient["writeContract"]>[0] );
+        const receipt  =  await this.#public_client.waitForTransactionReceipt({ hash });
 
-        await this.#public_client.waitForTransactionReceipt({ hash });
+        // `waitForTransactionReceipt` does NOT throw on a reverted tx, so check explicitly — otherwise a reverted commit would
+        // be treated as success and persist a phantom bond that `resume_pending` retries forever. (A BondRoute *protocol*
+        // revert does not revert this tx; it settles with a non-EXECUTED status, surfaced by `#settled_status`.)
+        if(  receipt.status !== "success"  )  throw new Error( `${ function_name } transaction ${ hash } reverted on-chain.` );
+
         return hash;
     }
 
