@@ -1,0 +1,262 @@
+<!doctype html>
+<!--
+  SafeSwap ChainConfig signer — a hardware-wallet-friendly tool to attest the per-chain ChainConfig entries the SafeSwap
+  contracts read at construction. Open this file in a browser with an injected wallet (MetaMask / Frame / Rabby) bridging your
+  Ledger/Trezor. It builds the EIP-712 `Config` typed data exactly as ChainConfig hashes it, signs it via eth_signTypedData_v4
+  (so the device DISPLAYS the fields), shows the digest + recovered signer, and can submit `write_config_as` and read back.
+
+  The signed key is the STRING form (e.g. "safeswap/router"); on-chain the same string is read as its left-justified bytes32.
+  Signer = the canonical CONFIG_SIGNER baked into the contracts. Submitter (gas) can be the same hardware account.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SafeSwap · ChainConfig signer</title>
+<style>
+  :root { --bg:#0f1115; --surface:#161a1f; --line:#ffffff14; --green:#37d6a3; --amber:#e0b54a; --red:#e06a5a; --t90:#ffffffe6; --t60:#ffffff99; --t40:#ffffff66; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--t90); font:14px/1.5 Inter, system-ui, sans-serif; padding:28px; }
+  .wrap { max-width:860px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 2px; } h1 b { color:var(--green); }
+  .sub { color:var(--t60); margin:0 0 20px; font-size:13px; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--t60); margin:0 0 12px; }
+  label { display:block; font-size:12px; color:var(--t60); margin:0 0 4px; }
+  input, select, textarea { width:100%; background:#0c0e12; border:1px solid var(--line); border-radius:8px; color:var(--t90); padding:8px 10px; font:13px ui-monospace, "Roboto Mono", monospace; }
+  textarea { min-height:160px; resize:vertical; white-space:pre; }
+  input::placeholder { color:var(--t40); }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  .row { display:grid; grid-template-columns:230px 1fr; gap:12px; align-items:center; padding:7px 0; border-top:1px solid #ffffff0a; }
+  .row:first-child { border-top:0; }
+  .row .k { font:12px ui-monospace, monospace; color:var(--t60); }
+  .row .k small { display:block; color:var(--t40); }
+  button { background:var(--green); color:#04130d; border:0; border-radius:9px; padding:10px 16px; font-weight:700; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--t90); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .btns { display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+  pre { background:#0c0e12; border:1px solid var(--line); border-radius:8px; padding:12px; overflow:auto; font-size:12px; white-space:pre-wrap; word-break:break-all; margin:0; }
+  .ok { color:var(--green); } .warn { color:var(--amber); } .err { color:var(--red); }
+  .pill { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--t60); }
+  code { color:var(--green); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Safe<b>Swap</b> · ChainConfig signer</h1>
+  <p class="sub">Attest the per-chain config the contracts read at construction. Sign on your hardware wallet (EIP-712), then submit <code>write_config_as</code>.</p>
+
+  <div class="card">
+    <h2>Wallet</h2>
+    <div class="btns">
+      <button id="connect">Connect wallet</button>
+      <span id="acct" class="pill">not connected</span>
+    </div>
+    <p class="sub" id="signerNote" style="margin:10px 0 0"></p>
+  </div>
+
+  <div class="card">
+    <h2>Config envelope</h2>
+    <div class="grid3">
+      <div><label>ChainConfig address (verifyingContract)</label><input id="chainconfig" value="0x5Afec0de00EB1c5323C7faA110f67499F744467b" /></div>
+      <div><label>chain_id</label><input id="chainid" placeholder="auto from wallet" /></div>
+      <div><label>timestamp (unix, strictly increasing per key)</label><input id="timestamp" /></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Entries — fill only the keys you're attesting (blanks are skipped)</h2>
+    <div id="entries"></div>
+  </div>
+
+  <div class="card">
+    <h2>Sign (no transaction is sent)</h2>
+    <div class="btns">
+      <button id="sign" disabled>Sign on device</button>
+      <button id="submit" class="ghost" disabled>Submit write_config_as (optional)</button>
+      <button id="read" class="ghost" disabled>Read back (optional)</button>
+    </div>
+    <pre id="out" style="margin-top:14px">Connect a wallet to begin.</pre>
+    <label style="margin-top:14px">Copy this whole blob back to validate it (domain + message + signature):</label>
+    <textarea id="blob" readonly placeholder="the signed payload + signature appears here after you sign" onclick="this.select()"></textarea>
+  </div>
+</div>
+
+<script type="module">
+import {
+  createWalletClient, createPublicClient, custom, getAddress, isAddress, isHex,
+  hashTypedData, recoverTypedDataAddress, stringToHex,
+} from "https://esm.sh/viem@2.50.4";
+
+const CONFIG_SIGNER  = "0xE4973e186163aAaa7970272356eaB773d23E6916";
+
+// The SafeSwap ChainConfig keys (string form) grouped by value type, in dependency order.
+const KEYS = [
+  { key:"uniswap_v4/pool_manager",        kind:"address", hint:"Uniswap V4 PoolManager" },
+  { key:"safeswap/initial_treasury",      kind:"address", hint:"protocol fee treasury" },
+  { key:"safeswap/router",                kind:"address", hint:"SafeSwapRouter", prefill:"0x0000000000000000000000000000000000000001" },
+  { key:"safeswap/nft",                   kind:"address", hint:"SafeSwapNft" },
+  { key:"safeswap/position_descriptor",   kind:"address", hint:"SafeSwapPositionDescriptor" },
+  { key:"safeswap/signing_descriptor",    kind:"address", hint:"SafeSwapSigningDescriptor" },
+  { key:"safeswap/hook_codehash",         kind:"bytes32", hint:"EIP-1167 clone runtime codehash (0x…32 bytes)" },
+  { key:"safeswap/native_token_symbol",   kind:"symbol",  hint:'native symbol as text, e.g. "ETH"', prefill:"ETH" },
+  { key:"safeswap/native_token_decimals", kind:"uint",    hint:"native decimals, e.g. 18", prefill:"18" },
+];
+
+const TYPES = {
+  Config: [
+    { name:"chain_id",  type:"uint256" },
+    { name:"timestamp", type:"uint256" },
+    { name:"addresses", type:"AddressEntry[]" },
+    { name:"bytes32s",  type:"Bytes32Entry[]" },
+    { name:"uints",     type:"UintEntry[]" },
+  ],
+  AddressEntry: [ { name:"key", type:"string" }, { name:"value", type:"address" } ],
+  Bytes32Entry: [ { name:"key", type:"string" }, { name:"value", type:"bytes32" } ],
+  UintEntry:    [ { name:"key", type:"string" }, { name:"value", type:"uint256" } ],
+};
+
+const CHAINCONFIG_ABI = [
+  { type:"function", name:"write_config_as", stateMutability:"nonpayable", outputs:[], inputs:[
+    { name:"config", type:"tuple", components:[
+      { name:"chain_id", type:"uint256" }, { name:"timestamp", type:"uint256" },
+      { name:"addresses", type:"tuple[]", components:[{name:"key",type:"string"},{name:"value",type:"address"}] },
+      { name:"bytes32s",  type:"tuple[]", components:[{name:"key",type:"string"},{name:"value",type:"bytes32"}] },
+      { name:"uints",     type:"tuple[]", components:[{name:"key",type:"string"},{name:"value",type:"uint256"}] },
+    ]},
+    { name:"signer", type:"address" }, { name:"signature", type:"bytes" }, { name:"is_eip1271", type:"bool" },
+  ]},
+  { type:"function", name:"read_address", stateMutability:"view", inputs:[{name:"signer",type:"address"},{name:"key",type:"string"}], outputs:[{type:"address"}] },
+];
+
+const $ = (id) => document.getElementById(id);
+const out = $("out");
+let wallet = null, pub = null, account = null, chainId = null, lastConfig = null, lastSignature = null;
+
+// Case-insensitive address: accept any 0x+40hex (vanity casing like 0x5Afec0de… is NOT EIP-55-checksummed), normalize to
+// canonical checksum without throwing. Address case is irrelevant to EIP-712 (the 20 bytes are hashed).
+function toAddr(raw, label) {
+  const v = (raw || "").trim();
+  if (!isAddress(v, { strict: false })) throw new Error(`${label}: not a valid address (${raw})`);
+  return getAddress(v.toLowerCase());
+}
+
+// ── Render entry rows ──
+$("entries").innerHTML = KEYS.map((k, i) => `
+  <div class="row">
+    <div class="k">${k.key}<small>${k.hint}</small></div>
+    <input id="v${i}" value="${k.prefill || ''}" placeholder="${k.kind === 'address' ? '0x…' : k.kind === 'bytes32' ? '0x… (32 bytes)' : k.kind === 'symbol' ? 'ETH' : k.kind === 'uint' ? '18' : ''}" />
+  </div>`).join("");
+$("timestamp").value = Math.floor(Date.now() / 1000);
+
+// ── Connect ──
+$("connect").onclick = async () => {
+  if (!window.ethereum) return log("No injected wallet found. Install MetaMask / Frame / Rabby (bridging your Ledger).", "err");
+  try {
+    wallet = createWalletClient({ transport: custom(window.ethereum) });
+    pub    = createPublicClient({ transport: custom(window.ethereum) });
+    const [addr] = await wallet.requestAddresses();
+    account = getAddress(addr);
+    chainId = await pub.getChainId();
+    $("acct").textContent = `${account.slice(0,8)}…${account.slice(-6)} · chain ${chainId}`;
+    $("chainid").value = chainId;
+    const matches = account.toLowerCase() === CONFIG_SIGNER.toLowerCase();
+    $("signerNote").innerHTML = matches
+      ? `<span class="ok">✓ connected account is the canonical CONFIG_SIGNER</span>`
+      : `<span class="warn">⚠ connected account is NOT the CONFIG_SIGNER (${CONFIG_SIGNER}). Signing will recover to a different address; the contracts won't read this namespace.</span>`;
+    $("sign").disabled = false; $("read").disabled = false;
+    log("Connected. Fill the entries you're attesting, then Sign.", "ok");
+  } catch (e) { log(`Connect failed: ${e.message || e}`, "err"); }
+};
+
+// ── Build Config from the filled rows ──
+function buildConfig() {
+  const addresses = [], bytes32s = [], uints = [];
+  KEYS.forEach((k, i) => {
+    const raw = $(`v${i}`).value.trim();
+    if (!raw) return;
+    if (k.kind === "address") {
+      addresses.push({ key:k.key, value: toAddr(raw, k.key) });
+    } else if (k.kind === "bytes32") {
+      if (!isHex(raw) || raw.length !== 66) throw new Error(`${k.key}: expected a 32-byte 0x hex`);
+      bytes32s.push({ key:k.key, value:raw });
+    } else if (k.kind === "symbol") {
+      bytes32s.push({ key:k.key, value: stringToHex(raw, { size: 32 }) });
+    } else if (k.kind === "uint") {
+      uints.push({ key:k.key, value: BigInt(raw) });
+    }
+  });
+  if (!addresses.length && !bytes32s.length && !uints.length) throw new Error("No entries filled.");
+  return {
+    chain_id:  BigInt($("chainid").value || chainId),
+    timestamp: BigInt($("timestamp").value),
+    addresses, bytes32s, uints,
+  };
+}
+
+function typedData(config) {
+  return {
+    domain: { name:"ChainConfig", version:"1", chainId: Number(config.chain_id), verifyingContract: toAddr($("chainconfig").value, "ChainConfig address") },
+    types: TYPES, primaryType: "Config", message: config,
+  };
+}
+
+// ── Sign ──
+$("sign").onclick = async () => {
+  try {
+    const config = buildConfig();
+    const td = typedData(config);
+    const digest = hashTypedData(td);
+    log(`Requesting device signature…\n\ndigest (matches __OFF_CHAIN__hash_config):\n${digest}`, "");
+    const signature = await wallet.signTypedData({ account, ...td });
+    const recovered = await recoverTypedDataAddress({ ...td, signature });
+    const ok = recovered.toLowerCase() === CONFIG_SIGNER.toLowerCase();
+    lastConfig = config; lastSignature = signature;
+    $("submit").disabled = false;
+    log([
+      `digest:    ${digest}`,
+      `signature: ${signature}`,
+      `recovered: ${recovered}`,
+      ok ? `✓ recovers to CONFIG_SIGNER — this attestation is valid for the deployed contracts.`
+         : `⚠ recovers to ${recovered}, NOT CONFIG_SIGNER (${CONFIG_SIGNER}).`,
+    ].join("\n"), ok ? "ok" : "warn");
+    // Self-contained blob for independent validation: everything needed to recompute the digest + recover the signer.
+    $("blob").value = json({ domain: td.domain, message: config, signature, digest, recovered });
+  } catch (e) { log(`Sign failed: ${e.message || e}`, "err"); }
+};
+
+// ── Submit write_config_as (any account can pay gas; the signature carries the authority) ──
+$("submit").onclick = async () => {
+  if (!lastConfig || !lastSignature) return;
+  try {
+    log("Submitting write_config_as… (this is a transaction — confirm in your wallet)", "");
+    const hash = await wallet.writeContract({
+      account, chain: null, address: toAddr($("chainconfig").value, "ChainConfig address"), abi: CHAINCONFIG_ABI,
+      functionName: "write_config_as", args: [lastConfig, CONFIG_SIGNER, lastSignature, false],
+    });
+    log(`Submitted. tx: ${hash}\nWaiting for receipt…`, "");
+    const r = await pub.waitForTransactionReceipt({ hash });
+    log(`write_config_as ${r.status === "success" ? "succeeded ✓" : "REVERTED ✗"} — tx ${hash}`, r.status === "success" ? "ok" : "err");
+  } catch (e) { log(`Submit failed: ${e.shortMessage || e.message || e}`, "err"); }
+};
+
+// ── Read back the address entries under CONFIG_SIGNER ──
+$("read").onclick = async () => {
+  try {
+    const addr = toAddr($("chainconfig").value, "ChainConfig address");
+    const rows = [];
+    for (const k of KEYS.filter(k => k.kind === "address")) {
+      try {
+        const v = await pub.readContract({ address: addr, abi: CHAINCONFIG_ABI, functionName: "read_address", args: [CONFIG_SIGNER, k.key] });
+        rows.push(`${k.key.padEnd(30)} ${v}`);
+      } catch { rows.push(`${k.key.padEnd(30)} (unset)`); }
+    }
+    log(`read_address(CONFIG_SIGNER, key):\n\n${rows.join("\n")}`, "");
+  } catch (e) { log(`Read failed: ${e.message || e}`, "err"); }
+};
+
+function json(o) { return JSON.stringify(o, (_, v) => typeof v === "bigint" ? v.toString() : v, 2); }
+function log(msg, cls) { out.className = cls || ""; out.textContent = msg; }
+</script>
+</body>
+</html>
