@@ -113,15 +113,15 @@ contract SafeSwap7702Delegate is EIP712 {
 
     /// @dev The only two protocols this delegate will drive, resolved from ChainConfig at deploy (canonical SafeSwap source,
     ///      same as the router/NFT read their own dependencies). Checked on-chain against `execution_data.protocol`.
-    address public immutable SAFE_SWAP_ROUTER;
-    address public immutable SAFE_SWAP_NFT;
+    address public immutable SafeSwapRouter;
+    address public immutable SafeSwapNft;
 
     constructor( )
     EIP712( "SafeSwap Gasless", "1" )
     {
         THIS_DELEGATE     =  address(this);
-        SAFE_SWAP_ROUTER  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_ROUTER_KEY );
-        SAFE_SWAP_NFT     =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_NFT_KEY );
+        SafeSwapRouter  =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_ROUTER_KEY );
+        SafeSwapNft     =  ChainConfig.read_address( CONFIG_SIGNER, SAFESWAP_NFT_KEY );
     }
 
     /**
@@ -277,10 +277,10 @@ contract SafeSwap7702Delegate is EIP712 {
 
     function _validate_supported_protocol( address protocol ) private view
     {
-        if(  protocol == SAFE_SWAP_ROUTER  )  return;
-        if(  protocol == SAFE_SWAP_NFT  )     return;
+        if(  protocol == SafeSwapRouter  )  return;
+        if(  protocol == SafeSwapNft  )     return;
 
-        revert UnsupportedProtocol({ protocol: protocol, safe_swap_router: SAFE_SWAP_ROUTER, safe_swap_nft: SAFE_SWAP_NFT });
+        revert UnsupportedProtocol({ protocol: protocol, safe_swap_router: SafeSwapRouter, safe_swap_nft: SafeSwapNft });
     }
 
     /// @dev Revert unless running as a 7702-delegated EOA, not a direct call on the deployed artifact (see `THIS_DELEGATE`).
