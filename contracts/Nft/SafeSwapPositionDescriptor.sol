@@ -15,8 +15,8 @@ pragma solidity ^0.8.30;
 
 import { ISafeSwapPositionDescriptor } from "@SafeSwapNft/ISafeSwapPositionDescriptor.sol";
 import { ISafeSwapNft } from "@SafeSwapNft/ISafeSwapNft.sol";
-import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
-import { PriceLib } from "@SafeSwapNft/libraries/PriceLib.sol";
+import { StringHelperLib } from "@SafeSwapCommon/StringHelperLib.sol";
+import { PriceLib } from "@SafeSwapCommon/PriceLib.sol";
 import { SafeSwapPositionInfo } from "@SafeSwapCommon/Types.sol";
 import { SafeSwapCommon } from "@SafeSwapCommon/SafeSwapCommon.sol";
 import {

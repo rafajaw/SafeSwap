@@ -13,7 +13,7 @@ import {
     CollectFeesParams,
     CreatePositionParams,
     RemovePositionLiquidityParams
-} from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
+} from "@SafeSwapNft/ModifyLiquidityLib.sol";
 import { BondStatus } from "@BondRoute/Definitions.sol";
 import { IBondRouteProtected, IERC20, TokenAmount } from "@BondRouteProtected/BondRouteProtected.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";

@@ -6,8 +6,8 @@ import { ISigningLibTests } from "@test/Common/TestManifest.sol";
 
 import { SigningLib } from "@SafeSwapCommon/SigningLib.sol";
 import { PoolInfo } from "@SafeSwapCommon/Types.sol";
-import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
-import { PriceLib } from "@SafeSwapNft/libraries/PriceLib.sol";
+import { StringHelperLib } from "@SafeSwapCommon/StringHelperLib.sol";
+import { PriceLib } from "@SafeSwapCommon/PriceLib.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 
 

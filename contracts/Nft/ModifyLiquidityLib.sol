@@ -17,7 +17,7 @@ import { StateLibrary } from "@UniswapV4Core/libraries/StateLibrary.sol";
 import { TickMath } from "@UniswapV4Core/libraries/TickMath.sol";
 import { SqrtPriceMath } from "@UniswapV4Core/libraries/SqrtPriceMath.sol";
 import { LPFeeLibrary } from "@UniswapV4Core/libraries/LPFeeLibrary.sol";
-import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
+import { StringHelperLib } from "@SafeSwapCommon/StringHelperLib.sol";
 
 
 // ━━━━  ERRORS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

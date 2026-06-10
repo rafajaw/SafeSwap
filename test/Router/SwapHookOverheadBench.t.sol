@@ -7,8 +7,8 @@ import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
 
 import "@SafeSwapCommon/Definitions.sol";
 import { PoolInfo } from "@SafeSwapCommon/Types.sol";
-import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
-import { ExactInputSwapParams } from "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
+import { CreatePositionParams } from "@SafeSwapNft/ModifyLiquidityLib.sol";
+import { ExactInputSwapParams } from "@SafeSwapRouter/ExactInputSwapLib.sol";
 
 import { ExecutionData } from "@BondRoute/Core.sol";
 import { BondStatus } from "@BondRoute/Definitions.sol";

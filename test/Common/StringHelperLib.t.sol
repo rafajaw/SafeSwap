@@ -2,8 +2,8 @@
 pragma solidity ^0.8.30;
 
 import { Test, stdError } from "forge-std/Test.sol";
-import { IStringHelperLibTests } from "@test/Nft/TestManifest.sol";
-import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
+import { IStringHelperLibTests } from "@test/Common/TestManifest.sol";
+import { StringHelperLib } from "@SafeSwapCommon/StringHelperLib.sol";
 
 
 contract StringHelperLibTest is IStringHelperLibTests, Test {

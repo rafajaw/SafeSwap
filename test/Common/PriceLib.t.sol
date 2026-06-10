@@ -2,8 +2,8 @@
 pragma solidity ^0.8.30;
 
 import { Test } from "forge-std/Test.sol";
-import { PriceLib } from "@SafeSwapNft/libraries/PriceLib.sol";
-import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
+import { PriceLib } from "@SafeSwapCommon/PriceLib.sol";
+import { StringHelperLib } from "@SafeSwapCommon/StringHelperLib.sol";
 
 
 contract PriceLibTest is Test {

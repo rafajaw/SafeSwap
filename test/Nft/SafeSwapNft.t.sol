@@ -25,7 +25,7 @@ import {
     InvalidLiquidityModification,
     ModifyLiquidityParams,
     RemovePositionLiquidityParams
-} from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
+} from "@SafeSwapNft/ModifyLiquidityLib.sol";
 import { PoolInfo, SafeSwapPositionInfo } from "@SafeSwapCommon/Types.sol";
 import {
     BondConstraints,

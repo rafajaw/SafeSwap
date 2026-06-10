@@ -6,8 +6,8 @@ import { SafeSwapRealEnv } from "@test/helpers/SafeSwapRealEnv.t.sol";
 import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
 
 import { PoolInfo } from "@SafeSwapCommon/Types.sol";
-import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
-import { ExactInputSwapParams } from "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
+import { CreatePositionParams } from "@SafeSwapNft/ModifyLiquidityLib.sol";
+import { ExactInputSwapParams } from "@SafeSwapRouter/ExactInputSwapLib.sol";
 import { BondStatus } from "@BondRoute/Definitions.sol";
 import { IBondRouteProtected, IERC20, TokenAmount } from "@BondRouteProtected/BondRouteProtected.sol";
 import { IPoolManager } from "@UniswapV4Core/interfaces/IPoolManager.sol";

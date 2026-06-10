@@ -9,7 +9,7 @@ import { TestERC20 } from "@test/helpers/TestERC20.t.sol";
 import { SAFESWAP_POSITIONS_NAME, SAFESWAP_POSITIONS_DESCRIPTION } from "@SafeSwapCommon/Definitions.sol";
 import { PoolInfo } from "@SafeSwapCommon/Types.sol";
 import { SafeSwapCommon } from "@SafeSwapCommon/SafeSwapCommon.sol";
-import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
+import { CreatePositionParams } from "@SafeSwapNft/ModifyLiquidityLib.sol";
 import { BondStatus } from "@BondRoute/Definitions.sol";
 import { IBondRouteProtected, IERC20, TokenAmount } from "@BondRouteProtected/BondRouteProtected.sol";
 import { IERC721Errors } from "@OpenZeppelin/interfaces/draft-IERC6093.sol";

@@ -18,7 +18,7 @@ import { ISafeSwapPositionDescriptor } from "@SafeSwapNft/ISafeSwapPositionDescr
 import { ISafeSwapSigningDescriptor } from "@SafeSwapCommon/ISafeSwapSigningDescriptor.sol";
 import "@SafeSwapCommon/PoolManagerIntegration.sol";
 import "@SafeSwapCommon/SafeSwapCommon.sol";
-import "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
+import "@SafeSwapNft/ModifyLiquidityLib.sol";
 import "@BondRouteProtected/BondRouteProtected.sol";
 import {
     CONFIG_SIGNER,

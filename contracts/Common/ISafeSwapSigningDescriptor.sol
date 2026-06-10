@@ -6,9 +6,9 @@ import {
     AddPositionLiquidityParams,
     CreatePositionParams,
     RemovePositionLiquidityParams
-} from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
-import { ExactInputSwapParams } from "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
-import { ExactOutputSwapParams } from "@SafeSwapRouter/libraries/ExactOutputSwapLib.sol";
+} from "@SafeSwapNft/ModifyLiquidityLib.sol";
+import { ExactInputSwapParams } from "@SafeSwapRouter/ExactInputSwapLib.sol";
+import { ExactOutputSwapParams } from "@SafeSwapRouter/ExactOutputSwapLib.sol";
 
 
 /**

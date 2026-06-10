@@ -26,8 +26,8 @@ import {
 } from "@SafeSwapRelayer/SafeSwap7702Delegate.sol";
 
 import { PoolInfo } from "@SafeSwapCommon/Types.sol";
-import { ExactInputSwapParams } from "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
-import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
+import { ExactInputSwapParams } from "@SafeSwapRouter/ExactInputSwapLib.sol";
+import { CreatePositionParams } from "@SafeSwapNft/ModifyLiquidityLib.sol";
 
 import "@SafeSwapCommon/Definitions.sol";
 import { ExecutionData } from "@BondRoute/Core.sol";

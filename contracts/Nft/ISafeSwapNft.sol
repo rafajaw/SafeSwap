@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import { IERC721 } from "@OpenZeppelin/token/ERC721/IERC721.sol";
 import { SafeSwapPositionInfo } from "@SafeSwapCommon/Types.sol";
-import { CollectFeesParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
+import { CollectFeesParams } from "@SafeSwapNft/ModifyLiquidityLib.sol";
 
 
 interface ISafeSwapNft is IERC721 {

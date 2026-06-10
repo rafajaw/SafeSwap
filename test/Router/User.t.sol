@@ -9,13 +9,13 @@ import "@SafeSwapCommon/Definitions.sol";
 import { HookAddress } from "@SafeSwapCommon/HookAddress.sol";
 import { PoolInfo } from "@SafeSwapCommon/Types.sol";
 import { MaximumInputExceeded, SafeSwapCommon, SlippageExceeded } from "@SafeSwapCommon/SafeSwapCommon.sol";
-import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
+import { CreatePositionParams } from "@SafeSwapNft/ModifyLiquidityLib.sol";
 import { SafeSwapHookImpl } from "@SafeSwapHook/SafeSwapHookImpl.sol";
 import { SafeSwapRouter } from "@SafeSwapRouter/SafeSwapRouter.sol";
 import { SafeSwapSigningDescriptor } from "@SafeSwapCommon/SafeSwapSigningDescriptor.sol";
 import { HookConfigNotRegistered } from "@SafeSwapRouter/HookRegistry.sol";
-import { ExactInputSwapParams } from "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
-import { ExactOutputSwapParams } from "@SafeSwapRouter/libraries/ExactOutputSwapLib.sol";
+import { ExactInputSwapParams } from "@SafeSwapRouter/ExactInputSwapLib.sol";
+import { ExactOutputSwapParams } from "@SafeSwapRouter/ExactOutputSwapLib.sol";
 import { BondStatus } from "@BondRoute/Definitions.sol";
 import {
     BONDROUTE_ADDRESS,

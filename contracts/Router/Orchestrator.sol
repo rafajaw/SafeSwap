@@ -3,8 +3,8 @@ pragma solidity ^0.8.30;
 
 import "@BondRouteProtected/BondRouteProtected.sol";
 import "@SafeSwapCommon/PoolManagerIntegration.sol";
-import "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
-import "@SafeSwapRouter/libraries/ExactOutputSwapLib.sol";
+import "@SafeSwapRouter/ExactInputSwapLib.sol";
+import "@SafeSwapRouter/ExactOutputSwapLib.sol";
 import { IUnlockCallback } from "@UniswapV4Core/interfaces/callback/IUnlockCallback.sol";
 
 

@@ -3,8 +3,8 @@ pragma solidity ^0.8.30;
 
 import "@BondRouteProtected/BondRouteProtected.sol";
 import "@SafeSwapCommon/Types.sol";
-import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
-import { PriceLib } from "@SafeSwapNft/libraries/PriceLib.sol";
+import { StringHelperLib } from "@SafeSwapCommon/StringHelperLib.sol";
+import { PriceLib } from "@SafeSwapCommon/PriceLib.sol";
 import { EfficientHashLib } from "@Solady/utils/EfficientHashLib.sol";
 import { LibString } from "@Solady/utils/LibString.sol";
 import { SqrtPriceMath } from "@UniswapV4Core/libraries/SqrtPriceMath.sol";

@@ -2,8 +2,8 @@
 pragma solidity ^0.8.30;
 
 import "@SafeSwapRouter/User.sol";
-import "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
-import "@SafeSwapRouter/libraries/ExactOutputSwapLib.sol";
+import "@SafeSwapRouter/ExactInputSwapLib.sol";
+import "@SafeSwapRouter/ExactOutputSwapLib.sol";
 import { ISafeSwapSigningDescriptor } from "@SafeSwapCommon/ISafeSwapSigningDescriptor.sol";
 import {
     CONFIG_SIGNER,

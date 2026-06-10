@@ -169,3 +169,54 @@ interface ISigningLibTests {
     function test_build_typed_string_starts_with_envelope_and_ends_with_token_amount() external;
     function test_build_typed_string_offset_points_at_token_amount_definition() external;
 }
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STRINGHELPERLIB.SOL - Shared NFT metadata string formatting helpers.
+// Implemented in: test/Common/StringHelperLib.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface IStringHelperLibTests {
+    function test_epoch_zero() external;
+    function test_one_day() external;
+    function test_leap_year_date() external;
+    function test_time_of_day() external;
+    function test_zero_padding() external;
+    function test_format_bps_as_percent_trims_insignificant_zeroes() external;
+    function test_format_bps_as_percent_string_trims_insignificant_zeroes() external;
+
+    // ─── Token amount formatting (display cap vs canonical FULL_PRECISION) ────────
+    function test_format_token_amount_handles_zero_and_zero_decimal_tokens() external;
+    function test_format_token_amount_caps_fraction_at_max_decimals() external;
+    function test_format_token_amount_full_precision_is_lossless() external;
+    function test_format_token_amount_full_precision_distinguishes_sub_cap_amounts() external;
+    function test_format_token_amount_full_precision_renders_exact_sub_unit() external;
+    function test_format_token_amount_groups_thousands() external;
+    function test_format_token_amount_zero_max_decimals_renders_integer_only() external;
+    function test_format_token_amount_reverts_on_unsupported_decimals() external;
+    function test_format_symbol_amount_appends_symbol() external;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PRICELIB.SOL - Price conversion, range-fill, and compact decimal formatting helpers.
+// Implemented in: test/Common/PriceLib.t.sol
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface IPriceLibTests {
+    function test_price_one_equal_decimals() external;
+    function test_price_one_more_token1_decimals() external;
+    function test_price_one_more_token0_decimals() external;
+    function test_zero_sqrt_price_is_zero() external;
+    function test_tick_zero_matches_q96() external;
+    function test_price_is_monotonic_in_tick() external;
+    function test_eth_usdc_price_approx_3000() external;
+    function test_fill_midpoint() external;
+    function test_fill_clamps_below_and_above() external;
+    function test_fill_degenerate_range() external;
+    function test_format_zero() external;
+    function test_format_thousands() external;
+    function test_format_units_two_decimals() external;
+    function test_format_sub_one_four_decimals() external;
+    function test_format_tiny_plain_decimal_no_exponent() external;
+}

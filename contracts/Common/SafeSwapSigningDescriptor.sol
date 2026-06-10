@@ -14,17 +14,17 @@ import {
     CreatePositionParams,
     ModifyLiquidityLib,
     RemovePositionLiquidityParams
-} from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
+} from "@SafeSwapNft/ModifyLiquidityLib.sol";
 import {
     ExactInputSwapLib,
     ExactInputSwapParams
-} from "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
+} from "@SafeSwapRouter/ExactInputSwapLib.sol";
 import {
     ExactOutputSwapLib,
     ExactOutputSwapParams
-} from "@SafeSwapRouter/libraries/ExactOutputSwapLib.sol";
+} from "@SafeSwapRouter/ExactOutputSwapLib.sol";
 import { UnsupportedCall } from "@BondRouteProtected/BondRouteProtected.sol";
-import { StringHelperLib } from "@SafeSwapNft/libraries/StringHelperLib.sol";
+import { StringHelperLib } from "@SafeSwapCommon/StringHelperLib.sol";
 
 
 /**

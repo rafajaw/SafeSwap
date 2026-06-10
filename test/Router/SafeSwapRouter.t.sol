@@ -11,8 +11,8 @@ import { PoolInfo } from "@SafeSwapCommon/Types.sol";
 import { SafeSwapRouter } from "@SafeSwapRouter/SafeSwapRouter.sol";
 import { SafeSwapSigningDescriptor } from "@SafeSwapCommon/SafeSwapSigningDescriptor.sol";
 import { Invalid, TransferFailed } from "@SafeSwapRouter/Treasury.sol";
-import { CreatePositionParams } from "@SafeSwapNft/libraries/ModifyLiquidityLib.sol";
-import { ExactInputSwapParams } from "@SafeSwapRouter/libraries/ExactInputSwapLib.sol";
+import { CreatePositionParams } from "@SafeSwapNft/ModifyLiquidityLib.sol";
+import { ExactInputSwapParams } from "@SafeSwapRouter/ExactInputSwapLib.sol";
 import { BondStatus } from "@BondRoute/Definitions.sol";
 import { BONDROUTE_ADDRESS, IBondRouteProtected, IERC20, NATIVE_TOKEN, TokenAmount, Unauthorized } from "@BondRouteProtected/BondRouteProtected.sol";
 

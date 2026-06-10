@@ -6,12 +6,14 @@ evm_version = "cancun"  # Max compatibility - still support TSTORE, MCOPY and PU
 optimizer = true
 optimizer_runs = 200
 via_ir = true
-# *DETERMINISM*  -  Strip the source-metadata hash from the bytecode so cosmetic edits (comments / NatSpec / file paths) do NOT
-# change the deployed bytecode — only the actual code + the pinned compiler settings do. This keeps mined CREATE2 hook
-# addresses stable across doc edits, makes builds reproducible across machines, and frees ~50 bytes of EIP-170 headroom.
-# (Trade-off: explorer verification is a runtime/partial match, not a metadata "perfect match" — standard for deterministic
-# CREATE2 deployments.) Inherited by every deploy profile.
-bytecode_hash = "none"
+# *PROVENANCE*  -  Keep the default IPFS source-metadata hash in the bytecode so the deployed contracts embed a verifiable
+# fingerprint of the exact source — enabling a perfect-match explorer verification against the canonical (single-commit) source.
+# The trade-off (deliberate): the bytecode — and therefore every mined CREATE2 hook address — is bound to the EXACT source set:
+# each compiled `.sol`'s content (INCLUDING comments / NatSpec), its file path / folder layout, the pinned `lib/` submodule
+# commits, the remappings, and the compiler settings. So the `contracts/` tree + `lib/` submodules + these settings must be
+# FROZEN before building artifacts and mining; only the frontend / SDK / docs (not in the compile graph) stay free. Reproducible
+# across machines given the same repo layout. Inherited by every deploy profile.
+bytecode_hash = "ipfs"
 ignored_error_codes = [6335, 2424, 2394, 4591]
 extra_output = ["ir", "irOptimized"]
 extra_output_files = ["ir", "irOptimized"]
@@ -74,7 +76,7 @@ skip = [
 [profile.deploy_nft]
 out = "out-deploy-nft"
 solc = "0.8.35"
-optimizer_runs = 25_000  # SafeSwapNft 24,279 B (EIP-170 margin 297) — bisected max; plateau 20k-25k, 30k steps to margin 18
+optimizer_runs = 25_000  # SafeSwapNft 24,320 B (EIP-170 margin 256) — bisected max; plateau 20k-25k, 30k overflows with metadata
 skip = [
     "test/**",
     "script/**",
@@ -87,7 +89,7 @@ skip = [
 [profile.deploy_descriptor]
 out = "out-deploy-descriptor"
 solc = "0.8.35"
-optimizer_runs = 900  # SafeSwapPositionDescriptor 24,210 B (EIP-170 margin 366) — bisected max; tight, 950 steps over the limit
+optimizer_runs = 900  # SafeSwapPositionDescriptor 24,251 B (EIP-170 margin 325) — bisected max; tight, 950 steps over the limit
 skip = [
     "test/**",
     "script/**",
