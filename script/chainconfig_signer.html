@@ -92,15 +92,17 @@ const CONFIG_SIGNER  = "0xE4973e186163aAaa7970272356eaB773d23E6916";
 
 // The SafeSwap ChainConfig keys (string form) grouped by value type, in dependency order.
 const KEYS = [
-  { key:"uniswap_v4/pool_manager",        kind:"address", hint:"Uniswap V4 PoolManager" },
-  { key:"safeswap/initial_treasury",      kind:"address", hint:"protocol fee treasury" },
-  { key:"safeswap/router",                kind:"address", hint:"SafeSwapRouter", prefill:"0x0000000000000000000000000000000000000001" },
-  { key:"safeswap/nft",                   kind:"address", hint:"SafeSwapNft" },
-  { key:"safeswap/position_descriptor",   kind:"address", hint:"SafeSwapPositionDescriptor" },
-  { key:"safeswap/signing_descriptor",    kind:"address", hint:"SafeSwapSigningDescriptor" },
-  { key:"safeswap/hook_codehash",         kind:"bytes32", hint:"EIP-1167 clone runtime codehash (0x…32 bytes)" },
-  { key:"safeswap/native_token_symbol",   kind:"symbol",  hint:'native symbol as text, e.g. "ETH"', prefill:"ETH" },
-  { key:"safeswap/native_token_decimals", kind:"uint",    hint:"native decimals, e.g. 18", prefill:"18" },
+  // PER-CHAIN — fill these each deployment:
+  { key:"uniswap_v4/pool_manager",        kind:"address", hint:"Uniswap V4 PoolManager (per chain — fill in)" },
+  { key:"safeswap/native_token_symbol",   kind:"symbol",  hint:'native symbol, e.g. "ETH" (per chain)' },
+  { key:"safeswap/native_token_decimals", kind:"uint",    hint:"native decimals, e.g. 18 (per chain)" },
+  // FIXED — same on every chain (mined / canonical):
+  { key:"safeswap/initial_treasury",      kind:"address", hint:"protocol fee treasury", prefill:"0xacad46E91d40Ed809AB200EC5cD5eDb074082BbB" },
+  { key:"safeswap/router",                kind:"address", hint:"SafeSwapRouter", prefill:"0x5AFe000018090552d2C02d2884B0B567601332B2" },
+  { key:"safeswap/nft",                   kind:"address", hint:"SafeSwapNft", prefill:"0x7210000035EE7a4336516E1a0F2615C55ACFa043" },
+  { key:"safeswap/position_descriptor",   kind:"address", hint:"SafeSwapPositionDescriptor", prefill:"0x40517107d4EDFeB11118d3cA1CEf372811d2FBec" },
+  { key:"safeswap/signing_descriptor",    kind:"address", hint:"SafeSwapSigningDescriptor", prefill:"0x51571750eEB8726d30c087912D6892E6E040207F" },
+  { key:"safeswap/hook_codehash",         kind:"bytes32", hint:"EIP-1167 clone runtime codehash", prefill:"0x2e34f2757040c52b65c1249d3726d231af1aea6511426a40dd7d7766bccfc9fa" },
 ];
 
 const TYPES = {
