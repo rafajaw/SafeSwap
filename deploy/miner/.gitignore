@@ -1,0 +1,6 @@
+# compiled miner binaries — build from the .rs sources
+miner
+miner3
+# mining run logs / results
+*.log
+*.result
