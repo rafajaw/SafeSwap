@@ -58,12 +58,14 @@ import {
 // CONSTANTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/** Canonical SafeSwap SwapRouter address (same across all chains). ***TODO*** Set before release. */
-export const SAFESWAP_ROUTER_ADDRESS  =  "0x0000000000000000000000000000000000000000" as const;
-/** Canonical SafeSwap NFT position-manager address (same across all chains). ***TODO*** Set before release. */
-export const SAFESWAP_NFT_ADDRESS     =  "0x0000000000000000000000000000000000000000" as const;
-/** Canonical SafeSwap EIP-7702 relayer delegate (the EOA's gasless delegation target). ***TODO*** Set before release. */
-export const SAFESWAP_RELAYER_DELEGATE_ADDRESS  =  "0x0000000000000000000000000000000000000000" as const;
+/** Canonical SafeSwap SwapRouter address — mined; identical on every chain. */
+export const SAFESWAP_ROUTER_ADDRESS  =  "0x5AFe000018090552d2C02d2884B0B567601332B2" as const;
+/** Canonical SafeSwap NFT position-manager address — mined; identical on every chain. */
+export const SAFESWAP_NFT_ADDRESS     =  "0x7210000035EE7a4336516E1a0F2615C55ACFa043" as const;
+/** Canonical SafeSwap EIP-7702 relayer delegate (the EOA's gasless delegation target) — mined; identical on every chain. */
+export const SAFESWAP_RELAYER_DELEGATE_ADDRESS  =  "0x77020000a6eF5B111B27d836403EED4Aa3A39620" as const;
+/** Canonical BondRoute singleton — identical on every chain. */
+export const BONDROUTE_ADDRESS  =  "0xb01d00000000440215e86e0A436f9b59FeB2F14a" as const;
 
 const ZERO_ADDRESS  =  "0x0000000000000000000000000000000000000000" as const;
 

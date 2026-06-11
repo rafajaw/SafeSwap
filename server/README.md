@@ -17,7 +17,7 @@ server-side, by design. Load it however you prefer, e.g. `deno run --env-file=.e
 
 ```jsonc
 {
-  "chain_id":           130,
+  "chain_id":           1301,
   "user":               "0x...",       // the user's EOA (7702 delegation target + EIP-712 verifyingContract)
   "intent": {                           // the SafeSwapGaslessBond the user signed off-chain
     "helper":          "0x<delegate>",
@@ -31,7 +31,7 @@ server-side, by design. Load it however you prefer, e.g. `deno run --env-file=.e
   "action_struct_hash": "0x...",        // the protocol action's struct hash
   "signature":          "0x...",        // SafeSwapGaslessBond, signed off-chain by the user
   "execution_data":     { "fundings": [...], "stake": {...}, "salt": "...", "protocol": "0x...", "call": "0x..." },
-  "authorization":      { "chainId": 130, "address": "0x<delegate>", "nonce": 0, "r": "0x...", "s": "0x...", "yParity": 0 }
+  "authorization":      { "chainId": 1301, "address": "0x<delegate>", "nonce": 0, "r": "0x...", "s": "0x...", "yParity": 0 }
 }
 ```
 
@@ -64,6 +64,6 @@ the one exercised locally.)*
 `request.authorization` may be `null`; the relayer then submits without an `authorizationList`. The execute always submits
 without one (the commit already delegated the EOA).
 
-> **Build-to-spec note.** SafeSwap is not yet deployed; the addresses above are placeholders. This server is complete to
-> spec but unverified end-to-end against a live chain — it needs deployed contracts and a funded relayer key on Unichain.
+> **Note.** SafeSwap is deployed on Unichain Sepolia (chain 1301); the canonical contract addresses are hardcoded in
+> `config.ts` (identical on every chain), so the only per-chain config is the RPC, chain id, relayer key, and native price.
 > The two 7702 phases can't be live-`estimateGas`-d before delegation, so `relayer.ts` uses conservative static gas ceilings.

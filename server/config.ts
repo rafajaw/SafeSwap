@@ -10,6 +10,12 @@ const DEFAULT_STATIC_DIR       =  "../frontend/dist";
 /** The relayer refuses to sponsor any operation whose estimated total gas exceeds this USD ceiling. */
 export const MAX_RELAY_COST_USD  =  1;
 
+// Mined SafeSwap / BondRoute addresses — identical on every chain, so hardcoded (not env) to remove a per-deploy error surface.
+const SAFESWAP_ROUTER_ADDRESS            =  "0x5AFe000018090552d2C02d2884B0B567601332B2";
+const SAFESWAP_NFT_ADDRESS               =  "0x7210000035EE7a4336516E1a0F2615C55ACFa043";
+const SAFESWAP_RELAYER_DELEGATE_ADDRESS  =  "0x77020000a6eF5B111B27d836403EED4Aa3A39620";
+const BONDROUTE_ADDRESS                  =  "0xb01d00000000440215e86e0A436f9b59FeB2F14a";
+
 // Blocks/seconds to wait between commit and execute. SafeSwap's reveal floor is 3 blocks / 2 seconds; the defaults add a
 // small margin so the post-delay execute never reverts as "not executable yet". Override per chain via the environment.
 const DEFAULT_REVEAL_DELAY_BLOCKS   =  4;
@@ -62,10 +68,10 @@ export function load_config(): RelayerConfig
         rpc_url:                  require_env( "RELAYER_RPC_URL" ),
         chain_id:                 Number( require_env( "RELAYER_CHAIN_ID" ) ),
         relayer_private_key:      require_env( "RELAYER_PRIVATE_KEY" ) as Hex,
-        router_address:           getAddress( require_env( "SAFESWAP_ROUTER_ADDRESS" ) ),
-        nft_address:              getAddress( require_env( "SAFESWAP_NFT_ADDRESS" ) ),
-        relayer_delegate_address: getAddress( require_env( "SAFESWAP_RELAYER_DELEGATE_ADDRESS" ) ),
-        bondroute_address:        optional_env( "BONDROUTE_ADDRESS" ) === undefined ? undefined : getAddress( optional_env( "BONDROUTE_ADDRESS" )! ),
+        router_address:           getAddress( SAFESWAP_ROUTER_ADDRESS ),
+        nft_address:              getAddress( SAFESWAP_NFT_ADDRESS ),
+        relayer_delegate_address: getAddress( SAFESWAP_RELAYER_DELEGATE_ADDRESS ),
+        bondroute_address:        getAddress( BONDROUTE_ADDRESS ),
         native_usd_price:         native_usd_price_raw === undefined ? undefined : Number( native_usd_price_raw ),
         reveal_delay_blocks:      Number( optional_env( "RELAYER_REVEAL_DELAY_BLOCKS" )  ?? DEFAULT_REVEAL_DELAY_BLOCKS ),
         reveal_delay_seconds:     Number( optional_env( "RELAYER_REVEAL_DELAY_SECONDS" ) ?? DEFAULT_REVEAL_DELAY_SECONDS ),

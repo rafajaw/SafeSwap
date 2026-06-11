@@ -41,11 +41,6 @@ export function useSafeSwap(): SafeSwapContextValue
     return value;
 }
 
-function not_configured(): boolean
-{
-    return SAFESWAP_ROUTER_ADDRESS === "" || SAFESWAP_NFT_ADDRESS === "";
-}
-
 export function SafeSwapProvider( props: { children: ReactNode } )
 {
     const [ status, set_status ]      =  useState<ConnectionStatus>( "idle" );
@@ -94,12 +89,6 @@ export function SafeSwapProvider( props: { children: ReactNode } )
     const connect  =  useCallback( async () => {
         set_error( null );
 
-        if(  not_configured()  )
-        {
-            set_status( "error" );
-            set_error( "SafeSwap is not configured on this build. Set VITE_SAFESWAP_ROUTER_ADDRESS and VITE_SAFESWAP_NFT_ADDRESS." );
-            return;
-        }
         if(  has_wallet_provider() === false  )
         {
             set_status( "no_wallet" );
@@ -116,7 +105,7 @@ export function SafeSwapProvider( props: { children: ReactNode } )
                 account:           connection.address,
                 router_address:    SAFESWAP_ROUTER_ADDRESS as `0x${string}`,
                 nft_address:       SAFESWAP_NFT_ADDRESS as `0x${string}`,
-                bondroute_address: BONDROUTE_ADDRESS === "" ? undefined : BONDROUTE_ADDRESS as `0x${string}`,
+                bondroute_address: BONDROUTE_ADDRESS,
                 // relayer_fee omitted → the SDK defaults it to zero (no relayer fee for now); create_deadline_seconds → SDK default.
                 relay:             RELAYER_CONFIGURED ? {
                     url:             RELAY_URL,
