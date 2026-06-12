@@ -42,12 +42,14 @@ export function MinimumBound( props: {
     value:    string;
     onChange: ( value: string ) => void;
     symbol:   string;
-    kind:     "receive" | "pay" | "deposit";
+    kind:     "receive" | "pay" | "deposit" | "deposit_cap";
 } )
 {
-    const verb  =  props.kind === "receive" ? "You'll get at least this or the action reverts."
-                :  props.kind === "pay"     ? "You'll pay at most this or the action reverts."
-                :                             "You'll deposit at least this or the action reverts.";
+    // Deposit fields (add-liquidity) are self-explanatory from their labels; the helper lines just add noise there. Keep the
+    // guidance only for the swap min/max (receive / pay).
+    const is_deposit  =  props.kind === "deposit" || props.kind === "deposit_cap";
+    const verb  =  props.kind === "pay" ? "You'll pay at most this or the action reverts."
+                :                          "You'll get at least this or the action reverts.";
 
     return (
         <div className="stack" style={ { gap: 6 } }>
@@ -56,8 +58,8 @@ export function MinimumBound( props: {
                 <span className="tiny muted">{ props.symbol }</span>
             </div>
             <input className="input mono" value={ props.value } onChange={ ( event ) => props.onChange( event.target.value ) } />
-            <span className="tiny muted">{ verb }</span>
-            <span className="tiny" style={ { color: "var(--green-dim)" } }>Protected execution means no bots can take the gap — set it as safe as you like.</span>
+            { is_deposit === false && <span className="tiny muted">{ verb }</span> }
+            { is_deposit === false && <span className="tiny" style={ { color: "var(--green-dim)" } }>Protected execution means no bots can take the gap — set it as safe as you like.</span> }
         </div>
     );
 }

@@ -21,13 +21,17 @@ const HUGE_COUNTERPART       =  2n ** 120n;   // lets get_liquidity_for_amounts 
 type RangeMode  =  "full" | "custom";
 
 /** Screen 4 — Create position (launch-pool + create-in-existing, one call). */
-export function CreateScreen( props: { onBack: () => void } )
+export function CreateScreen( props: { onBack: () => void, initial?: { token0: TokenInfo, token1: TokenInfo, profile: SafeSwapProfile } } )
 {
-    const { safeswap, tokens, profiles, relayer_configured, record_receipt, refresh_pending }  =  useSafeSwap();
+    const { safeswap, tokens, profiles, relayer_configured, record_receipt, refresh_pending, refresh_activity }  =  useSafeSwap();
 
-    const [ token_a, set_a ]          =  useState<TokenInfo | null>( tokens[0] ?? null );
-    const [ token_b, set_b ]          =  useState<TokenInfo | null>( null );
-    const [ profile_index, set_prof ] =  useState( 0 );
+    const [ token_a, set_a ]          =  useState<TokenInfo | null>( props.initial?.token0 ?? tokens[0] ?? null );
+    const [ token_b, set_b ]          =  useState<TokenInfo | null>( props.initial?.token1 ?? null );
+    const [ profile_index, set_prof ] =  useState( () => {
+        if(  props.initial === undefined  )  return 0;
+        const idx  =  profiles.findIndex(( p ) => p.hook.toLowerCase() === props.initial!.profile.hook.toLowerCase() );
+        return idx >= 0 ? idx : 0;
+    } );
     const [ range_mode, set_range ]   =  useState<RangeMode>( "full" );
     const [ lower_price, set_lower ]  =  useState( "" );
     const [ upper_price, set_upper ]  =  useState( "" );
@@ -99,14 +103,19 @@ export function CreateScreen( props: { onBack: () => void } )
     const [ max_b, set_max_b ]  =  useState( "" );
     const [ min_b, set_min_b ]  =  useState( "" );
 
-    // Prefill the funded cap (+1%) and the signed floor (−1%) directly from the derived deposit (the minimum-bound model).
+    // Prefill the bounds. The side the user typed is their exact commitment → cap it at the typed amount (no +1%); the derived
+    // side gets +1% funded headroom (surplus refunded under BondRoute). Both signed floors are −1% (the minimum-bound model).
     useEffect( () => {
         if(  derived === null || token_a === null || token_b === null  )  return;
-        set_max_a( formatUnits( derived.amount_a * BigInt( Math.round( ( 100 + DEFAULT_BOUND_PERCENT ) * 100 ) ) / 10_000n, token_a.decimals ) );
-        set_min_a( formatUnits( derived.amount_a * BigInt( Math.round( ( 100 - DEFAULT_BOUND_PERCENT ) * 100 ) ) / 10_000n, token_a.decimals ) );
-        set_max_b( formatUnits( derived.amount_b * BigInt( Math.round( ( 100 + DEFAULT_BOUND_PERCENT ) * 100 ) ) / 10_000n, token_b.decimals ) );
-        set_min_b( formatUnits( derived.amount_b * BigInt( Math.round( ( 100 - DEFAULT_BOUND_PERCENT ) * 100 ) ) / 10_000n, token_b.decimals ) );
-    }, [ derived, token_a, token_b ] );
+        const up    =  ( x: bigint ) => x * BigInt( Math.round( ( 100 + DEFAULT_BOUND_PERCENT ) * 100 ) ) / 10_000n;
+        const down  =  ( x: bigint ) => x * BigInt( Math.round( ( 100 - DEFAULT_BOUND_PERCENT ) * 100 ) ) / 10_000n;
+        const cap_a  =  typed_side === "a"  ?  parse_amount( typed_amount, token_a.decimals )  :  up( derived.amount_a );
+        const cap_b  =  typed_side === "b"  ?  parse_amount( typed_amount, token_b.decimals )  :  up( derived.amount_b );
+        set_max_a( formatUnits( cap_a, token_a.decimals ) );
+        set_min_a( formatUnits( down( derived.amount_a ), token_a.decimals ) );
+        set_max_b( formatUnits( cap_b, token_b.decimals ) );
+        set_min_b( formatUnits( down( derived.amount_b ), token_b.decimals ) );
+    }, [ derived, token_a, token_b, typed_amount, typed_side ] );
 
     const gasless_blocked  =  relayer_configured ? null : "No relayer is configured on this network.";
 
@@ -134,7 +143,7 @@ export function CreateScreen( props: { onBack: () => void } )
                     { label: "Minimum deposited", value: `${ min_a } ${ token_a.symbol } / ${ min_b } ${ token_b.symbol }` },
                     { label: "Profile", value: `${ bps_to_percent( profile.base_fee_bps ) } base · ${ profile.rebate_percent }% repricing rebate` },
                 ] }
-                onDone={ ( receipt ) => { record_receipt( receipt ); void refresh_pending(); set_run( false ); props.onBack(); } }
+                onDone={ ( receipt ) => { record_receipt( receipt ); void refresh_pending(); void refresh_activity(); set_run( false ); props.onBack(); } }
                 onBack={ () => set_run( false ) }
             />
         );
@@ -186,15 +195,17 @@ export function CreateScreen( props: { onBack: () => void } )
 
                 { derived !== null && (
                     <>
-                        <KeyValue rows={ [
-                            { k: "Deposit A", v: `${ format_amount( derived.amount_a, token_a.decimals ) } ${ token_a.symbol }` },
-                            { k: "Deposit B", v: `${ format_amount( derived.amount_b, token_b.decimals ) } ${ token_b.symbol }` },
-                        ] } />
                         <div className="grid-2">
-                            <MinimumBound label="Maximum to deposit (A)" symbol={ token_a.symbol } kind="deposit" value={ max_a } onChange={ set_max_a } />
-                            <MinimumBound label="Minimum deposited (A)" symbol={ token_a.symbol } kind="deposit" value={ min_a } onChange={ set_min_a } />
-                            <MinimumBound label="Maximum to deposit (B)" symbol={ token_b.symbol } kind="deposit" value={ max_b } onChange={ set_max_b } />
-                            <MinimumBound label="Minimum deposited (B)" symbol={ token_b.symbol } kind="deposit" value={ min_b } onChange={ set_min_b } />
+                            <div className="stack">
+                                <KeyValue rows={ [ { k: "Deposit A", v: `${ format_amount( derived.amount_a, token_a.decimals ) } ${ token_a.symbol }` } ] } />
+                                <MinimumBound label="Maximum to deposit (A)" symbol={ token_a.symbol } kind="deposit_cap" value={ max_a } onChange={ set_max_a } />
+                                <MinimumBound label="Minimum deposited (A)" symbol={ token_a.symbol } kind="deposit" value={ min_a } onChange={ set_min_a } />
+                            </div>
+                            <div className="stack">
+                                <KeyValue rows={ [ { k: "Deposit B", v: `${ format_amount( derived.amount_b, token_b.decimals ) } ${ token_b.symbol }` } ] } />
+                                <MinimumBound label="Maximum to deposit (B)" symbol={ token_b.symbol } kind="deposit_cap" value={ max_b } onChange={ set_max_b } />
+                                <MinimumBound label="Minimum deposited (B)" symbol={ token_b.symbol } kind="deposit" value={ min_b } onChange={ set_min_b } />
+                            </div>
                         </div>
                         <ValueCard label="Protected pool" amount={ `${ profile.rebate_percent }% repricing rebate to LPs` } method="Projected earnings need an indexer and are not shown in Phase 1." />
                     </>

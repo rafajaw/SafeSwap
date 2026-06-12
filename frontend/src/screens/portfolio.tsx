@@ -28,7 +28,9 @@ export function PortfolioScreen()
         set_error( null );
         try
         {
-            const discovered  =  await safeswap.positions.discover_owned_positions( wallet.address );
+            // Same per-chain deploy-block floor as profile discovery — avoid scanning from 0 over a tall L2 (10k getLogs cap).
+            const deploy_block: Record<number, bigint>  =  { 1301: 54_330_000n };
+            const discovered  =  await safeswap.positions.discover_owned_positions( wallet.address, { from_block: deploy_block[ wallet.chain_id ] ?? 0n } );
             const remembered  =  load_remembered_token_ids( wallet.address ).map(( id ) => BigInt( id ) );
             const ids         =  [ ...new Set([ ...discovered, ...remembered ].map( String ) ) ].map(( id ) => BigInt( id ) );
 

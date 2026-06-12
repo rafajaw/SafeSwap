@@ -63,6 +63,7 @@ export function GaslessHistory( props: { jobs: GaslessJob[] } )
 }
 
 const GASLESS_STATUS_LABEL: Record<GaslessJob[ "status" ], string>  =  {
+    received:          "Submitting",
     committed:         "Committing",
     executing:         "Executing",
     executed:          "Protected",

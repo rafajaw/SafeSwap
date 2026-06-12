@@ -19,7 +19,10 @@ type DiscoveredPool = {
 
 export function EarnScreen()
 {
-    const [ tab, set_tab ]  =  useState<Tab>( "explore" );
+    const [ tab, set_tab ]            =  useState<Tab>( "explore" );
+    const [ selected, set_selected ]  =  useState<DiscoveredPool | null>( null );
+
+    const open_launch  =  ( pool: DiscoveredPool | null ) => { set_selected( pool ); set_tab( "launch" ); };
 
     return (
         <div className="stack">
@@ -28,15 +31,17 @@ export function EarnScreen()
                     <h2 className="card-title">Earn from protected liquidity</h2>
                     <p className="card-sub">LPs earn normal swap fees plus repricing revenue when their liquidity helps move price.</p>
                 </div>
-                <Segmented<Tab> value={ tab } onChange={ set_tab } options={ [ { value: "explore", label: "Explore pools" }, { value: "launch", label: "Launch pool" } ] } />
+                <Segmented<Tab> value={ tab } onChange={ ( next ) => { if(  next === "launch"  )  set_selected( null ); set_tab( next ); } } options={ [ { value: "explore", label: "Explore pools" }, { value: "launch", label: "Launch pool" } ] } />
             </div>
 
-            { tab === "explore" ? <Explore onLaunch={ () => set_tab( "launch" ) } /> : <CreateScreen onBack={ () => set_tab( "explore" ) } /> }
+            { tab === "explore"
+                ? <Explore onLaunch={ () => open_launch( null ) } onAddTo={ ( pool ) => open_launch( pool ) } />
+                : <CreateScreen onBack={ () => set_tab( "explore" ) } initial={ selected ?? undefined } /> }
         </div>
     );
 }
 
-function Explore( props: { onLaunch: () => void } )
+function Explore( props: { onLaunch: () => void, onAddTo: ( pool: DiscoveredPool ) => void } )
 {
     const { safeswap, tokens, profiles }  =  useSafeSwap();
     const [ pools, set_pools ]      =  useState<DiscoveredPool[]>( [] );
@@ -48,7 +53,7 @@ function Explore( props: { onLaunch: () => void } )
         let cancelled  =  false;
         set_loading( true );
 
-        ( async () => {
+        const probe_once  =  async (): Promise<DiscoveredPool[]> => {
             const found: DiscoveredPool[]  =  [];
             for(  let i = 0  ;  i < tokens.length  ;  i = i + 1  )
             {
@@ -68,7 +73,20 @@ function Explore( props: { onLaunch: () => void } )
                     }
                 }
             }
-            if(  cancelled === false  )  { set_pools( found ); set_loading( false ); }
+            return found;
+        };
+
+        ( async () => {
+            // The wallet RPC can serve a read from a node that hasn't caught up to a just-created pool, so settle for ~1.5s
+            // BEFORE each probe (and retry) rather than flashing "no pools" on a stale read.
+            for(  let attempt = 0  ;  attempt < 4 && cancelled === false  ;  attempt = attempt + 1  )
+            {
+                await new Promise(( resolve ) => setTimeout( resolve, 1500 ));
+                if(  cancelled  )  return;
+                const found  =  await probe_once();
+                if(  cancelled  )  return;
+                if(  found.length > 0 || attempt === 3  )  { set_pools( found ); set_loading( false ); return; }
+            }
         } )();
 
         return () => { cancelled = true; };
@@ -82,7 +100,7 @@ function Explore( props: { onLaunch: () => void } )
         </div>
     );
 
-    return <div className="pools-grid">{ pools.map(( pool, index ) => <PoolCard key={ index } pool={ pool } onAdd={ props.onLaunch } /> ) }</div>;
+    return <div className="pools-grid">{ pools.map(( pool, index ) => <PoolCard key={ index } pool={ pool } onAdd={ () => props.onAddTo( pool ) } /> ) }</div>;
 }
 
 function PoolCard( props: { pool: DiscoveredPool, onAdd: () => void } )

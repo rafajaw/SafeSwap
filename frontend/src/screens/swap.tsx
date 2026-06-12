@@ -16,7 +16,7 @@ type Phase  =  { kind: "form" } | { kind: "progress" };
 
 export function SwapScreen()
 {
-    const { safeswap, profiles, tokens, relayer_configured, record_receipt, refresh_pending }  =  useSafeSwap();
+    const { safeswap, profiles, tokens, relayer_configured, record_receipt, refresh_pending, refresh_activity }  =  useSafeSwap();
 
     const [ input, set_input ]            =  useState<TokenInfo | null>( tokens[0] ?? null );
     const [ output, set_output ]          =  useState<TokenInfo | null>( null );
@@ -86,6 +86,9 @@ export function SwapScreen()
         });
     }, [ quote, input, output, profile, amount_in ] );
 
+    // Hide the "estimated value protected" callout when it rounds to zero — a small swap has negligible MEV to protect.
+    const has_protected_value  =  estimate !== null && format_number( estimate.value_input_terms ) !== "0";
+
     if(  phase.kind === "progress" && safeswap !== null && input !== null && output !== null && profile !== null  )
     {
         return (
@@ -99,9 +102,9 @@ export function SwapScreen()
                 summary={ {
                     pay:        `${ amount_in } ${ input.symbol }`,
                     receive:    `≥ ${ minimum } ${ output.symbol }`,
-                    protected:  estimate !== null ? `+${ format_number( estimate.value_input_terms ) } ${ input.symbol }` : "—",
+                    protected:  has_protected_value && estimate !== null ? `+${ format_number( estimate.value_input_terms ) } ${ input.symbol }` : "",
                 } }
-                onDone={ ( receipt ) => { record_receipt( receipt ); void refresh_pending(); } }
+                onDone={ ( receipt ) => { record_receipt( receipt ); void refresh_pending(); void refresh_activity(); } }
                 onBack={ () => set_phase( { kind: "form" } ) }
             />
         );
@@ -141,7 +144,7 @@ export function SwapScreen()
                         </div>
                     ) : <Notice tone="warn">No protected pools discovered on this network yet.</Notice> }
 
-                    { estimate !== null && (
+                    { has_protected_value && estimate !== null && (
                         <ValueCard
                             label="Estimated value protected"
                             amount={ `+${ format_number( estimate.value_input_terms ) } ${ estimate.input_symbol }` }
@@ -151,7 +154,7 @@ export function SwapScreen()
                     ) }
 
                     { quoting && <div className="row tiny muted"><Spinner /> Quoting…</div> }
-                    { quote_error !== null && <Notice tone="warn">Quote unavailable for this pool. { quote_error }</Notice> }
+                    { quote_error !== null && <Notice tone="warn">No protected pool for { input?.symbol } / { output?.symbol } at the { profile !== null ? bps_to_percent( profile.base_fee_bps ) : "" } fee tier yet — pick another fee tier above, or launch this pool from Earn.</Notice> }
 
                     { quote !== null && output !== null && profile !== null && input !== null && (
                         <>
@@ -285,7 +288,7 @@ function SwapProgress( props: {
             created_at: Date.now(),
             lines:      [
                 { label: "Received", value: props.summary.receive },
-                { label: "Estimated value retained", value: `${ props.summary.protected } *`, green: true },
+                ...( props.summary.protected !== "" ? [ { label: "Estimated value retained", value: `${ props.summary.protected } *`, green: true } ] : [] ),
                 { label: "Execution status", value: status === "executed" ? "Protected" : status },
             ],
         };
@@ -305,7 +308,7 @@ function SwapProgress( props: {
                         <KeyValue rows={ [
                             { k: "Pay", v: props.summary.pay },
                             { k: "Receive", v: props.summary.receive },
-                            { k: "Estimated value protected", v: `${ props.summary.protected } *`, tone: "green" },
+                            ...( props.summary.protected !== "" ? [ { k: "Estimated value protected", v: `${ props.summary.protected } *`, tone: "green" as const } ] : [] ),
                         ] } />
                         { props.mode === "self_execute" && <p className="tiny muted" style={ { marginTop: 8 } }>Your wallet will show raw transaction data; this summary is the human-readable review.</p> }
                     </div>
@@ -325,7 +328,7 @@ function SwapProgress( props: {
 
             { done !== null && (
                 <>
-                    <ValueCard label="Estimated value retained" amount={ props.summary.protected } starred />
+                    { props.summary.protected !== "" && <ValueCard label="Estimated value retained" amount={ props.summary.protected } starred /> }
                     <div style={ { marginTop: 12 } }>
                         <KeyValue rows={ [
                             { k: "Received", v: props.summary.receive },

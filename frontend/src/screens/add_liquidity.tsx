@@ -17,7 +17,7 @@ const HUGE_COUNTERPART  =  2n ** 120n;
 /** Screen 5 — Add liquidity to an owned position. Range and profile are fixed by the position (read-only). */
 export function AddLiquidityScreen( props: { token_id: bigint, onBack: () => void } )
 {
-    const { safeswap, wallet, relayer_configured, record_receipt, refresh_pending }  =  useSafeSwap();
+    const { safeswap, wallet, relayer_configured, record_receipt, refresh_pending, refresh_activity }  =  useSafeSwap();
 
     const [ info, set_info ]    =  useState<SafeSwapPositionInfo | null>( null );
     const [ token0, set_t0 ]    =  useState<TokenInfo | null>( null );
@@ -26,20 +26,35 @@ export function AddLiquidityScreen( props: { token_id: bigint, onBack: () => voi
     const [ typed, set_typed ]  =  useState( "" );
     const [ side, set_side ]    =  useState<"0" | "1">( "0" );
     const [ run, set_run ]      =  useState( false );
+    const [ load_error, set_load_error ]  =  useState<string | null>( null );
 
     useEffect( () => {
         if(  safeswap === null || wallet === null  )  return;
         let cancelled  =  false;
+        set_load_error( null );
         ( async () => {
-            const position  =  await safeswap.positions.get_lp_position( props.token_id );
-            const [ meta0, meta1, state ]  =  await Promise.all([
-                get_token_metadata( wallet.public_client, wallet.chain_id, position.token0 ),
-                get_token_metadata( wallet.public_client, wallet.chain_id, position.token1 ),
-                safeswap.swaps.get_pool_state( position.token0, position.token1, { base_fee_bps: position.base_fee_bps, rebate_percent: position.rebate_percent, tick_spacing: position.tick_spacing } ),
-            ]);
-            if(  cancelled  )  return;
-            set_info( position ); set_t0( meta0 ); set_t1( meta1 ); set_pool( state );
-        } )().catch(() => {});
+            // Retry on a stale/transient RPC read (settle 1.5s between tries); surface a real error instead of hanging forever.
+            for(  let attempt = 0  ;  attempt < 4 && cancelled === false  ;  attempt = attempt + 1  )
+            {
+                try
+                {
+                    const position  =  await safeswap.positions.get_lp_position( props.token_id );
+                    const [ meta0, meta1, state ]  =  await Promise.all([
+                        get_token_metadata( wallet.public_client, wallet.chain_id, position.token0 ),
+                        get_token_metadata( wallet.public_client, wallet.chain_id, position.token1 ),
+                        safeswap.swaps.get_pool_state( position.token0, position.token1, { base_fee_bps: position.base_fee_bps, rebate_percent: position.rebate_percent, tick_spacing: position.tick_spacing } ),
+                    ]);
+                    if(  cancelled  )  return;
+                    set_info( position ); set_t0( meta0 ); set_t1( meta1 ); set_pool( state );
+                    return;
+                }
+                catch( err )
+                {
+                    if(  attempt === 3  )  { if(  cancelled === false  )  set_load_error( err instanceof Error ? err.message : String( err ) ); return; }
+                    await new Promise(( resolve ) => setTimeout( resolve, 1500 ));
+                }
+            }
+        } )();
         return () => { cancelled = true; };
     }, [ safeswap, wallet, props.token_id ] );
 
@@ -72,6 +87,7 @@ export function AddLiquidityScreen( props: { token_id: bigint, onBack: () => voi
         set_max1( formatUnits( up( derived.amount1 ), token1.decimals ) ); set_min1( formatUnits( dn( derived.amount1 ), token1.decimals ) );
     }, [ derived, token0, token1 ] );
 
+    if(  load_error !== null  )  return <div className="card center stack" style={ { gap: 12 } }><Notice tone="warn">Couldn't load this position (the RPC may be lagging): { load_error }</Notice><button className="btn btn-primary" onClick={ props.onBack }>← Back</button></div>;
     if(  info === null || token0 === null || token1 === null  )  return <div className="card center"><Spinner /> Loading position…</div>;
 
     const gasless_blocked  =  relayer_configured === false ? "No relayer is configured on this network." : null;
@@ -94,7 +110,7 @@ export function AddLiquidityScreen( props: { token_id: bigint, onBack: () => voi
                     { label: "Deposit", value: `${ format_amount( derived.amount0, token0.decimals ) } ${ token0.symbol } + ${ format_amount( derived.amount1, token1.decimals ) } ${ token1.symbol }` },
                     { label: "Minimum deposited", value: `${ min0 } ${ token0.symbol } / ${ min1 } ${ token1.symbol }` },
                 ] }
-                onDone={ ( receipt ) => { record_receipt( receipt ); void refresh_pending(); set_run( false ); props.onBack(); } }
+                onDone={ ( receipt ) => { record_receipt( receipt ); void refresh_pending(); void refresh_activity(); set_run( false ); props.onBack(); } }
                 onBack={ () => set_run( false ) }
             />
         );

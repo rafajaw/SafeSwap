@@ -20,9 +20,11 @@ export type TokenInfo = {
  * addresses must be set per network before these are real. Keyed by chain id. The app also accepts any pasted token address.
  */
 export const CURATED_TOKENS: Record<number, TokenInfo[]>  =  {
-    // Unichain (130) — the demo relayer chain. ***TODO*** fill real token addresses before launch.
-    130: [
-        { address: NATIVE_ADDRESS, symbol: "ETH", decimals: 18, class: "bluechip", native: true },
+    // Unichain Sepolia (1301) — the demo chain. SHOW / CASE are DemoToken faucet ERC-20s (call gimme_some / gimme_more to mint).
+    1301: [
+        { address: NATIVE_ADDRESS,                               symbol: "ETH",  decimals: 18, class: "bluechip", native: true },
+        { address: "0x382069828E1426d0d4692fEA22d202bC2B620efF", symbol: "SHOW", decimals: 18, class: "longtail" },
+        { address: "0x4f3C5e43b1bdf6ee50bf205954b5A42F28422D33", symbol: "CASE", decimals: 18, class: "longtail" },
     ],
 };
 

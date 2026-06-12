@@ -36,31 +36,46 @@ function usePosition( token_id: bigint )
     const [ token1, set_t1 ]    =  useState<TokenInfo | null>( null );
     const [ pool, set_pool ]    =  useState<PoolState | null>( null );
     const [ liquidity, set_liq ] =  useState<bigint | null>( null );
+    const [ load_error, set_load_error ]  =  useState<string | null>( null );
 
     useEffect( () => {
         if(  safeswap === null || wallet === null  )  return;
         let cancelled  =  false;
+        set_load_error( null );
         ( async () => {
-            const position  =  await safeswap.positions.get_lp_position( token_id );
-            const [ meta0, meta1, state ]  =  await Promise.all([
-                get_token_metadata( wallet.public_client, wallet.chain_id, position.token0 ),
-                get_token_metadata( wallet.public_client, wallet.chain_id, position.token1 ),
-                safeswap.swaps.get_pool_state( position.token0, position.token1, { base_fee_bps: position.base_fee_bps, rebate_percent: position.rebate_percent, tick_spacing: position.tick_spacing } ),
-            ]);
-            const live  =  await safeswap.positions.get_position_state( state.pool_id, token_id, position.tick_lower, position.tick_upper );
-            if(  cancelled  )  return;
-            set_info( position ); set_t0( meta0 ); set_t1( meta1 ); set_pool( state ); set_liq( live.liquidity );
-        } )().catch(() => {});
+            // Retry on a stale/transient RPC read (settle 1.5s between tries); surface a real error instead of hanging forever.
+            for(  let attempt = 0  ;  attempt < 4 && cancelled === false  ;  attempt = attempt + 1  )
+            {
+                try
+                {
+                    const position  =  await safeswap.positions.get_lp_position( token_id );
+                    const [ meta0, meta1, state ]  =  await Promise.all([
+                        get_token_metadata( wallet.public_client, wallet.chain_id, position.token0 ),
+                        get_token_metadata( wallet.public_client, wallet.chain_id, position.token1 ),
+                        safeswap.swaps.get_pool_state( position.token0, position.token1, { base_fee_bps: position.base_fee_bps, rebate_percent: position.rebate_percent, tick_spacing: position.tick_spacing } ),
+                    ]);
+                    const live  =  await safeswap.positions.get_position_state( state.pool_id, token_id, position.tick_lower, position.tick_upper );
+                    if(  cancelled  )  return;
+                    set_info( position ); set_t0( meta0 ); set_t1( meta1 ); set_pool( state ); set_liq( live.liquidity );
+                    return;
+                }
+                catch( err )
+                {
+                    if(  attempt === 3  )  { if(  cancelled === false  )  set_load_error( err instanceof Error ? err.message : String( err ) ); return; }
+                    await new Promise(( resolve ) => setTimeout( resolve, 1500 ));
+                }
+            }
+        } )();
         return () => { cancelled = true; };
     }, [ safeswap, wallet, token_id ] );
 
-    return { info, token0, token1, pool, liquidity };
+    return { info, token0, token1, pool, liquidity, load_error };
 }
 
 function Remove( props: { token_id: bigint, onBack: () => void } )
 {
-    const { safeswap, relayer_configured, record_receipt, refresh_pending }  =  useSafeSwap();
-    const { info, token0, token1, pool, liquidity }  =  usePosition( props.token_id );
+    const { safeswap, relayer_configured, record_receipt, refresh_pending, refresh_activity }  =  useSafeSwap();
+    const { info, token0, token1, pool, liquidity, load_error }  =  usePosition( props.token_id );
 
     const [ percent, set_percent ]  =  useState( 50 );
     const [ run, set_run ]          =  useState( false );
@@ -81,6 +96,7 @@ function Remove( props: { token_id: bigint, onBack: () => void } )
         set_min1( formatUnits( dn( expected.amount1 ), token1.decimals ) );
     }, [ expected, token0, token1 ] );
 
+    if(  load_error !== null  )  return <div className="card center stack" style={ { gap: 12 } }><Notice tone="warn">Couldn't load this position (the RPC may be lagging): { load_error }</Notice><button className="btn btn-primary" onClick={ props.onBack }>← Back</button></div>;
     if(  info === null || token0 === null || token1 === null  )  return <div className="card center"><Spinner /> Loading…</div>;
 
     // Remove takes no inbound funding (tokens flow out), so the native rule does NOT fire — gasless works even when ETH is released.
@@ -103,7 +119,7 @@ function Remove( props: { token_id: bigint, onBack: () => void } )
                     { label: "Removing", value: `${ percent }% of position #${ props.token_id.toString() }` },
                     { label: "You receive at least", value: `${ min0 } ${ token0.symbol } + ${ min1 } ${ token1.symbol }`, green: true },
                 ] }
-                onDone={ ( receipt ) => { record_receipt( receipt ); void refresh_pending(); set_run( false ); props.onBack(); } }
+                onDone={ ( receipt ) => { record_receipt( receipt ); void refresh_pending(); void refresh_activity(); set_run( false ); props.onBack(); } }
                 onBack={ () => set_run( false ) }
             />
         );
@@ -142,7 +158,7 @@ function Remove( props: { token_id: bigint, onBack: () => void } )
 function Collect( props: { token_id: bigint, onBack: () => void } )
 {
     const { safeswap, record_receipt }  =  useSafeSwap();
-    const { info, token0, token1 }  =  usePosition( props.token_id );
+    const { info, token0, token1, load_error }  =  usePosition( props.token_id );
 
     const [ claimable, set_claimable ]  =  useState<string>( "—" );
     const [ working, set_working ]      =  useState( false );
@@ -178,6 +194,7 @@ function Collect( props: { token_id: bigint, onBack: () => void } )
         }
     };
 
+    if(  load_error !== null  )  return <div className="card center stack" style={ { gap: 12 } }><Notice tone="warn">Couldn't load this position (the RPC may be lagging): { load_error }</Notice><button className="btn btn-primary" onClick={ props.onBack }>← Back</button></div>;
     if(  info === null  )  return <div className="card center"><Spinner /> Loading…</div>;
 
     return (

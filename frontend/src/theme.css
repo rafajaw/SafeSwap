@@ -220,7 +220,7 @@ a { color: var(--green); text-decoration: none; }
 
 /* ── NFT position card frame ──────────────────────────────────────────────── */
 .nft-frame { padding: 12px; border: 1px solid var(--hairline); border-radius: var(--radius); background: rgba(0,0,0,0.18); display: inline-block; }
-.nft-frame img, .nft-frame svg { display: block; width: 280px; height: auto; border-radius: 14px; }
+.nft-frame img, .nft-frame svg { display: block; width: 294px; max-width: 100%; height: auto; border-radius: 14px; }
 
 /* ── Notices / modal ──────────────────────────────────────────────────────── */
 .notice { border-radius: var(--radius-sm); padding: 12px 14px; line-height: 1.45; font-size: 14px; }
@@ -250,7 +250,7 @@ a { color: var(--green); text-decoration: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .pools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
-.positions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.positions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
 
 .swap-layout { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 16px; align-items: start; }
 

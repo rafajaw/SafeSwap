@@ -120,8 +120,10 @@ export function SafeSwapProvider( props: { children: ReactNode } )
             set_receipts( load_receipts( connection.address ) );
             set_status( "connected" );
 
-            // Profile discovery is best-effort: a freshly-deployed network may have no registered profiles yet.
-            sdk.swaps.discover_profiles().then( set_profiles ).catch( () => set_profiles( [] ) );
+            // Profile discovery is best-effort. Start from the SafeSwap deploy block per chain — HookRegistered logs can't
+            // predate it, and scanning from 0 over a tall L2 (with a 10k-block eth_getLogs cap) is infeasible.
+            const deploy_block: Record<number, bigint>  =  { 1301: 54_330_000n };
+            sdk.swaps.discover_profiles({ from_block: deploy_block[ connection.chain_id ] ?? 0n }).then( set_profiles ).catch( () => set_profiles( [] ) );
             sdk.list_pending().then( set_pending ).catch( () => {} );
             if(  RELAYER_CONFIGURED  )  sdk.gasless.activity( connection.address ).then(( activity ) => set_gasless_recent( activity.recent )).catch( () => {} );
         }
