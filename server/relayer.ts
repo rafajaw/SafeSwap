@@ -79,6 +79,9 @@ const GAS_MARKUP_PERCENT  =  10n;
 /** How often the background worker checks for due bonds to execute. */
 const WORKER_INTERVAL_MS  =  2_000;
 
+/** A write-ahead `received` bond with no on-chain bond after this long is treated as a commit that never landed → failed. */
+const RECEIVED_RECONCILE_GRACE_MS  =  60_000;
+
 /** BondRoute's `BondStatus.ACTIVE` (Definitions.sol relies on it being 0): created, awaiting execution. */
 const BOND_STATUS_ACTIVE  =  0;
 
@@ -119,6 +122,10 @@ export class Relayer {
     readonly #allowed_protocols: Set<string>;
     readonly #store:             ActivityStore;
 
+    /** Locally-tracked next nonce for the relayer EOA: resynced robustly from the chain when unset, advanced per confirmed tx,
+     *  and reset on any submit error. Only ever touched under the submit lock, so access is serial. */
+    #nonce: number | null  =  null;
+
     private constructor( config: RelayerConfig, account: Account, public_client: PublicClient, wallet_client: WalletClient, store: ActivityStore )
     {
         this.#config             =  config;
@@ -134,8 +141,12 @@ export class Relayer {
     {
         const config         =  load_config();
         const account        =  privateKeyToAccount( config.relayer_private_key );
-        const public_client  =  createPublicClient({ transport: http( config.rpc_url ) }) as PublicClient;
-        const wallet_client  =  createWalletClient({ account, transport: http( config.rpc_url ) });
+        // Spoof a Referer/Origin so a referrer-locked RPC (e.g. QuickNode whitelisted to the site domain) accepts the
+        // relayer's server-side requests. Harmless on RPCs that don't gate by referrer. Configurable via RELAYER_RPC_REFERER.
+        const referer        =  Deno.env.get( "RELAYER_RPC_REFERER" )?.trim() || "https://safeswap.spot";
+        const rpc_transport  =  http( config.rpc_url, { fetchOptions: { headers: { "Referer": referer, "Origin": referer } } } );
+        const public_client  =  createPublicClient({ transport: rpc_transport }) as PublicClient;
+        const wallet_client  =  createWalletClient({ account, transport: rpc_transport });
         const store          =  await create_store( config.database_url );
 
         return new Relayer( config, account, public_client, wallet_client, store );
@@ -165,27 +176,56 @@ export class Relayer {
         await this.#assert_valid_signature( request, intent );
         await this.#assert_affordable_gas();
 
-        // ── Commit: runs the delegate as the user's EOA, staking the user's own tokens and paying this relayer its fee. ──
-        // Through the global submit lock so this commit never races the worker's executes on the relayer EOA's nonce.
-        const create_tx_hash  =  await this.#store.with_submit_lock( () =>
-            this.#submit_via_7702( request, "create_bond_from_user_stake", [ intent, request.gasless_type_hash, request.action_struct_hash, request.signature ], request.authorization )
-        );
-
-        // Record BEFORE returning: the user's stake is now locked on-chain, so the worker (and crash-recovery) must see it.
-        const info                  =  await this.#bond_info( intent );
-        const target_executable_at  =  Number( info.creation_time ) + this.#config.reveal_delay_seconds;
+        // ── PERSIST FIRST as "received", then commit (write-ahead) ──
+        // Record the bond BEFORE any on-chain action — as `received`, NOT `committed`, because it has not committed yet. If the
+        // commit lands but this process then fails (RPC hiccup mid-read, crash), the `received` record is already persisted and
+        // the worker reconciles it against the chain and promotes it to `committed` — so it is never orphaned. The stored
+        // request carries the signature + execution_data, so recovery never depends on the client re-submitting.
         const now                   =  Date.now();
+        let   target_executable_at  =  Math.floor( now / 1000 ) + this.#config.reveal_delay_seconds;   // estimate; refined after commit
+
         await this.#store.record_committed({
             id:                   intent.commitment_hash,
             user:                 request.user,
             summary:              request.summary ?? { kind: "gasless" },
-            status:               "committed",
+            status:               "received",
             request,
-            create_tx_hash,
+            create_tx_hash:       "0x0000000000000000000000000000000000000000000000000000000000000000",
             committed_at:         now,
             updated_at:           now,
             target_executable_at,
         });
+
+        // ── Commit: run the delegate as the user's EOA (stakes the user's tokens, pays this relayer its fee), through the
+        // global submit lock so it never races the worker's executes on the relayer EOA nonce. ──
+        let create_tx_hash: Hex;
+        try
+        {
+            create_tx_hash  =  await this.#store.with_submit_lock( () =>
+                this.#submit_via_7702( request, "create_bond_from_user_stake", [ intent, request.gasless_type_hash, request.action_struct_hash, request.signature ], request.authorization )
+            );
+        }
+        catch( commit_error )
+        {
+            // The commit failed. If no bond exists on-chain it never landed → drop the write-ahead record so the worker does
+            // not chase a phantom. If a bond DOES exist (a duplicate submit / earlier attempt), the record is real — keep it.
+            if(  await this.#try_bond_info( intent ) === null  )  await this.#store.mark_settled( intent.commitment_hash, { status: "failed" } );
+            throw commit_error;
+        }
+
+        // ── Promote received → committed: the commit landed, so refine the tx hash + exact execute time from the on-chain bond
+        // and flip the bond to `committed`. Best-effort: if the read lags or this process dies, the `received` record stands and
+        // the worker reconciles it against the chain. ──
+        try
+        {
+            const info            =  await this.#bond_info( intent );
+            target_executable_at  =  Number( info.creation_time ) + this.#config.reveal_delay_seconds;
+            await this.#store.promote_committed( intent.commitment_hash, { create_tx_hash, target_executable_at } );
+        }
+        catch( finalize_error )
+        {
+            console.error( "Bond %s committed but post-commit promotion failed; the worker will reconcile.", intent.commitment_hash, finalize_error );
+        }
 
         return { id: intent.commitment_hash, create_tx_hash, status: "committed", target_executable_at };
     }
@@ -221,12 +261,45 @@ export class Relayer {
 
     async #worker_tick(): Promise<void>
     {
+        // First reconcile write-ahead `received` bonds against the chain (promote committed ones, fail dead ones), so a relay
+        // that committed but crashed before promoting still gets picked up and executed.
+        await this.#reconcile_received();
+
         // Claim is multi-instance-safe (SKIP LOCKED); the per-tx submit lock (in `#execute_claimed`) serializes nonces.
         for( ; ; )
         {
             const record  =  await this.#store.claim_executable( Date.now() );
             if(  record === null  )  return;
             await this.#execute_claimed( record );
+        }
+    }
+
+    /** Reconcile pre-commit `received` bonds against the chain: promote ones whose commit landed to `committed`, and fail ones
+     *  that have clearly never committed (no on-chain bond after the grace period). The write-ahead recovery path. */
+    async #reconcile_received(): Promise<void>
+    {
+        for(  const record of await this.#store.list_received()  )
+        {
+            try
+            {
+                const intent  =  deserialize_intent( record.request.intent );
+                const info    =  await this.#try_bond_info( intent );
+                if(  info !== null  )
+                {
+                    await this.#store.promote_committed( record.id, {
+                        create_tx_hash:       record.create_tx_hash,
+                        target_executable_at: Number( info.creation_time ) + this.#config.reveal_delay_seconds,
+                    });
+                }
+                else if(  Date.now() - record.committed_at > RECEIVED_RECONCILE_GRACE_MS  )
+                {
+                    await this.#store.mark_settled( record.id, { status: "failed" } );
+                }
+            }
+            catch( error )
+            {
+                console.error( "Reconcile failed for received bond %s; will retry next tick.", record.id, error );
+            }
         }
     }
 
@@ -358,7 +431,7 @@ export class Relayer {
         // no value: native stake/fundings are paid from the EOA's own balance by the delegate (`{ value: ... }`). The
         // authorization is attached only when present; for the execute it is `null` because the commit already delegated the
         // EOA (and `null` also covers an already-delegated EOA whose commit needed no re-delegation).
-        const params  =  {
+        const base_params  =  {
             account:      this.#account,
             chain:        null,
             address:      request.user,
@@ -368,15 +441,58 @@ export class Relayer {
             ...( authorization === null ? {} : { authorizationList: [ authorization ] } ),
         };
 
-        const hash     =  await this.#wallet_client.writeContract( params as Parameters<WalletClient["writeContract"]>[0] );
-        const receipt  =  await this.#public_client.waitForTransactionReceipt({ hash });
+        // Resilient submit: a load-balanced public RPC can serve a stale `getTransactionCount`, and the relayer EOA's nonce can
+        // drift, so use a locally-tracked nonce and, on any nonce/replacement error, re-sync from the chain and retry.
+        let last_error: unknown;
+        for(  let attempt = 0  ;  attempt < 6  ;  attempt++  )
+        {
+            const nonce  =  await this.#reserve_nonce();
+            try
+            {
+                const hash     =  await this.#wallet_client.writeContract({ ...base_params, nonce } as Parameters<WalletClient["writeContract"]>[0] );
+                const receipt  =  await this.#public_client.waitForTransactionReceipt({ hash });
 
-        // `waitForTransactionReceipt` does NOT throw on a reverted tx, so check explicitly — otherwise a reverted commit would
-        // be treated as success and persist a phantom bond. (A BondRoute *protocol* revert does not revert this tx; it settles
-        // with a non-EXECUTED status, read back from the bond info.)
-        if(  receipt.status !== "success"  )  throw new Error( `${ function_name } transaction ${ hash } reverted on-chain.` );
+                // `waitForTransactionReceipt` does NOT throw on a reverted tx, so check explicitly — otherwise a reverted commit
+                // would be treated as success and persist a phantom bond. (A BondRoute *protocol* revert does not revert this tx;
+                // it settles with a non-EXECUTED status, read back from the bond info.)
+                if(  receipt.status !== "success"  )  throw new Error( `${ function_name } transaction ${ hash } reverted on-chain.` );
 
-        return hash;
+                this.#nonce  =  nonce + 1;   // advance only after a confirmed-mined tx
+                return hash;
+            }
+            catch( error )
+            {
+                last_error   =  error;
+                this.#nonce  =  null;   // force a fresh robust re-sync before any retry (covers a stale read or a drifted nonce)
+                const message    =  String( ( error as { message?: string } )?.message ?? error ).toLowerCase();
+                const retriable  =  message.includes( "nonce" ) || message.includes( "replacement transaction underpriced" ) || message.includes( "already known" );
+                if(  retriable === false  )  throw error;   // a genuine revert / unrelated failure — surface it
+            }
+        }
+        throw last_error;
+    }
+
+    /** Reserve the next nonce for the relayer EOA (caller holds the submit lock). Resynced from the chain when unset. */
+    async #reserve_nonce(): Promise<number>
+    {
+        if(  this.#nonce === null  )  this.#nonce  =  await this.#fetch_chain_nonce();
+        return this.#nonce;
+    }
+
+    /** Read the EOA's pending nonce, taking the MAX over several reads so one stale load-balanced node can't under-report it. */
+    async #fetch_chain_nonce(): Promise<number>
+    {
+        let best  =  0;
+        for(  let i = 0  ;  i < 5  ;  i++  )
+        {
+            try
+            {
+                const n  =  await this.#public_client.getTransactionCount({ address: this.#account.address, blockTag: "pending" });
+                if(  n > best  )  best  =  n;
+            }
+            catch { /* skip a bad read; another attempt will land */ }
+        }
+        return best;
     }
 
     /** Whether the bond's reveal delay (both block and time floors) has fully elapsed, so execute won't revert as too-early. */
@@ -387,15 +503,52 @@ export class Relayer {
             && block.timestamp >= info.creation_time  + BigInt( this.#config.reveal_delay_seconds );
     }
 
+    /** A single, non-retrying bond-info read that returns null when the bond does not exist (the contract reverts). Lets
+     *  `relay()` detect an already-committed bond and resume it instead of re-committing (which would revert). */
+    async #try_bond_info( intent: GaslessIntent ): Promise<{ creation_time: bigint, creation_block: bigint, status: number } | null>
+    {
+        await new Promise(( resolve ) => setTimeout( resolve, 1500 ));   // settle before reading — let the RPC catch up
+        try
+        {
+            const info  =  await this.#public_client.readContract({
+                address:      this.#bondroute_address,
+                abi:          BONDROUTE_BOND_INFO_ABI,
+                functionName: "__OFF_CHAIN__get_bond_info",
+                args:         [ intent.commitment_hash, intent.stake ],
+            });
+            return { creation_time: info.creation_time, creation_block: info.creation_block, status: Number( info.status ) };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     async #bond_info( intent: GaslessIntent ): Promise<{ creation_time: bigint, creation_block: bigint, status: number }>
     {
-        const info  =  await this.#public_client.readContract({
-            address:      this.#bondroute_address,
-            abi:          BONDROUTE_BOND_INFO_ABI,
-            functionName: "__OFF_CHAIN__get_bond_info",
-            args:         [ intent.commitment_hash, intent.stake ],
-        });
-        return { creation_time: info.creation_time, creation_block: info.creation_block, status: Number( info.status ) };
+        // A public RPC can serve a read from a node that hasn't yet caught up to a freshly-mined block, so a just-committed
+        // bond may briefly read as "not found" (the contract reverts). SETTLE ~1.5s before each read (so the node catches up),
+        // and retry before giving up.
+        let last_error: unknown;
+        for(  let attempt = 0  ;  attempt < 10  ;  attempt++  )
+        {
+            await new Promise(( resolve ) => setTimeout( resolve, 1500 ));   // settle before reading — let the RPC catch up
+            try
+            {
+                const info  =  await this.#public_client.readContract({
+                    address:      this.#bondroute_address,
+                    abi:          BONDROUTE_BOND_INFO_ABI,
+                    functionName: "__OFF_CHAIN__get_bond_info",
+                    args:         [ intent.commitment_hash, intent.stake ],
+                });
+                return { creation_time: info.creation_time, creation_block: info.creation_block, status: Number( info.status ) };
+            }
+            catch( error )
+            {
+                last_error  =  error;
+            }
+        }
+        throw last_error;
     }
 }
 

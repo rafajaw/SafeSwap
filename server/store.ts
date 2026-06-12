@@ -14,7 +14,7 @@ import type { Address, Hex } from "viem";
 import type { RelayRequest } from "@safeswap/sdk";
 
 /** Lifecycle of a gasless bond as the relayer drives it. */
-export type GaslessBondStatus  =  "committed" | "executing" | "executed" | "protocol_reverted" | "failed";
+export type GaslessBondStatus  =  "received" | "committed" | "executing" | "executed" | "protocol_reverted" | "failed";
 
 /** Human summary the client signs for, stored so activity can show "what / how much" without decoding calldata server-side. */
 export type GaslessSummary  =  { kind: string, pay?: string, receive?: string };
@@ -61,8 +61,14 @@ const TERMINAL: ReadonlySet<GaslessBondStatus>  =  new Set([ "executed", "protoc
 
 
 export interface ActivityStore {
-    /** Persist a freshly committed bond. */
+    /** Persist a bond. Used both for the pre-commit write-ahead (`status: "received"`) and a freshly committed bond. */
     record_committed( record: GaslessRecord ): Promise<void>;
+
+    /** Promote a pre-commit `received` bond to `committed` once its commit tx has landed. No-op unless still `received`. */
+    promote_committed( id: Hex, patch: { create_tx_hash: Hex, target_executable_at: number } ): Promise<void>;
+
+    /** Every bond still in the pre-commit `received` state — the worker reconciles these against the chain. */
+    list_received(): Promise<GaslessRecord[]>;
 
     /**
      * Run `fn` while holding the global single-writer submit lock, so every relayer transaction (commit OR execute, from any
@@ -125,6 +131,24 @@ export class MemoryStore implements ActivityStore {
     {
         this.#records.set( record.id.toLowerCase(), record );
         return Promise.resolve();
+    }
+
+    promote_committed( id: Hex, patch: { create_tx_hash: Hex, target_executable_at: number } ): Promise<void>
+    {
+        const record  =  this.#records.get( id.toLowerCase() );
+        if(  record !== undefined && record.status === "received"  )
+        {
+            record.status                =  "committed";
+            record.create_tx_hash        =  patch.create_tx_hash;
+            record.target_executable_at  =  patch.target_executable_at;
+            record.updated_at            =  Date.now();
+        }
+        return Promise.resolve();
+    }
+
+    list_received(): Promise<GaslessRecord[]>
+    {
+        return Promise.resolve( [ ...this.#records.values() ].filter(( record ) => record.status === "received" ) );
     }
 
     with_submit_lock<T>( fn: () => Promise<T> ): Promise<T>
@@ -261,6 +285,21 @@ export class PostgresStore implements ActivityStore {
             )
             ON CONFLICT ( id ) DO NOTHING
         `;
+    }
+
+    async promote_committed( id: Hex, patch: { create_tx_hash: Hex, target_executable_at: number } ): Promise<void>
+    {
+        await this.#sql`
+            UPDATE gasless_bond
+            SET status = 'committed', create_tx_hash = ${ patch.create_tx_hash }, target_executable_at = ${ patch.target_executable_at }, updated_at = ${ Date.now() }
+            WHERE id = ${ id.toLowerCase() } AND status = 'received'
+        `;
+    }
+
+    async list_received(): Promise<GaslessRecord[]>
+    {
+        const rows  =  await this.#sql`SELECT * FROM gasless_bond WHERE status = 'received'`;
+        return rows.map(( row: unknown ) => this.#from_row( row ) );
     }
 
     async with_submit_lock<T>( fn: () => Promise<T> ): Promise<T>

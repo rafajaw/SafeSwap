@@ -413,7 +413,7 @@ export type SerializedExecutionData = {
 };
 
 /** Lifecycle of a gasless bond the relayer tracks (address-keyed, server-authoritative). */
-export type GaslessBondStatus  =  "committed" | "executing" | "executed" | "protocol_reverted" | "failed";
+export type GaslessBondStatus  =  "received" | "committed" | "executing" | "executed" | "protocol_reverted" | "failed";
 
 /** What `POST /relay` returns once the bond is committed on-chain — the long reveal+execute then runs server-side. */
 export type GaslessCommit = {
@@ -622,7 +622,7 @@ export const SAFESWAP_NFT_ABI  =  parseAbi([
     "function bonded_remove_liquidity((uint256 token_id, uint128 liquidity, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
     "function collect_fees((uint256 token_id, (address token, uint256 amount) minimum_received_a, (address token, uint256 amount) minimum_received_b) params) external",
 
-    "function get_lp_position(uint256 token_id) external view returns ((address hook, address token0, address token1, uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing, int24 tick_lower, int24 tick_upper) position_info)",
+    "function get_lp_position(uint256 token_id) external view returns ((uint40 opened_at, address hook, address token0, address token1, uint16 base_fee_bps, uint8 rebate_percent, int24 tick_spacing, int24 tick_lower, int24 tick_upper) position_info)",
     "function get_position_info(bytes32 pool_id, uint256 token_id, int24 tick_lower, int24 tick_upper) external view returns (uint128 liquidity, uint256 fee_growth_inside_0_last_x128, uint256 fee_growth_inside_1_last_x128)",
 
     "function ownerOf(uint256 token_id) external view returns (address owner)",
@@ -1230,8 +1230,8 @@ async function prepare_with_auto_stake_token(
     return token0_bond;
 }
 
-/** Default `eth_getLogs` window. Some wallet RPCs cap the block span, so discovery walks fixed windows of this size. */
-const DEFAULT_LOG_BLOCK_RANGE  =  50_000n;
+/** Default `eth_getLogs` window. Public RPCs commonly cap the span at 10k blocks (e.g. Unichain Sepolia), so stay at/below it. */
+const DEFAULT_LOG_BLOCK_RANGE  =  10_000n;
 
 /**
  * Read event logs in bounded block windows so wallet RPCs that cap `eth_getLogs` spans don't reject the query. Defaults to
@@ -2266,28 +2266,27 @@ export class SafeSwapGasless {
         const commitment_hash    =  this.#ctx.bond_route.calc_commitment_hash({ execution_data, user });
         const create_deadline    =  BigInt( Math.floor( Date.now() / 1000 ) + relay.create_deadline_seconds );
 
-        // Re-parent the decoded action from BondRoute's `ExecuteBondAs` typed data so the wallet renders the same action.
-        const bondroute_typed     =  await operation.build_execution_typed_data();
-        const execute_bond_fields  =  bondroute_typed.types.ExecuteBondAs;
-        if(  execute_bond_fields === undefined  )  throw new Error( "BondRoute signing type is missing ExecuteBondAs." );
-
-        const reserved      =  new Set([ "fundings", "stake", "salt", "protocol", "calldata_hash" ]);
-        const action_field  =  execute_bond_fields.find(( field ) => reserved.has( field.name ) === false );
-        if(  action_field === undefined  )  throw new Error( "SafeSwap protocol signing type is missing its action struct field." );
+        // Re-parent the DESCRIPTOR-RENDERED action under this delegate's SafeSwapGaslessBond struct. `get_signing_preview`
+        // reads the on-chain signing descriptor's human-readable action (e.g. CreatePosition's string fields) and verifies it
+        // hashes to the on-chain digest — so the wallet renders the real intent and the action's EIP-712 struct hash matches
+        // `action_struct_hash`. (The old path ABI-decoded the raw call against those *string* fields — a type mismatch.)
+        const preview      =  await operation.get_signing_preview();
+        const action_name  =  preview.action_field;
+        const action_type  =  preview.action_type;
 
         const gasless_types: Record<string, { name: string, type: string }[]>  =  {};
-        for(  const [ name, fields ] of Object.entries( bondroute_typed.types )  )
+        for(  const [ name, fields ] of Object.entries( preview.typed_data.types )  )
         {
             if(  name !== "ExecuteBondAs"  )  gasless_types[ name ]  =  fields;
         }
         gasless_types.SafeSwapGaslessBond  =  [
-            { name: "helper",            type: "address" },
-            { name: "relayer",           type: "address" },
-            { name: "relayer_fee",       type: "TokenAmount" },
-            { name: "stake",             type: "TokenAmount" },
-            { name: "create_deadline",   type: "uint256" },
-            { name: "commitment_hash",   type: "bytes32" },
-            { name: action_field.name,   type: action_field.type },
+            { name: "helper",          type: "address" },
+            { name: "relayer",         type: "address" },
+            { name: "relayer_fee",     type: "TokenAmount" },
+            { name: "stake",           type: "TokenAmount" },
+            { name: "create_deadline", type: "uint256" },
+            { name: "commitment_hash", type: "bytes32" },
+            { name: action_name,       type: action_type },
         ];
 
         const signature  =  await sign_safeswap_typed_data( this.#ctx, {
@@ -2295,13 +2294,13 @@ export class SafeSwapGasless {
             types:       gasless_types,
             primaryType: "SafeSwapGaslessBond",
             message:     {
-                helper:                 relay.delegate_address,
-                relayer:                relay.relayer_address,
-                relayer_fee:            relay.relayer_fee,
-                stake:                  execution_data.stake,
+                helper:            relay.delegate_address,
+                relayer:           relay.relayer_address,
+                relayer_fee:       relay.relayer_fee,
+                stake:             execution_data.stake,
                 create_deadline,
                 commitment_hash,
-                [ action_field.name ]:  bondroute_typed.message[ action_field.name ],
+                [ action_name ]:   preview.typed_data.message[ action_name ],
             },
         });
 
