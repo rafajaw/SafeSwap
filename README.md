@@ -2,7 +2,7 @@
 
 ### Swappers keep more. LPs earn more.
 
-> 🔗 **Live now → [safeswap.spot](https://safeswap.spot/)** — connect a wallet on Unichain Sepolia and try gasless, MEV-protected swaps. No install, no approvals.
+> 🔗 **Live testnet demo → [safeswap.spot](https://safeswap.spot/)** — connect a wallet on **Unichain Sepolia** (a testnet) and try gasless, MEV-protected swaps with testnet funds. No install, no approvals, no real money. Not deployed to mainnet yet.
 
 SafeSwap is a [Uniswap V4](https://github.com/Uniswap/v4-core) protocol that protects traders from MEV and pays liquidity providers the repricing revenue normal AMMs leak to arbitrage bots.
 
